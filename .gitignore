@@ -1,0 +1,10 @@
+Debug
+objDebug
+/*.db
+/lint
+ipch
+.vs
+/S3Test/*.user
+/*.opendb
+objRelease
+Release
