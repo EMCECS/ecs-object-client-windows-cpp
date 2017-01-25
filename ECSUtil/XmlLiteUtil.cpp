@@ -6,7 +6,6 @@
 
 #include "stdafx.h"
 
-static const char cvs_rev[]				= "$Revision: 3649 $";
 
 #include <atlbase.h>
 #include <atlstr.h>
@@ -32,7 +31,6 @@ std::set<CBufferStream *> *CBufferStream::pGlobalCBufferStreamSet;
 // if it matches, call the callback
 // format of path: //<elem1>/<elem2>/<elem3>...
 static HRESULT CheckIfInterested(
-	const list<CString>& XmlPaths,
 	const deque<XML_REC>& XmlStack,
 	XMLLITE_READER_CB ReaderCB,
 	void *pContext,
@@ -41,41 +39,10 @@ static HRESULT CheckIfInterested(
 	const list<XML_LITE_ATTRIB> *pAttrList,
 	const CString *psValue)
 {
-	HRESULT hr;
-	for (list<CString>::const_iterator itList = XmlPaths.begin(); itList != XmlPaths.end(); ++itList)
-	{
-		if (itList->IsEmpty())
-		{
-			// if empty, then we want a callback for every element
-			CString sPath(L"/");
-			for (deque<XML_REC>::const_iterator itStack = XmlStack.begin(); itStack != XmlStack.end(); ++itStack)
-				sPath += L"/" + itStack->sName;
-			return ReaderCB(sPath, pContext, pReader, NodeType, pAttrList, psValue);
-		}
-		UINT iElem = 0;
-		int pos = 0;
-		CString sElement;
-		for (;;)
-		{
-			sElement = itList->Tokenize(L"/", pos);
-			if (sElement.IsEmpty())
-			{
-				if (XmlStack.size() != iElem)
-					break;
-				// found it!
-				hr = ReaderCB(*itList, pContext, pReader, NodeType, pAttrList, psValue);
-				if (FAILED(hr))
-					return hr;
-				break;
-			}
-			if (XmlStack.size() <= iElem)
-				break;
-			if (sElement != XmlStack[iElem].sName)
-				break;
-			iElem++;
-		}
-	}
-	return 0;
+	CString sPath(L"/");
+	for (deque<XML_REC>::const_iterator itStack = XmlStack.begin(); itStack != XmlStack.end(); ++itStack)
+		sPath += L"/" + itStack->sName;
+	return ReaderCB(sPath, pContext, pReader, NodeType, pAttrList, psValue);
 }
 
 //
@@ -85,17 +52,15 @@ static HRESULT CheckIfInterested(
 //
 HRESULT ScanXml(
 	const CBuffer *pXml,
-	const list<CString>& XmlPaths,
 	void *pContext,
 	XMLLITE_READER_CB ReaderCB)
 {
 	CComPtr<IStream> pBufStream = new CBufferStream(pXml);
-	return ScanXmlStream(pBufStream, XmlPaths, pContext, ReaderCB);
+	return ScanXmlStream(pBufStream, pContext, ReaderCB);
 }
 
 HRESULT ScanXmlStream(
 	IStream *pStream,
-	const list<CString>& XmlPaths,
 	void *pContext,
 	XMLLITE_READER_CB ReaderCB)
 {
@@ -174,7 +139,7 @@ HRESULT ScanXmlStream(
 						break;
 				}
 
-				if (FAILED(hr = CheckIfInterested(XmlPaths, XmlStack, ReaderCB, pContext, pReader, nodeType, &AttrList, NULL)))
+				if (FAILED(hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, &AttrList, NULL)))
 					return hr;
 
 				if (FAILED(hr = pReader->MoveToElement()))
@@ -182,10 +147,9 @@ HRESULT ScanXmlStream(
 				if (bEmptyElement)
 				{
 					// send a fake EndElement if it was empty (meaning it won't get a real end element)
-					hr = CheckIfInterested(XmlPaths, XmlStack, ReaderCB, pContext, pReader, XmlNodeType_EndElement, NULL, NULL);
+					hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, XmlNodeType_EndElement, NULL, NULL);
 					if (FAILED(hr))
 						return hr;
-					XML_REC Rec = XmlStack.back();
 					XmlStack.pop_back();
 				}
 			}
@@ -193,7 +157,7 @@ HRESULT ScanXmlStream(
 
 		case XmlNodeType_EndElement:
 			{
-				hr = CheckIfInterested(XmlPaths, XmlStack, ReaderCB, pContext, pReader, nodeType, NULL, NULL);
+				hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, NULL, NULL);
 				if (FAILED(hr))
 					return hr;
 				XML_REC Rec = XmlStack.back();
@@ -222,7 +186,7 @@ HRESULT ScanXmlStream(
 				if (FAILED(hr = pReader->GetValue(&pwszValue, NULL)))
 					return hr;
 				CString sValue(pwszValue);
-				hr = CheckIfInterested(XmlPaths, XmlStack, ReaderCB, pContext, pReader, nodeType, NULL, &sValue);
+				hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, NULL, &sValue);
 				if (FAILED(hr))
 					return hr;
 			}

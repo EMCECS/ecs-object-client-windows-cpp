@@ -27,7 +27,6 @@ class CInternetHandle
 {
 private:
 	HINTERNET hInternet;
-//	OCTOPUS_MSG_LOG_PROTO *pMsgLog;
 	NTSTATUS dwMSG_INTERNET_CLOSE_ERROR;
 
 public:
@@ -113,6 +112,49 @@ public:
 		CString sVersion;
 	};
 
+	struct ECSUTIL_EXT_CLASS S3_LIFECYCLE_RULE
+	{
+		CString sRuleID;									// user assigned rule ID
+		CString sPath;										// optional subpath to apply rule (relative to bucket)
+		bool bEnabled;										// enabled or disabled
+		DWORD dwDays;										// number of days until expiration (current objects)
+		DWORD dwNoncurrentDays;								// number of days (for non-current objects) until expiration
+		FILETIME ftDate;									// date of expiration (current objects)
+
+		S3_LIFECYCLE_RULE()
+			: bEnabled(false)
+			, dwDays(0)
+			, dwNoncurrentDays(0)
+		{
+			ZeroFT(ftDate);
+		}
+		void Empty(void)
+		{
+			sRuleID.Empty();
+			sPath.Empty();
+			bEnabled = false;
+			dwDays = 0;
+			dwNoncurrentDays = 0;
+			ZeroFT(ftDate);
+		}
+		bool IsEmpty(void)
+		{
+			return sRuleID.IsEmpty() || ((dwDays == 0) && (dwNoncurrentDays == 0) && IfFTZero(ftDate));
+		}
+		bool operator < (const S3_LIFECYCLE_RULE& rec) const
+		{
+			return sRuleID.CompareNoCase(rec.sRuleID) < 0;
+		}
+	};
+
+	struct ECSUTIL_EXT_CLASS S3_LIFECYCLE_INFO
+	{
+		list<S3_LIFECYCLE_RULE> LifecycleRules;			// list of lifecycle rules
+
+		S3_LIFECYCLE_INFO()
+		{}
+	};
+
 	struct ECSUTIL_EXT_CLASS S3_ADMIN_USER_INFO
 	{
 		CString sUser;
@@ -180,6 +222,11 @@ public:
 		STREAM_DATA_ENTRY()
 			: bLast(false)
 			, ullOffset(0)
+		{}
+		STREAM_DATA_ENTRY(bool bLastParam, const CBuffer& DataParam, ULONGLONG ullOffsetParam)
+			: bLast(bLastParam)
+			, Data(DataParam)
+			, ullOffset(ullOffsetParam)
 		{}
 	};
 
@@ -263,7 +310,7 @@ public:
 
 	struct ECSUTIL_EXT_CLASS S3_UPLOAD_PART_ENTRY_EVENT
 	{
-		CQueueEvent QueueEvent;				// event linked to StreamQueue
+		CSharedQueueEvent QueueEvent;				// event linked to StreamQueue
 
 		S3_UPLOAD_PART_ENTRY_EVENT()
 		{}
@@ -472,30 +519,30 @@ public:
 	class CS3ErrorInfo : public CErrorInfo
 	{
 	public:
-		CECSConnection::S3_ERROR AtError;
+		CECSConnection::S3_ERROR Error;
 
 		CS3ErrorInfo()
 		{
 		}
 
-		CS3ErrorInfo(const CECSConnection::S3_ERROR& AtErrorParam)
+		CS3ErrorInfo(const CECSConnection::S3_ERROR& ErrorParam)
 		{
-			AtError = AtErrorParam;
+			Error = ErrorParam;
 		}
 
-		CS3ErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, const CECSConnection::S3_ERROR& AtErrorParam)
+		CS3ErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, const CECSConnection::S3_ERROR& ErrorParam)
 		{
 			sFile = pszFile;
 			dwLine = dwLineParam;
-			AtError = AtErrorParam;
+			Error = ErrorParam;
 		}
 
-		CS3ErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, NTSTATUS Status, const CECSConnection::S3_ERROR& AtErrorParam, LPCTSTR pszAdditionalInfo = nullptr)
+		CS3ErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, NTSTATUS Status, const CECSConnection::S3_ERROR& ErrorParam, LPCTSTR pszAdditionalInfo = nullptr)
 		{
 			sFile = pszFile;
 			dwLine = dwLineParam;
 			dwError = Status;
-			AtError = AtErrorParam;
+			Error = ErrorParam;
 			if (pszAdditionalInfo != nullptr)
 				sAdditionalInfo = pszAdditionalInfo;
 		}
@@ -507,11 +554,11 @@ public:
 
 		bool IfError() const
 		{
-			return AtError.IfError() || (dwError != ERROR_SUCCESS);
+			return Error.IfError() || (dwError != ERROR_SUCCESS);
 		}
 		CString Format() const
 		{
-			S3_ERROR TmpAtError = AtError;
+			S3_ERROR TmpAtError = Error;
 			if ((TmpAtError.dwError == ERROR_SUCCESS) && (dwError != ERROR_SUCCESS))
 				TmpAtError.dwError = dwError;
 			CString sMsg(TmpAtError.Format());
@@ -643,7 +690,7 @@ public:
 	{
 		// parameters from listing
 		CString sPathIn;
-		LPCTSTR pszTempName;
+
 		bool bNeedMetadata;
 		bool bDontTranslateLongname;
 
@@ -653,6 +700,7 @@ public:
 		bool bGotRootElement;			// sanity check. we need to see the root element to verify that the XML looks good
 		bool bSingle;					// just get some entries. not all
 		bool bS3Versions;				// S3 version listing
+		bool bGotKey;					// set if it saw any key. this is used to determine if the folder exists at all
 		DirEntryList_t *pDirList;
 		CCriticalSection csDirList;
 		CECSConnection::DIR_ENTRY Rec;
@@ -664,16 +712,18 @@ public:
 		list<LISTING_CONTEXT_MONITOR *> DirMonitorList;
 
 		bool bDone;
-		S3_ERROR AtError;
+		S3_ERROR Error;
 
 		// S3 fields
 		bool bIsTruncated;
-		CString sPrefix;							// the prefix received from the command results
-		CString sS3NextMarker;
-		
+		CString sPrefix;					// the prefix received from the command results
+		CString sS3NextMarker;				// passed to marker in next request
+		CString sS3NextKeyMarker;			// passed to key-marker in next request
+		CString sS3NextVersionIdMarker;		// passed to version-id-marker in next request
+
 		XML_DIR_LISTING_CONTEXT()
-			: pszTempName(nullptr)
-			, bNeedMetadata(false)
+
+			: bNeedMetadata(false)
 			, bDontTranslateLongname(false)
 			, bGotSysMetadata(false)
 			, bGotType(false)
@@ -890,11 +940,11 @@ private:
 	// all state fields. These are not copied during assignment or copy constructor
 	struct CECSConnectionState
 	{
-		CECSConnection *pECSConnection;					// pointer to parent record
-		CECSConnectionSession Session;				// current allocated session (cached hSession and hConnect)
-		CInternetHandle hRequest;			// request handle
+		CECSConnection *pECSConnection;			// pointer to parent record
+		CECSConnectionSession Session;			// current allocated session (cached hSession and hConnect)
+		CInternetHandle hRequest;				// request handle
 		bool bCallbackRegistered;
-		bool bS3Admin;						// if set, don't include x-emc-signature header entry
+		bool bS3Admin;							// admin API
 		bool bCaseSensitive;					// disable case insensitive support
 		bool bOverrideLowerCase;				// if set, use the paths exactly as presented, despite the current lower case settings
 		bool bECSExtension;						// if set, ECS extension and don't worry about getting x-amz-request-id back
@@ -1019,7 +1069,6 @@ private:
 	bool bCheckShutdown;					// if set, then abort request if during service shutdown (default)
 	ECS_DISCONNECT_CB DisconnectCB;		// disconnect callback
 	list<ABORT_ENTRY> AbortList;			// list of abort entries
-	bool bVista;							// set if OS is Vista or Server 2008
 
 	// S3 settings
 	CString sS3KeyID;						// S3 Key ID
@@ -1166,7 +1215,7 @@ private:
 	CECSConnectionState& GetStateBuf(DWORD dwThreadID = 0);
 	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCWSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
 	CString GetCanonicalTime() const;
-	FILETIME ParseCanonicalTime(LPCTSTR pszCanonTime) const;
+	static FILETIME ParseCanonicalTime(LPCTSTR pszCanonTime);
 	void sign(const CString& secretStr, const CString& hashStr, CString& encodedStr);
 	CString signRequestS3v2(const CString& secretStr, const CString& method, const CString& resource, const map<CString, HEADER_STRUCT>& headers, LPCTSTR pszExpires = nullptr);
 
@@ -1219,6 +1268,8 @@ public:
 	void SetRegion(LPCTSTR pszS3Region);
 	void SetS3KeyID(LPCTSTR pszS3KeyID);
 	CString GetS3KeyID(void);
+	static DWORD ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftTime, bool bLocal = false);
+	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal);
 
 	void SetPort(INTERNET_PORT PortParam);
 	void SetProxy(bool bUseDefaultProxyParam, LPCTSTR pszProxy, DWORD dwPort, LPCTSTR pszProxyUser, LPCTSTR pszProxyPassword);
@@ -1255,7 +1306,7 @@ public:
 	static bool ValidateS3BucketName(LPCTSTR pszBucketName);
 	void SetHTTPSecurityFlags(DWORD dwHTTPSecurityFlagsParam);
 
-	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, LPCTSTR pszChecksumAlg = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL);
+	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, LPCTSTR pszChecksumAlg = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr);
 	S3_ERROR DeleteS3(LPCTSTR pszPath);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr);
@@ -1268,7 +1319,8 @@ public:
 	S3_ERROR WriteMetadata(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDListParam);
 	S3_ERROR ReadMetadata(LPCTSTR pszPath, LPCTSTR pszTag, CBuffer& Data, LPCTSTR pszVersionId = nullptr);
 	S3_ERROR ReadMetadata(LPCTSTR pszPath, LPCTSTR pszTag, CString& sData, LPCTSTR pszVersionId = nullptr);
-	S3_ERROR ReadMetadataBulk(LPCTSTR pszPath, const list<CString>& TagRequestList, list<S3_METADATA_ENTRY>& MDList);
+	S3_ERROR ReadMetadataBulk(LPCTSTR pszPath, const list<CString>& TagRequestList, list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszVersionId);
+	S3_ERROR ReadMetadataBulk(LPCTSTR pszPath, list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszVersionId);
 	void ReadMetadataBulkEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, CString& sValue);
 	void ReadMetadataBulkEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, CBuffer& Value);
 	S3_ERROR DeleteMetadata(LPCTSTR pszPath, LPCTSTR pszTag);
@@ -1277,12 +1329,13 @@ public:
 	CString GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExpire);
 	S3_ERROR CreateS3Bucket(LPCTSTR pszBucketName);
 	S3_ERROR DeleteS3Bucket(LPCTSTR pszBucketName);
-	S3_ERROR S3GetBucketPolicy(LPCTSTR pszBucket);
-	S3_ERROR S3GetBucketLogging(LPCTSTR pszBucket);
 	S3_ERROR S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning);
 	S3_ERROR S3PutBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING Versioning);
 	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const list<CECSConnection::S3_METADATA_ENTRY> *pMDList);
 	S3_ERROR DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint);
+	S3_ERROR S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO& Lifecycle);
+	S3_ERROR S3PutLifecycle(LPCTSTR pszBucket, const S3_LIFECYCLE_INFO& Lifecycle);
+	S3_ERROR S3DeleteLifecycle(LPCTSTR pszBucket);
 
 	// S3 multipart upload support
 	S3_ERROR S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<S3_METADATA_ENTRY> *pMDList);

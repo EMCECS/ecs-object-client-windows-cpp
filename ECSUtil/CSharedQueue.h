@@ -19,9 +19,21 @@
 #include <set>
 #include <memory>
 #include <deque>
-#include "CQueueEvent.h"
 #include "CRWLock.h"
 
+#define TRIGGEREVENTS_PUSH			 0x01
+#define TRIGGEREVENTS_INSERTAT		 0x02
+#define TRIGGEREVENTS_REPLACEAT		 0x04
+#define TRIGGEREVENTS_DELETE		 0x08
+#define TRIGGEREVENTS_EMPTY			 0x10
+#define TRIGGEREVENTS_CHANGETYPE	 0x20
+#define TRIGGEREVENTS_SERIALIZE		 0x40
+#define TRIGGEREVENTS_ADD			 0x80
+#define TRIGGEREVENTS_CHANGEKEY		0x100
+#define TRIGGEREVENTS_INSERT		0x200
+#define TRIGGEREVENTS_POP			0x400
+#define TRIGGEREVENTS_NONE			0
+#define TRIGGEREVENTS_ALL			~(TRIGGEREVENTS_NONE)
 
 class ECSUTIL_EXT_CLASS CSharedQueueEvent;
 
@@ -240,30 +252,5 @@ public:
 		TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_POP);
 		list<T>::pop_back();
 	}
-#ifdef unused
-	iterator begin()
-	{
-		CRWLockAcquire lockQueue(&rwlQueue, false);			// read lock
-		return list<T>::begin();
-	}
-
-	iterator end()
-	{
-		CRWLockAcquire lockQueue(&rwlQueue, false);			// read lock
-		return list<T>::end();
-	}
-
-	reverse_iterator rbegin()
-	{
-		CRWLockAcquire lockQueue(&rwlQueue, false);			// read lock
-		return list<T>::rbegin();
-	}
-
-	reverse_iterator rend()
-	{
-		CRWLockAcquire lockQueue(&rwlQueue, false);			// read lock
-		return list<T>::rend();
-	}
-#endif
 };
 

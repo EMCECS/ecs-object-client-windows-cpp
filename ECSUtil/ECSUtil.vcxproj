@@ -223,7 +223,6 @@
   <ItemGroup>
     <ClInclude Include="cbuffer.h" />
     <ClInclude Include="CngAES_GCM.h" />
-    <ClInclude Include="CQueueEvent.h" />
     <ClInclude Include="CRWLock.h" />
     <ClInclude Include="CSharedQueue.h" />
     <ClInclude Include="exportdef.h" />

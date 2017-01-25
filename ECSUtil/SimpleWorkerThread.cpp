@@ -12,6 +12,9 @@ using namespace std;
 #include "ProcessEvent.h"
 #include "SimpleWorkerThread.h"
 #include "Logging.h"
+#include "fmtnum.h"
+#include "widestring.h"
+#include "NTERRTXT.H"
 
 CCriticalSection *CSimpleWorkerThread::pcsGlobalThreadSet;
 set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSetActive;
@@ -32,16 +35,16 @@ CSimpleWorkerThread::CSimpleWorkerThread()
 	{
 		if (pcsGlobalThreadSet == NULL)
 		{
-			CCriticalSection *pcsGlobalThreadTemp = new CCriticalSection;			//lint !e1732 !e1733: (Info -- new in constructor for class 'CSimpleWorkerThread' which has no assignment operator)
+			CCriticalSection *pcsGlobalThreadTemp = new CCriticalSection;			//lint !e1732 !e1733 (Info -- new in constructor for class 'CSimpleWorkerThread' which has no assignment operator)
 			if (InterlockedCompareExchangePointer((void **)&pcsGlobalThreadSet, pcsGlobalThreadTemp, NULL) != NULL)
 				delete pcsGlobalThreadTemp;
 		}
 		ASSERT(pcsGlobalThreadSet != NULL);
 		CSingleLock lockGlobalList(pcsGlobalThreadSet, true);
 		if (pGlobalThreadSet == NULL)
-			pGlobalThreadSet = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	
+			pGlobalThreadSet = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
 		if (pGlobalThreadSetActive == NULL)
-			pGlobalThreadSetActive = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	
+			pGlobalThreadSetActive = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
 		(void)pGlobalThreadSet->insert(this);
 	}
 }
@@ -52,15 +55,7 @@ CSimpleWorkerThread::~CSimpleWorkerThread()
 	if (hThread != NULL)
 	{
 		if (!CloseHandle(hThread))				// allow the thread to terminate
-		{
-#ifdef unused
-			if (LgtoavlibData.dwMSG_FILE_CLOSE_WARNING != 0)
-			{
-				DWORD dwError = GetLastError();
-				OctopusMsgLog(LOG_POS, LgtoavlibData.dwMSG_FILE_CLOSE_WARNING, dwError, TEXT(""), (LPCTSTR)GetNTErrorText(dwError));	//lint !e1551: (Warning -- Function may throw exception '...' in destructor 'CSimpleWorkerThread::~CSimpleWorkerThread(void)')
-			}
-#endif
-		}
+			LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
 	}
 	if (pcsGlobalThreadSet && pGlobalThreadSet)
 	{
@@ -90,15 +85,7 @@ bool CSimpleWorkerThread::CreateThread(
 		if (hThread != NULL)
 		{
 			if (!CloseHandle(hThread))				// allow the thread to terminate
-			{
-#ifdef unused
-				if (LgtoavlibData.dwMSG_FILE_CLOSE_WARNING != 0)
-				{
-					DWORD dwError = GetLastError();
-					OctopusMsgLog(LOG_POS, LgtoavlibData.dwMSG_FILE_CLOSE_WARNING, dwError, TEXT(""), (LPCTSTR)GetNTErrorText(dwError));
-				}
-#endif
-			}
+				LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
 			hThread = NULL;
 			pThread = NULL;
 		}
@@ -150,12 +137,9 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 		pSimpleThread->dwEventRet = WaitForMultipleObjectsEx(iEvent, EventArray, false, pSimpleThread->dwWaitTime, pSimpleThread->bAlertable);
 		if (pSimpleThread->dwEventRet == WAIT_FAILED)
 		{
-#ifdef unused
 			DWORD dwWaitError = GetLastError();
 			if (pSimpleThread->WaitFailed(dwWaitError))
-				if (LgtoavlibData.multithrd_data.dwMSG_WAIT_FOR_MULTIPLE_EVENT_ERROR != 0)
-					OctopusMsgLog(LOG_POS, LgtoavlibData.multithrd_data.dwMSG_WAIT_FOR_MULTIPLE_EVENT_ERROR, dwWaitError, NTLT(dwWaitError));
-#endif
+				LogMessage(_T(__FILE__), __LINE__, L"WaitForMultipleObjectsEx error", dwWaitError);
 		}
 		else
 			pSimpleThread->DoWork();
@@ -176,19 +160,11 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 		if (pSimpleThread->hThread != NULL)
 		{
 			if (!CloseHandle(pSimpleThread->hThread))				// allow the thread to terminate
-			{
-#ifdef unused
-				if (LgtoavlibData.dwMSG_FILE_CLOSE_WARNING != 0)
-				{
-					DWORD dwError = GetLastError();
-					OctopusMsgLog(LOG_POS, LgtoavlibData.dwMSG_FILE_CLOSE_WARNING, dwError, TEXT(""), (LPCTSTR)GetNTErrorText(dwError));
-				}
-#endif
-			}
+				LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
 			pSimpleThread->hThread = NULL;
 			pSimpleThread->dwThreadID = 0;
 		}
-	pSimpleThread->bRunning = false;
+		pSimpleThread->bRunning = false;
 	}
 	return 0;
 }
@@ -300,15 +276,7 @@ bool CSimpleWorkerThread::IfActive() const
 	if (dwExitCode == STILL_ACTIVE)
 		return true;
 	if (!CloseHandle(hThread))				// allow the thread to terminate
-	{
-#ifdef unused
-		if (LgtoavlibData.dwMSG_FILE_CLOSE_WARNING != 0)
-		{
-			DWORD dwError = GetLastError();
-			OctopusMsgLog(LOG_POS, LgtoavlibData.dwMSG_FILE_CLOSE_WARNING, dwError, TEXT(""), (LPCTSTR)GetNTErrorText(dwError));
-		}
-#endif
-	}
+		LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
 	*const_cast<HANDLE *>(&hThread) = NULL;
 	return false;
 }
@@ -319,10 +287,42 @@ bool CSimpleWorkerThread::WaitFailed(DWORD dwError)	// over-ride to catch any er
 	return true;					// log error
 }
 
+CString CSimpleWorkerThread::Format() const
+{
+	return GetThreadType() + L" ThreadID=" + FmtNum(dwThreadID)
+		+ L" handle=0x" + FmtNum(hThread, 6, true, true)
+		+ L" WaitTime=" + FmtNum(dwWaitTime)
+		+ L" Running=" + (bRunning ? L"true" : L"false")
+		+ L" Terminate=" + (bTerminate ? L"true" : L"false")
+		+ L" Alertable=" + (bAlertable ? L"true" : L"false")
+		+ L"\r\n";
+}
+
+void CSimpleWorkerThread::DumpHandles(CString& sHandleMsg)
+{
+	if (!pcsGlobalThreadSet)
+		return;
+	CSingleLock lockGlobalList(pcsGlobalThreadSet, true);
+	if (pGlobalThreadSet)
+	{
+		for (set<CSimpleWorkerThread *>::iterator itSet=pGlobalThreadSet->begin() ; itSet != pGlobalThreadSet->end() ; ++itSet)
+		{
+			sHandleMsg += (*itSet)->Format();
+		}
+	}
+	sHandleMsg += L"\r\nActive:\r\n";
+	if (pGlobalThreadSetActive)
+	{
+		for (set<CSimpleWorkerThread *>::iterator itSet=pGlobalThreadSetActive->begin() ; itSet != pGlobalThreadSetActive->end() ; ++itSet)
+		{
+			sHandleMsg += (*itSet)->Format();
+		}
+	}
+}
+
 CString CSimpleWorkerThread::GetThreadType(void) const
 {
-	CString sClassType(typeid(*this).name());
-	return sClassType;
+	return (LPCTSTR)CWideString(typeid(*this).name());
 }
 
 void CSimpleWorkerThread::GetTerminateTime(FILETIME *pftEndThreadTime) const

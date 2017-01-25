@@ -15,8 +15,6 @@
 #include "processevent.h"
 
 
-static const char cvs_rev[]				= "$Revision: 1877 $";
-
 IMPLEMENT_DYNAMIC(CProcessEvent, CSyncObject);
 IMPLEMENT_DYNAMIC(CThreadEvent, CSyncObject);
 

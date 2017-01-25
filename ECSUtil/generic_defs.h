@@ -157,6 +157,7 @@ public:
 };
 
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#define STATUS_SUCCESS ((NTSTATUS)0)
 
 class CStringSortNoCase
 {

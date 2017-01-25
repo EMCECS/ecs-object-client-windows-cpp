@@ -193,9 +193,11 @@ public:
 	bool GetExitFlag(void) const;
 	UINT GetCycleTime(void) const;
 	void SetCycleTime(UINT nMilliSecs);
+	CString Format(void) const;
 	CString GetThreadType(void) const;
 	void GetTerminateTime(FILETIME *pftEndThreadTime) const;
 
+	static void DumpHandles(CString& sHandleMsg);
 	static CSimpleWorkerThread *CurrentThread(void);
 	static CCriticalSection *GetGlobalListCriticalSection(void);
 };

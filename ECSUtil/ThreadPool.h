@@ -6,7 +6,6 @@
 
 #pragma once
 
-static const char cvs_rev_threadpool_h[] = "$Revision: 3794 $";
 
 #include "exportdef.h"
 

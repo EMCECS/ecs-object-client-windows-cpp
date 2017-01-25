@@ -30,7 +30,7 @@ private:
 #ifdef DEBUG_DUMP_QUEUES
 		if (pcsGlobalCBufferStreamSet == NULL)
 		{
-			CCriticalSection *pcsGlobalThreadTemp = new CCriticalSection;			//lint !e1732 !e1733: (Info -- new in constructor for class 'CSimpleWorkerThread' which has no assignment operator)
+			CCriticalSection *pcsGlobalThreadTemp = new CCriticalSection;			//lint !e1732 !e1733 (Info -- new in constructor for class 'CSimpleWorkerThread' which has no assignment operator)
 			if (InterlockedCompareExchangePointer((void **)&pcsGlobalCBufferStreamSet, pcsGlobalThreadTemp, NULL) != NULL)
 				delete pcsGlobalThreadTemp;
 		}
@@ -420,12 +420,10 @@ private:
 
 HRESULT ECSUTIL_EXT_API ScanXml(
 	const CBuffer *pXml,
-	const list<CString>& XmlPaths,
 	void *pContext,
 	XMLLITE_READER_CB ReaderCB);
 
 HRESULT ECSUTIL_EXT_API ScanXmlStream(
 	IStream *pStream,
-	const list<CString>& XmlPaths,
 	void *pContext,
 	XMLLITE_READER_CB ReaderCB);

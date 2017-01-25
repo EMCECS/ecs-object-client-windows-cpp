@@ -3,6 +3,7 @@
 #include "exportdef.h"
 #include <bcrypt.h>
 #include "cbuffer.h"
+#include "CRWLock.h"
 
 class ECSUTIL_EXT_CLASS CCngAES_GCM
 {
@@ -97,6 +98,8 @@ public:
 private:
 	void CleanUpHash();
 	void InitAES();
+	NTSTATUS OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCTSTR pszAlgName, bool bHMAC);
+	void CloseCachedAlgorithmProvider(BCRYPT_ALG_HANDLE hAlg);
 
 private:
 	bool bInitialized;
@@ -115,5 +118,16 @@ private:
 	BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO AuthInfoEncrypt;
 	BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO AuthInfoDecrypt;
 	CString sHashAlgorithm;				// saved hash algorithm
+	// cache algorithm providers
+	// key is provider name. If HMAC specified, append "!" to name
+	// ALG_HANDLE will close all handles during its destructor
+	struct ALG_HANDLE
+	{
+		BCRYPT_ALG_HANDLE hAlg;
+		ALG_HANDLE(BCRYPT_ALG_HANDLE hAlgParam = nullptr);
+		~ALG_HANDLE();
+	};
+	static map<CString, shared_ptr<ALG_HANDLE>> ProviderCache;
+	static CSimpleRWLock rwlProviderCache;									// lock used for provider cache
 };
 

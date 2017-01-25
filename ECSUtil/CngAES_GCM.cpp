@@ -3,6 +3,9 @@
 #include "CngAES_GCM.h"
 #pragma comment(lib, "Bcrypt.lib")
 
+map<CString, shared_ptr<CCngAES_GCM::ALG_HANDLE>> CCngAES_GCM::ProviderCache;
+CSimpleRWLock CCngAES_GCM::rwlProviderCache;									// lock used for provider cache
+
 CCngAES_GCM::CCngAES_GCM()
 	: BLOCKSIZE(16)
 	, bInitialized(false)
@@ -28,8 +31,7 @@ CCngAES_GCM::~CCngAES_GCM()
 		// clean up encrypt/decrypt variables
 		if (hAesAlg != NULL)
 		{
-			(void)BCryptCloseAlgorithmProvider(hAesAlg, 0);
-			hAesAlg = NULL;
+			hAesAlg = NULL;				// all alg providers are cached. don't close them here!
 		}
 		if (hKey != NULL)
 		{
@@ -63,10 +65,10 @@ void CCngAES_GCM::CreateHash(LPCWSTR HashType, PUCHAR pbSecret, ULONG cbSecret)
 
 	// kill any previous hash in progress
 	CleanUpHash();
-	sHashAlgorithm = HashType;
 	bool bHMAC = (pbSecret != NULL) && (cbSecret != 0);
-	if (!NT_SUCCESS(Status = BCryptOpenAlgorithmProvider(&hHashAlg, HashType, NULL, bHMAC ? BCRYPT_ALG_HANDLE_HMAC_FLAG : 0)))
+	if (!NT_SUCCESS(Status = OpenCachedAlgorithmProvider(&hHashAlg, HashType, bHMAC)))
 		throw CErrorInfo(_T(__FILE__), __LINE__, Status);
+	sHashAlgorithm = HashType;
 	// get the size of the hash object
 	if (!NT_SUCCESS(Status = BCryptGetProperty(hHashAlg, BCRYPT_OBJECT_LENGTH, (PBYTE)&dwHashObject, sizeof(DWORD), &dwData, 0)))
 		throw CErrorInfo(_T(__FILE__), __LINE__, Status);
@@ -119,23 +121,28 @@ void CCngAES_GCM::GetHashData(CBuffer& Hash, bool bFinish)
 		}
 		else
 		{
-			CBuffer HashObject;
+			CBuffer LocalHashObject;
 			BCRYPT_HASH_HANDLE hNewHash;
 			DWORD dwHashObjLen;
 			if (!NT_SUCCESS(Status = BCryptGetProperty(hHashAlg, BCRYPT_OBJECT_LENGTH, (PBYTE)&dwHashObjLen, sizeof(DWORD), &dwData, 0)))
 				throw CErrorInfo(_T(__FILE__), __LINE__, Status);
-			HashObject.SetBufSize(dwHashObjLen);
+			LocalHashObject.SetBufSize(dwHashObjLen);
 			// duplicate the hash so we can get the current results without closing out the hash
-			if (!NT_SUCCESS(Status = BCryptDuplicateHash(hHash, &hNewHash, HashObject.GetData(), HashObject.GetBufSize(), 0)))
+			if (!NT_SUCCESS(Status = BCryptDuplicateHash(hHash, &hNewHash, LocalHashObject.GetData(), LocalHashObject.GetBufSize(), 0)))
 				throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 			if (!NT_SUCCESS(Status = BCryptFinishHash(hNewHash, Hash.GetData(), Hash.GetBufSize(), 0)))
 				throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 			(void)BCryptDestroyHash(hNewHash);
-			// the hNewHash is now closed so the HashObject can be freed
+			// the hNewHash is now closed so the LocalHashObject can be freed
 		}
 	}
 	catch (const CErrorInfo& E)
 	{
+		if (hHashAlg != nullptr)
+		{
+			CloseCachedAlgorithmProvider(hHashAlg);
+			hHashAlg = nullptr;
+		}
 		if (!bFinish)
 			CleanUpHash();
 		throw CErrorInfo(_T(__FILE__), __LINE__, E.dwError);
@@ -152,8 +159,8 @@ void CCngAES_GCM::CleanUpHash()
 	}
 	if (hHashAlg != NULL)
 	{
-		(void)BCryptCloseAlgorithmProvider(hHashAlg, 0);
-		hHashAlg = NULL;
+		hHashAlg = NULL;				// all alg providers are cached. don't close them here!
+		sHashAlgorithm.Empty();
 	}
 }
 
@@ -175,7 +182,12 @@ bool CCngAES_GCM::Generate256BitKey(const BYTE *pPassword, UINT uPasswordLen, co
 	}
 	catch (const CErrorInfo& E)
 	{
-		(void)E;
+		if (hHashAlg != nullptr)
+		{
+			CloseCachedAlgorithmProvider(hHashAlg);
+			hHashAlg = nullptr;
+		}
+		SetLastError(E.dwError);
 		return false;
 	}
 	return true;
@@ -190,17 +202,22 @@ bool CCngAES_GCM::GenerateRandom(BYTE* buffer, int size)
 
 	try
 	{
-		if (!NT_SUCCESS(Status = BCryptOpenAlgorithmProvider(&hRngAlg, BCRYPT_RNG_ALGORITHM, NULL, 0)))
+		if (!NT_SUCCESS(Status = OpenCachedAlgorithmProvider(&hRngAlg, BCRYPT_RNG_ALGORITHM, false)))
 			throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 		if (!NT_SUCCESS(Status = BCryptGenRandom(hRngAlg, buffer, size, 0)))
 			throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 	}
 	catch (const CErrorInfo& E)
 	{
+		if (hRngAlg != nullptr)
+		{
+			CloseCachedAlgorithmProvider(hRngAlg);
+			hRngAlg = nullptr;
+		}
 		Status = E.dwError;
 	}
 	if (hRngAlg != NULL)
-		(void)BCryptCloseAlgorithmProvider(hRngAlg, 0);
+		hRngAlg = NULL;				// all alg providers are cached. don't close them here!
 	SetLastError(Status);
 	return NT_SUCCESS(Status);
 }
@@ -290,7 +307,7 @@ void CCngAES_GCM::InitAES()
 	BCRYPT_INIT_AUTH_MODE_INFO(AuthInfoDecrypt);
 	BCRYPT_INIT_AUTH_MODE_INFO(AuthInfoEncrypt);
 	// Open an algorithm handle.
-	if (!NT_SUCCESS(Status = BCryptOpenAlgorithmProvider(&hAesAlg, BCRYPT_AES_ALGORITHM, NULL, 0)))
+	if (!NT_SUCCESS(Status = OpenCachedAlgorithmProvider(&hAesAlg, BCRYPT_AES_ALGORITHM, false)))
 		throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 
 	// Calculate the size of the buffer to hold the KeyObject.
@@ -349,12 +366,12 @@ void CCngAES_GCM::Encrypt( const BYTE* plaintext, /*In*/DWORD psize, /*InOut*/BY
 
 	// sanity check
 	ASSERT( plaintext != NULL || ( plaintext == NULL && 0 == psize ) );
-	if( !(plaintext != NULL || ( plaintext == NULL && 0 == psize )) )			//lint !e774: (Info -- Boolean within 'left side of && within right side of || within argument of ! within if' always evaluates to True
+	if( !(plaintext != NULL || ( plaintext == NULL && 0 == psize )) )			//lint !e774 (Info -- Boolean within 'left side of && within right side of || within argument of ! within if' always evaluates to True
 		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, L"Encrypt(2): Plain text buffer is not valid");
 
 	// sanity check
 	ASSERT( NULL != ciphertext );
-	if( NULL == ciphertext )				//lint !e774: (Info -- Boolean within 'if' always evaluates to False
+	if( NULL == ciphertext )				//lint !e774 (Info -- Boolean within 'if' always evaluates to False
 		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, L"Encrypt(2): Cipher text buffer is not valid");
 
 	if (!bUseECB)
@@ -473,7 +490,68 @@ bool CCngAES_GCM::IfFIPSMode(void)
 {
 	BOOLEAN fEnabled;
 	NTSTATUS Status = BCryptGetFipsAlgorithmMode(&fEnabled);
-	if ((Status != ERROR_SUCCESS) || !fEnabled)
+	if ((Status != STATUS_SUCCESS) || !fEnabled)
 		return false;
 	return true;
+}
+
+NTSTATUS CCngAES_GCM::OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCTSTR pszAlgName, bool bHMAC)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	CString sAlgName(pszAlgName);
+	if (bHMAC)
+		sAlgName += L"!";
+
+	{
+		CSimpleRWLockAcquire lock(&rwlProviderCache);			// read lock
+		map<CString, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
+		if (itMap != ProviderCache.end())
+		{
+			*phAlg = itMap->second->hAlg;
+			return STATUS_SUCCESS;
+		}
+	}
+	{
+		CSimpleRWLockAcquire lock(&rwlProviderCache, true);			// write lock
+		// gotta try the search again because we dropped the lock for an instant and another thread may have created one
+		map<CString, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
+		if (itMap != ProviderCache.end())
+		{
+			*phAlg = itMap->second->hAlg;
+			return STATUS_SUCCESS;
+		}
+		Status = BCryptOpenAlgorithmProvider(phAlg, pszAlgName, NULL, bHMAC ? BCRYPT_ALG_HANDLE_HMAC_FLAG : 0);
+		if (!NT_SUCCESS(Status))
+			return Status;
+		// now cache this result
+		shared_ptr<ALG_HANDLE> Alg = make_shared<ALG_HANDLE>(*phAlg);
+		pair<map<CString, shared_ptr<ALG_HANDLE>>::iterator, bool> Ret = ProviderCache.insert(make_pair(sAlgName, Alg));
+		ASSERT(Ret.second);				// Ret.second == true means the insertion was made. there was no conflict
+	}
+	return STATUS_SUCCESS;
+}
+
+void CCngAES_GCM::CloseCachedAlgorithmProvider(BCRYPT_ALG_HANDLE hAlg)
+{
+	CSimpleRWLockAcquire lock(&rwlProviderCache, true);			// write lock
+	for (map<CString, shared_ptr<ALG_HANDLE>>::iterator itMap = ProviderCache.begin(); itMap != ProviderCache.end(); )
+	{
+		if (itMap->second->hAlg == hAlg)
+			itMap = ProviderCache.erase(itMap);
+		else
+			++itMap;
+	}
+}
+
+CCngAES_GCM::ALG_HANDLE::ALG_HANDLE(BCRYPT_ALG_HANDLE hAlgParam)
+	: hAlg(hAlgParam)
+{}
+
+CCngAES_GCM::ALG_HANDLE::~ALG_HANDLE()
+{
+	if (hAlg != nullptr)
+	{
+		(void)BCryptCloseAlgorithmProvider(hAlg, 0);
+		hAlg = nullptr;
+	}
 }

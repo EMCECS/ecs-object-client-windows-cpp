@@ -3,6 +3,7 @@
 #include "stdafx.h"
 
 #include "Logging.h"
+#include "NTERRTXT.H"
 
 static ECSUTIL_LOG_MESSAGE_PROTO *pLogMessageCB = nullptr;
 
@@ -23,7 +24,7 @@ void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS d
 	va_end(marker);              /* Reset variable arguments.      */
 	if (pLogMessageCB == nullptr)
 	{
-		OutputDebugString(sErrorMsg);
+		OutputDebugString(sErrorMsg + ((dwError == ERROR_SUCCESS) ? L"" : L" - " + GetNTErrorText(dwError)));
 	}
 	else
 	{

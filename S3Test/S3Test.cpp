@@ -27,7 +27,11 @@ L"   /https                              Use SSL (default)\n"
 L"   /endpoint <IP or hostname>          S3/ECS Server\n"
 L"   /user <user ID>                     ECS object user\n"
 L"   /secret <secret>                    ECS object secret\n"
-L"   /list <path, starting with bucket>  Object listing\n";
+L"   /list <path, starting with bucket>  Object listing\n"
+L"   /create <localfile> <ECSpath>       Create ECS object and initialize with file\n"
+L"   /delete <ECSpath>                   Delete ECS object\n"
+L"   /read <localfile> <ECSpath>         Read ECS object into file\n"
+L"   /readmeta <ECSpath>                 Read all metadata from object\n";
 
 
 const TCHAR * const CMD_OPTION_ENDPOINT = L"/endpoint";
@@ -38,6 +42,8 @@ const TCHAR * const CMD_OPTION_HTTP = L"/http";
 const TCHAR * const CMD_OPTION_LIST = L"/list";
 const TCHAR * const CMD_OPTION_CREATE = L"/create";
 const TCHAR * const CMD_OPTION_DELETE = L"/delete";
+const TCHAR * const CMD_OPTION_READ = L"/read";
+const TCHAR * const CMD_OPTION_READMETA = L"/readmeta";
 const TCHAR * const CMD_OPTION_HELP1 = L"--help";
 const TCHAR * const CMD_OPTION_HELP2 = L"-h";
 const TCHAR * const CMD_OPTION_HELP3 = L"/?";
@@ -50,6 +56,9 @@ CString sSecret;
 CString sDirPath;
 CString sCreateLocalPath;
 CString sCreateECSPath;
+CString sReadLocalPath;
+CString sReadECSPath;
+CString sReadMetaECSPath;
 CString sDeleteECSPath;
 bool bHttps = true;
 
@@ -128,6 +137,33 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 				return false;
 			}
 			sCreateECSPath = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_READ) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sReadLocalPath = *itParam;
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sReadECSPath = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_READMETA) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sReadMetaECSPath = *itParam;
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_DELETE) == 0)
 		{
@@ -284,6 +320,14 @@ static int DoTest(CString& sOutMessage)
 			return 1;
 		}
 	}
+	if (!sReadECSPath.IsEmpty() && !sReadLocalPath.IsEmpty())
+	{
+		CECSConnection::S3_ERROR Error = S3Read(Conn, sReadLocalPath, sReadECSPath);
+		if (Error.IfError())
+		{
+			_tprintf(L"Error from S3Read: %s\n", (LPCTSTR)Error.Format());
+		}
+	}
 	if (!sDeleteECSPath.IsEmpty())
 	{
 		CECSConnection::S3_ERROR Error = Conn.DeleteS3(sDeleteECSPath);
@@ -304,9 +348,25 @@ static int DoTest(CString& sOutMessage)
 		}
 		for (CECSConnection::DirEntryList_t::const_iterator itList = DirList.begin(); itList != DirList.end(); ++itList)
 		{
-			_tprintf(L"%28s %s %24s %I64d\n", (LPCTSTR)itList->sName, itList->bDir ? L"dir " : L"file",
+			_tprintf(L"%-28s %-24s %I64d\n", (LPCTSTR)(itList->sName + (itList->bDir ? L"/ " : L"")),
 				(LPCTSTR)DateTimeStr(&itList->Properties.ftLastMod, true, true, true, false, true),
 				itList->Properties.llSize);
+		}
+	}
+	if (!sReadMetaECSPath.IsEmpty())
+	{
+		list<CECSConnection::S3_METADATA_ENTRY> MDList;
+		CECSConnection::S3_ERROR Error = Conn.ReadMetadataBulk(sReadMetaECSPath, MDList, nullptr);
+		if (!Error.IfError())
+		{
+			_tprintf(L"Metadata for %s:\n", (LPCTSTR)sReadMetaECSPath);
+			for (list<CECSConnection::S3_METADATA_ENTRY>::const_iterator it = MDList.begin(); it != MDList.end(); ++it)
+				_tprintf(L"  %s : %s\n", (LPCTSTR)it->sTag, (LPCTSTR)it->sData);
+		}
+		else
+		{
+			_tprintf(L"read metadata error: %s\n", (LPCTSTR)Error.Format());
+			return 1;
 		}
 	}
 	return 0;

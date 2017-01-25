@@ -56,12 +56,14 @@ class ECSUTIL_EXT_CLASS CRWLock
 	friend class CRWLockAcquire;
 private:
 	vector<CRWLockAcquire *> Instances;		// list of CRWLockAcquire instances
-	CSimpleRWLock rwlListLock;					// lock used for accessing the map
+	mutable CSimpleRWLock rwlListLock;			// lock used for accessing the map
 	SRWLOCK RWLock;								// lock used by the caller
 
 public:
 	CRWLock& operator = (const CRWLock& Src);	// no implementation
 	CRWLock(const CRWLock& Src);				// no implementation
+	bool IsLocked(void) const;
+	bool IsWriteLocked(void) const;
 
 public:
 	CRWLock();

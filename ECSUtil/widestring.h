@@ -19,7 +19,7 @@
 #include "cbuffer.h"
 
 
-class CWideString : public CBuffer
+class ECSUTIL_EXT_CLASS CWideString : public CBuffer
 {
 public:
 	CWideString(LPCSTR s = NULL, int inputlen=-1)
@@ -104,7 +104,7 @@ public:
 };
 
 
-class CAnsiString : public CBuffer
+class ECSUTIL_EXT_CLASS CAnsiString : public CBuffer
 {
 public:
 	CAnsiString(LPCWSTR s = NULL, UINT uCodePage = CP_ACP)

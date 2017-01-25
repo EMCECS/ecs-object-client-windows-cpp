@@ -7,8 +7,6 @@
 
 #include "stdafx.h"
 
-static const char cvs_rev[]				= "$Revision: 3127 $";
-
 //lint -esym(1539,CRWLock::Instances,CRWLock::RWLock,,CSimpleRWLock::RWLock)
 #include "CRWLock.h"
 											// otherwise it will get created during global constructor time and it may run
@@ -53,6 +51,27 @@ CRWLock::CRWLock(const CRWLock& Src)
 {
 	(void)Src;
 	InitializeSRWLock(&RWLock);
+}
+
+bool CRWLock::IsLocked(void) const
+{
+	CSimpleRWLockAcquire lockList(&rwlListLock, false);
+	return !Instances.empty();
+}
+
+bool CRWLock::IsWriteLocked(void) const
+{
+	bool bWriteLocked = false;
+	CSimpleRWLockAcquire lockList(&rwlListLock, false);
+	if (!Instances.empty())
+	{
+		for (vector<CRWLockAcquire *>::const_iterator it = Instances.begin(); it != Instances.end(); ++it)	//lint !e827: (Info -- Loop not reachable)
+		{
+			if ((*it)->bWrite)
+				bWriteLocked = true;
+		}
+	}
+	return bWriteLocked;
 }
 
 CRWLockAcquire::CRWLockAcquire(CRWLock *pLockParam, bool bWriteParam, bool bGetLock)
