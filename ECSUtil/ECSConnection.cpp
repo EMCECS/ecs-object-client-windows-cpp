@@ -48,6 +48,64 @@ map<CECSConnection::SESSION_MAP_KEY, CECSConnection::SESSION_MAP_VALUE> CECSConn
 long CECSConnection::lSessionKeyValue;
 CString CECSConnection::sAmzMetaPrefix(TEXT("x-amz-meta-"));						// just a place to hold "x-amz-meta-"
 
+class CSignQuerySet
+{
+	static CSimpleRWLock lwrSignQuerySet;
+	static set<CString> SignQuerySet;
+	static LPCTSTR InitArray[];
+
+public:
+	CSignQuerySet()
+	{}
+	void Init()
+	{
+		CSimpleRWLockAcquire lock(&lwrSignQuerySet, true);		// write lock
+		if (SignQuerySet.empty())
+		{
+			for (UINT i = 0; InitArray[i][0] != NUL; i++)
+				SignQuerySet.insert(InitArray[i]);
+		}
+	}
+	bool IfQuery(const CString& sQuery)
+	{
+		CSimpleRWLockAcquire lock(&lwrSignQuerySet);		// read lock
+		return SignQuerySet.find(sQuery) != SignQuerySet.end();
+	}
+};
+
+CSimpleRWLock CSignQuerySet::lwrSignQuerySet;
+set<CString> CSignQuerySet::SignQuerySet;
+LPCTSTR CSignQuerySet::InitArray[] =
+{
+	_T("acl"),
+	_T("lifecycle"),
+	_T("searchmetadata"),
+	_T("location"),
+	_T("logging"),
+	_T("notification"),
+	_T("partnumber"),
+	_T("policy"),
+	_T("requestpayment"),
+	_T("torrent"),
+	_T("uploadid"),
+	_T("uploads"),
+	_T("versionid"),
+	_T("versioning"),
+	_T("versions"),
+	_T("website"),
+	_T("response-content-type"),
+	_T("response-content-language"),
+	_T("response-expires"),
+	_T("response-cache-control"),
+	_T("response-content-disposition"),
+	_T("response-content-encoding"),
+	_T("delete"),
+	_T("endpoint"),
+	_T("query"),
+	_T("")							// sentinel
+};
+CSignQuerySet SignQuerySet;
+
 static bool IfServerReached(DWORD dwError)
 {
 	switch (dwError)
@@ -322,6 +380,7 @@ CECSConnection::CECSConnection()
 
 void CECSConnection::Init()
 {
+	SignQuerySet.Init();
 	bInitialized = true;
 };
 
@@ -468,29 +527,7 @@ static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
 	sToken.MakeLower();
 	sToken.TrimLeft();
 	sToken.TrimRight();
-	if ((sToken == _T("acl"))
-		|| (sToken == _T("lifecycle"))
-		|| (sToken == _T("location"))
-		|| (sToken == _T("logging"))
-		|| (sToken == _T("notification"))
-		|| (sToken == _T("partnumber"))
-		|| (sToken == _T("policy"))
-		|| (sToken == _T("requestpayment"))
-		|| (sToken == _T("torrent"))
-		|| (sToken == _T("uploadid"))
-		|| (sToken == _T("uploads"))
-		|| (sToken == _T("versionid"))
-		|| (sToken == _T("versioning"))
-		|| (sToken == _T("versions"))
-		|| (sToken == _T("website"))
-		|| (sToken == _T("response-content-type"))
-		|| (sToken == _T("response-content-language"))
-		|| (sToken == _T("response-expires"))
-		|| (sToken == _T("response-cache-control"))
-		|| (sToken == _T("response-content-disposition"))
-		|| (sToken == _T("response-content-encoding"))
-		|| (sToken == _T("delete"))
-		|| (sToken == _T("endpoint")))
+	if (SignQuerySet.IfQuery(sToken))
 	{
 		(void)QueryMap.insert(make_pair(sToken, sQuery));
 	}
