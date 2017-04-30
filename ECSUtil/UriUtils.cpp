@@ -24,14 +24,14 @@ static char THIS_FILE[] = __FILE__;
 
 static std::string strUriDecode(const std::string & sSrc);
 static std::string strUriEncode(const std::string & sSrc, bool bEncodeAll);
-static CString strUriEncode(LPCWSTR pszInput, bool bEncodeAll);
-static CString strUriDecode(LPCWSTR pszInput);
+static CString strUriEncode(LPCTSTR pszInput, bool bEncodeAll);
+static CString strUriDecode(LPCTSTR pszInput);
 static CString EscapeChar(char ch);
 
 // UriEncode
 // translate from Unicode string to Percent encoded string
 //If bEncodeAll is true, we will encode almost all the special characters
-CString UriEncode(LPCWSTR pszInput, bool bEncodeAll)
+CString UriEncode(LPCTSTR pszInput, bool bEncodeAll)
 {
 #if 0
 	LPWSTR destOut = NULL;
@@ -39,7 +39,7 @@ CString UriEncode(LPCWSTR pszInput, bool bEncodeAll)
 	HRESULT hr = WSDUriEncode(pszInput, lstrlen(pszInput), &destOut, &cchDestOut);
 	ASSERT(hr == S_OK);
 	if (hr != S_OK)				//lint !e774 (Info -- Boolean within 'if' always evaluates to False [Reference: file E:\blds\GD\SRC\atemc_gen\lib\UriUtils.cpp: lines 38, 39])
-		return L"";
+		return _T("");
 	CString sOutput(destOut, cchDestOut);
 	WSDFreeLinkedMemory(destOut);
 #ifdef DEBUG
@@ -61,14 +61,14 @@ CString UriEncode(LPCWSTR pszInput, bool bEncodeAll)
 
 // UriDecode
 // translate from percent encoded string to Unicode string
-CString UriDecode(LPCWSTR pszInput)
+CString UriDecode(LPCTSTR pszInput)
 {
 	LPWSTR destOut = NULL;
 	DWORD cchDestOut = 0;
-	HRESULT hr = WSDUriDecode(pszInput, lstrlen(pszInput), &destOut, &cchDestOut);
+	HRESULT hr = WSDUriDecode(TO_UNICODE(pszInput), lstrlen(pszInput), &destOut, &cchDestOut);
 	ASSERT(hr == S_OK);
 	if (hr != S_OK)					//lint !e774 (Info -- Boolean within 'if' always evaluates to False [Reference: file E:\blds\GD\SRC\atemc_gen\lib\UriUtils.cpp: lines 69, 70])
-		return L"";
+		return _T("");
 	CString sOutput(destOut, cchDestOut);
 	WSDFreeLinkedMemory(destOut);
 #ifdef DEBUG
@@ -79,26 +79,42 @@ CString UriDecode(LPCWSTR pszInput)
 }
 
 
-static CString strUriEncode(LPCWSTR pszInput, bool bEncodeAll)
+static CString strUriEncode(LPCTSTR pszInput, bool bEncodeAll)
 {
+#ifdef _UNICODE
 	CAnsiString Input;
 	Input.Set(pszInput, -1, CP_UTF8);
 	std::string strInput(Input);
+#else
+	std::string strInput(pszInput);
+#endif
 	std::string strOutput = strUriEncode(strInput, bEncodeAll);
+#ifdef _UNICODE
 	CString sOutput(CWideString(strOutput.c_str()));
 	return sOutput;
+#else
+	return strOutput.c_str();
+#endif
 }
 
-static CString strUriDecode(LPCWSTR pszInput)
+static CString strUriDecode(LPCTSTR pszInput)
 {
+#ifdef _UNICODE
 	CAnsiString Input;
 	Input.Set(pszInput);		// shouldn't have any Unicode characters in it, ANSI is good enough
 	std::string strInput(Input);
+#else
+	std::string strInput(pszInput);
+#endif
 	std::string strOutput = strUriDecode(strInput);
+#ifdef _UNICODE
 	CWideString Output;
 	Output.Set(strOutput.c_str(), -1, CP_UTF8);
 	CString sOutput(Output);
 	return sOutput;
+#else
+	return strOutput.c_str();
+#endif
 }
 
 
@@ -268,10 +284,10 @@ static std::string strUriEncode(const std::string & sSrc, bool bEncodeAll)
 // as part of the URL
 CString EncodeSpecialChars(const CString& sSource)
 {
-	wchar_t ch;
+	TCHAR ch;
 	CString sOutput;
 	// start after the protocol part ('http://')
-	int iStart = sSource.Find(L"://");
+	int iStart = sSource.Find(_T("://"));
 	if (iStart < 0)
 		return sSource;
 	iStart += 3;
@@ -280,7 +296,7 @@ CString EncodeSpecialChars(const CString& sSource)
 	{
 		switch (ch = sSource[iStart])
 		{
-		case L'#':
+		case _T('#'):
             // escape this char
 			sOutput += EscapeChar((char)ch);
 			break;
@@ -290,10 +306,10 @@ CString EncodeSpecialChars(const CString& sSource)
 		}
 	}
 	// if the last char is '=', change it to %3D
-	if (!sOutput.IsEmpty() && (sOutput[sOutput.GetLength() - 1] == L'='))
+	if (!sOutput.IsEmpty() && (sOutput[sOutput.GetLength() - 1] == _T('=')))
 	{
-		sOutput.SetAt(sOutput.GetLength() - 1, L'%');
-		sOutput.Append(L"3D");
+		sOutput.SetAt(sOutput.GetLength() - 1, _T('%'));
+		sOutput.Append(_T("3D"));
 	}
 	return sOutput;
 }
@@ -303,8 +319,8 @@ CString UriEncodeS3(const CString& sSource, bool bEncodeSlash)
 	CString sResult;
 	for (int i = 0; i < sSource.GetLength(); i++)
 	{
-		WCHAR ch = sSource.GetAt(i);
-		if ((ch >= L'A' && ch <= L'Z') || (ch >= L'a' && ch <= L'z') || (ch >= L'0' && ch <= L'9') || ch == L'_' || ch == L'-' || ch == L'~' || ch == L'.')
+		TCHAR ch = sSource.GetAt(i);
+		if ((ch >= _T('A') && ch <= _T('Z')) || (ch >= _T('a') && ch <= _T('z')) || (ch >= _T('0') && ch <= _T('9')) || ch == _T('_') || ch == _T('-') || ch == _T('~') || ch == _T('.'))
 			sResult += ch;
 		else if ((ch == '/') && !bEncodeSlash)
 			sResult += ch;
@@ -319,7 +335,7 @@ static CString EscapeChar(char ch)
 	const char DEC2HEX[16 + 1] = "0123456789ABCDEF";
 
 	// escape this char
-	return CString(L'%')
+	return CString(_T('%'))
 		+ DEC2HEX[(unsigned char)ch >> 4]
 		+ DEC2HEX[(unsigned char)ch & 0x0F];
 }

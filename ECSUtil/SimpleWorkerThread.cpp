@@ -55,7 +55,7 @@ CSimpleWorkerThread::~CSimpleWorkerThread()
 	if (hThread != NULL)
 	{
 		if (!CloseHandle(hThread))				// allow the thread to terminate
-			LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
+			LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
 	}
 	if (pcsGlobalThreadSet && pGlobalThreadSet)
 	{
@@ -85,7 +85,7 @@ bool CSimpleWorkerThread::CreateThread(
 		if (hThread != NULL)
 		{
 			if (!CloseHandle(hThread))				// allow the thread to terminate
-				LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
+				LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
 			hThread = NULL;
 			pThread = NULL;
 		}
@@ -139,7 +139,7 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 		{
 			DWORD dwWaitError = GetLastError();
 			if (pSimpleThread->WaitFailed(dwWaitError))
-				LogMessage(_T(__FILE__), __LINE__, L"WaitForMultipleObjectsEx error", dwWaitError);
+				LogMessage(_T(__FILE__), __LINE__, _T("WaitForMultipleObjectsEx error"), dwWaitError);
 		}
 		else
 			pSimpleThread->DoWork();
@@ -160,7 +160,7 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 		if (pSimpleThread->hThread != NULL)
 		{
 			if (!CloseHandle(pSimpleThread->hThread))				// allow the thread to terminate
-				LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
+				LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
 			pSimpleThread->hThread = NULL;
 			pSimpleThread->dwThreadID = 0;
 		}
@@ -188,7 +188,7 @@ void CSimpleWorkerThread::KillThreadWait() throw()
 	DWORD dwEventError = ThreadEvent.Create(dwThreadID);
 	if (dwEventError != ERROR_SUCCESS)
 	{
-		DEBUGF(L"CSimpleWorkerThread::KillThreadWait ThreadEvent error: cur:%d kill:%d Error:%d", GetCurrentThreadId(), dwThreadID, dwEventError);
+		DEBUGF(_T("CSimpleWorkerThread::KillThreadWait ThreadEvent error: cur:%d kill:%d Error:%d"), GetCurrentThreadId(), dwThreadID, dwEventError);
 	}
 	KillThread();
 	CSingleLock lockKillThread(&Events.csKillThread, true);
@@ -276,7 +276,7 @@ bool CSimpleWorkerThread::IfActive() const
 	if (dwExitCode == STILL_ACTIVE)
 		return true;
 	if (!CloseHandle(hThread))				// allow the thread to terminate
-		LogMessage(_T(__FILE__), __LINE__, L"CloseHandle error", GetLastError());
+		LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
 	*const_cast<HANDLE *>(&hThread) = NULL;
 	return false;
 }
@@ -289,13 +289,13 @@ bool CSimpleWorkerThread::WaitFailed(DWORD dwError)	// over-ride to catch any er
 
 CString CSimpleWorkerThread::Format() const
 {
-	return GetThreadType() + L" ThreadID=" + FmtNum(dwThreadID)
-		+ L" handle=0x" + FmtNum(hThread, 6, true, true)
-		+ L" WaitTime=" + FmtNum(dwWaitTime)
-		+ L" Running=" + (bRunning ? L"true" : L"false")
-		+ L" Terminate=" + (bTerminate ? L"true" : L"false")
-		+ L" Alertable=" + (bAlertable ? L"true" : L"false")
-		+ L"\r\n";
+	return GetThreadType() + _T(" ThreadID=") + FmtNum(dwThreadID)
+		+ _T(" handle=0x") + FmtNum(hThread, 6, true, true)
+		+ _T(" WaitTime=") + FmtNum(dwWaitTime)
+		+ _T(" Running=") + (bRunning ? _T("true") : _T("false"))
+		+ _T(" Terminate=") + (bTerminate ? _T("true") : _T("false"))
+		+ _T(" Alertable=") + (bAlertable ? _T("true") : _T("false"))
+		+ _T("\r\n");
 }
 
 void CSimpleWorkerThread::DumpHandles(CString& sHandleMsg)
@@ -310,7 +310,7 @@ void CSimpleWorkerThread::DumpHandles(CString& sHandleMsg)
 			sHandleMsg += (*itSet)->Format();
 		}
 	}
-	sHandleMsg += L"\r\nActive:\r\n";
+	sHandleMsg += _T("\r\nActive:\r\n");
 	if (pGlobalThreadSetActive)
 	{
 		for (set<CSimpleWorkerThread *>::iterator itSet=pGlobalThreadSetActive->begin() ; itSet != pGlobalThreadSetActive->end() ; ++itSet)
@@ -322,7 +322,7 @@ void CSimpleWorkerThread::DumpHandles(CString& sHandleMsg)
 
 CString CSimpleWorkerThread::GetThreadType(void) const
 {
-	return (LPCTSTR)CWideString(typeid(*this).name());
+	return FROM_ANSI(typeid(*this).name());
 }
 
 void CSimpleWorkerThread::GetTerminateTime(FILETIME *pftEndThreadTime) const

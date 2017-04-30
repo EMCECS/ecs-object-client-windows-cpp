@@ -315,8 +315,12 @@ void CBuffer::LoadBase64(LPCTSTR pszBase64Input)
 {
 	CAnsiString AnsiData;
 	int iDataLen = Base64DecodeGetRequiredLength(lstrlen(pszBase64Input));
+#ifdef _UNICODE
 	SetBufSize(iDataLen);
 	AnsiData.Set(pszBase64Input);
+#else
+	AnsiData.Load(pszBase64Input, lstrlen(pszBase64Input) + 1);
+#endif
 	VERIFY(Base64Decode((char *)AnsiData.GetData(), AnsiData.GetBufSize(), GetData(), &iDataLen));
 	SetBufSize(iDataLen);
 }
@@ -327,7 +331,11 @@ CString CBuffer::EncodeBase64() const
 	OutBuf.SetBufSize(Base64EncodeGetRequiredLength(GetBufSize(), ATL_BASE64_FLAG_NOCRLF));
 	int iOutputLen = OutBuf.GetBufSize();
 	VERIFY(Base64Encode(GetData(), GetBufSize(), (LPSTR)OutBuf.GetData(), &iOutputLen, ATL_BASE64_FLAG_NOCRLF));
+#ifdef _UNICODE
 	CWideString UnicodeHash;
 	UnicodeHash.Set((char *)OutBuf.GetData(), OutBuf.GetBufSize());
 	return (LPCTSTR)UnicodeHash;
+#else
+	return CString((char *)OutBuf.GetData());
+#endif
 }

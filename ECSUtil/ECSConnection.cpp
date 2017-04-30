@@ -122,7 +122,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		if ((dwCallbackExpected != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) && TestAbort())
 		{
 			CSingleLock lock(&State.CallbackContext.csContext, true);
-			DEBUGF(L"CECSConnection::WaitComplete: ABORT!");
+			DEBUGF(_T("CECSConnection::WaitComplete: ABORT!"));
 			State.CallbackContext.Result.dwError = ERROR_OPERATION_ABORTED;
 			State.CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
@@ -193,13 +193,13 @@ bool CECSConnection::WaitStreamSend(STREAM_CONTEXT *pStreamSend, const CSharedQu
 		dwError = WaitForSingleObject(MsgEvent.Event.evQueue.m_hObject, MaxWaitInterval);
 		if (!pStreamSend->StreamData.empty())
 		{
-//			DumpDebugFileFmt(_T(__FILE__), __LINE__, L"WaitStreamSend: SUCCESS %d", pStreamSend->StreamData.GetCount());
+//			DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("WaitStreamSend: SUCCESS %d"), pStreamSend->StreamData.GetCount());
 			return true;
 		}
 		// check for thread exit (but not if we are waiting for the handle to close)
 		if (TestAbort())
 		{
-//			DumpDebugFileFmt(_T(__FILE__), __LINE__, L"WaitStreamSend: FAIL ABORT %d", pStreamSend->StreamData.GetCount());
+//			DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("WaitStreamSend: FAIL ABORT %d"), pStreamSend->StreamData.GetCount());
 			return false;
 		}
 		if (dwError == WAIT_OBJECT_0)
@@ -209,13 +209,13 @@ bool CECSConnection::WaitStreamSend(STREAM_CONTEXT *pStreamSend, const CSharedQu
 			iTimeout++;
 			if (iTimeout > iTimeoutMax)
 			{
-//				DumpDebugFileFmt(_T(__FILE__), __LINE__, L"WaitStreamSend: FAIL TIMEOUT %d", pStreamSend->StreamData.GetCount());
+//				DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("WaitStreamSend: FAIL TIMEOUT %d"), pStreamSend->StreamData.GetCount());
 				return false;
 			}
 		}
 		else if (dwError == WAIT_FAILED)
 		{
-//			DumpDebugFileFmt(_T(__FILE__), __LINE__, L"WaitStreamSend: FAIL FAILED %d", pStreamSend->StreamData.GetCount());
+//			DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("WaitStreamSend: FAIL FAILED %d"), pStreamSend->StreamData.GetCount());
 			return false;
 		}
 		else
@@ -224,7 +224,7 @@ bool CECSConnection::WaitStreamSend(STREAM_CONTEXT *pStreamSend, const CSharedQu
 			break;
 		}
 	}
-//	DumpDebugFileFmt(_T(__FILE__), __LINE__, L"WaitStreamSend: FAIL FAILED DEFAULT %d", pStreamSend->StreamData.GetCount());
+//	DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("WaitStreamSend: FAIL FAILED DEFAULT %d"), pStreamSend->StreamData.GetCount());
 	return false;
 }
 
@@ -304,7 +304,7 @@ CECSConnection::CECSConnection()
 	, dwHttpsProtocol(0)
 	, bCheckShutdown(true)
 	, DisconnectCB(NULL)
-	, sS3Region(L"us-east-1")
+	, sS3Region(_T("us-east-1"))
 	, dwWinHttpOptionConnectRetries(0)
 	, dwWinHttpOptionConnectTimeout(0)
 	, dwWinHttpOptionReceiveResponseTimeout(0)
@@ -365,19 +365,19 @@ CECSConnection::CECSConnection(const CECSConnection& Rec)
 BOOL CECSConnection::WinHttpQueryHeadersBuffer(
 	__in      HINTERNET hHandle,
 	__in      DWORD dwInfoLevel,
-	__in_opt  LPCWSTR pwszName,
+	__in_opt  LPCTSTR pwszName,
 	__inout   CBuffer& RetBuf,
 	__inout   LPDWORD lpdwIndex
 	)
 {
 	DWORD dwLen = 0;
-	if (WinHttpQueryHeaders(hHandle, dwInfoLevel, pwszName, WINHTTP_NO_OUTPUT_BUFFER, &dwLen, lpdwIndex))
+	if (WinHttpQueryHeaders(hHandle, dwInfoLevel, (pwszName == WINHTTP_HEADER_NAME_BY_INDEX) ? WINHTTP_HEADER_NAME_BY_INDEX : (LPCWSTR)TO_UNICODE(pwszName), WINHTTP_NO_OUTPUT_BUFFER, &dwLen, lpdwIndex))
 		return TRUE;
 	DWORD dwError = GetLastError();
 	if (dwError != ERROR_INSUFFICIENT_BUFFER)
 		return FALSE;
-	RetBuf.SetBufSize(dwLen + 1);
-	return WinHttpQueryHeaders(hHandle, dwInfoLevel, pwszName, RetBuf.GetData(), &dwLen, lpdwIndex);
+	RetBuf.SetBufSize(dwLen);
+	return WinHttpQueryHeaders(hHandle, dwInfoLevel, (pwszName == WINHTTP_HEADER_NAME_BY_INDEX) ? WINHTTP_HEADER_NAME_BY_INDEX : (LPCWSTR)TO_UNICODE(pwszName), RetBuf.GetData(), &dwLen, lpdwIndex);
 }
 
 // GetCanonicalTime
@@ -388,16 +388,16 @@ CString CECSConnection::GetCanonicalTime() const
 	SYSTEMTIME stNow;
 
 	GetSystemTime(&stNow);
-	CString sTimeStr;
+	CStringW sTimeStr;
 	LPWSTR pszTimeStr = sTimeStr.GetBuffer(WINHTTP_TIME_FORMAT_BUFSIZE / sizeof(WCHAR));
 
 	if (!WinHttpTimeFromSystemTime(&stNow, pszTimeStr))
 	{
 		sTimeStr.ReleaseBuffer();
-		return L"";
+		return _T("");
 	}
 	sTimeStr.ReleaseBuffer();
-	return sTimeStr;
+	return FROM_UNICODE(sTimeStr);
 }
 
 // ParseCanonicalTime
@@ -405,11 +405,12 @@ CString CECSConnection::GetCanonicalTime() const
 //   Thu, 05 Jun 2008 16:38:19 GMT
 FILETIME CECSConnection::ParseCanonicalTime(LPCTSTR pszCanonTime)
 {
+	CStringW sCanonTime(TO_UNICODE(pszCanonTime));
 	SYSTEMTIME stTime;
 	FILETIME ftTime;
 
 	ZeroFT(ftTime);
-	if (!WinHttpTimeToSystemTime(pszCanonTime, &stTime))
+	if (!WinHttpTimeToSystemTime(sCanonTime, &stTime))
 		return ftTime;
 	if (!SystemTimeToFileTime(&stTime, &ftTime))
 		return ftTime;
@@ -425,7 +426,7 @@ DWORD CECSConnection::ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftDate, bool b
 
 	ZeroMemory(&stDate, sizeof(stDate));
 	ZeroFT(ftDate);
-	if (swscanf_s(pszDate, L"%hd-%hd-%hdT%hd:%hd:%hd.%hd",
+	if (_stscanf_s(pszDate, _T("%hd-%hd-%hdT%hd:%hd:%hd.%hd"),
 		&stDate.wYear, &stDate.wMonth, &stDate.wDay, &stDate.wHour, &stDate.wMinute, &stDate.wSecond, &stDate.wMilliseconds) >= 3)
 	{
 		if (bLocal)
@@ -444,16 +445,16 @@ CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal)
 {
 	SYSTEMTIME stDateUTC, stDate;
 	if (!FileTimeToSystemTime(&ftDate, &stDateUTC))
-		return L"";
+		return _T("");
 	if (bLocal)
 	{
 		if (!SystemTimeToTzSpecificLocalTime(nullptr, &stDateUTC, &stDate))
-			return L"";
+			return _T("");
 	}
 	else
 		stDate = stDateUTC;
-	return FmtNum(stDate.wYear, 4, true) + L"-" + FmtNum(stDate.wMonth, 2, true) + L"-" + FmtNum(stDate.wDay, 2, true)
-		+ L"T" + FmtNum(stDate.wHour, 2, true) + L":" + FmtNum(stDate.wMinute, 2, true) + L":" + FmtNum(stDate.wSecond, 2, true) + L"." + FmtNum(stDate.wMilliseconds, 2, true) + L"Z";
+	return FmtNum(stDate.wYear, 4, true) + _T("-") + FmtNum(stDate.wMonth, 2, true) + _T("-") + FmtNum(stDate.wDay, 2, true)
+		+ _T("T") + FmtNum(stDate.wHour, 2, true) + _T(":") + FmtNum(stDate.wMinute, 2, true) + _T(":") + FmtNum(stDate.wSecond, 2, true) + _T(".") + FmtNum(stDate.wMilliseconds, 2, true) + _T("Z");
 }
 
 static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
@@ -467,29 +468,29 @@ static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
 	sToken.MakeLower();
 	sToken.TrimLeft();
 	sToken.TrimRight();
-	if ((sToken == L"acl")
-		|| (sToken == L"lifecycle")
-		|| (sToken == L"location")
-		|| (sToken == L"logging")
-		|| (sToken == L"notification")
-		|| (sToken == L"partnumber")
-		|| (sToken == L"policy")
-		|| (sToken == L"requestpayment")
-		|| (sToken == L"torrent")
-		|| (sToken == L"uploadid")
-		|| (sToken == L"uploads")
-		|| (sToken == L"versionid")
-		|| (sToken == L"versioning")
-		|| (sToken == L"versions")
-		|| (sToken == L"website")
-		|| (sToken == L"response-content-type")
-		|| (sToken == L"response-content-language")
-		|| (sToken == L"response-expires")
-		|| (sToken == L"response-cache-control")
-		|| (sToken == L"response-content-disposition")
-		|| (sToken == L"response-content-encoding")
-		|| (sToken == L"delete")
-		|| (sToken == L"endpoint"))
+	if ((sToken == _T("acl"))
+		|| (sToken == _T("lifecycle"))
+		|| (sToken == _T("location"))
+		|| (sToken == _T("logging"))
+		|| (sToken == _T("notification"))
+		|| (sToken == _T("partnumber"))
+		|| (sToken == _T("policy"))
+		|| (sToken == _T("requestpayment"))
+		|| (sToken == _T("torrent"))
+		|| (sToken == _T("uploadid"))
+		|| (sToken == _T("uploads"))
+		|| (sToken == _T("versionid"))
+		|| (sToken == _T("versioning"))
+		|| (sToken == _T("versions"))
+		|| (sToken == _T("website"))
+		|| (sToken == _T("response-content-type"))
+		|| (sToken == _T("response-content-language"))
+		|| (sToken == _T("response-expires"))
+		|| (sToken == _T("response-cache-control"))
+		|| (sToken == _T("response-content-disposition"))
+		|| (sToken == _T("response-content-encoding"))
+		|| (sToken == _T("delete"))
+		|| (sToken == _T("endpoint")))
 	{
 		(void)QueryMap.insert(make_pair(sToken, sQuery));
 	}
@@ -518,42 +519,42 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 	//		<HTTPMethod>\n
 	CString sCanonical(method);
 	sCanonical.MakeUpper();
-	sCanonical += L"\n";
+	sCanonical += _T("\n");
 	//		Content-MD5
-	if ((iter = headers.find(L"content-md5")) != headers.end())
-		sCanonical += iter->second.sContents + L"\n";
+	if ((iter = headers.find(_T("content-md5"))) != headers.end())
+		sCanonical += iter->second.sContents + _T("\n");
 	else
-		sCanonical += L"\n";
+		sCanonical += _T("\n");
 
 	//		Content-Type
-	if ((iter = headers.find(L"content-type")) != headers.end())
-		sCanonical += iter->second.sContents + L"\n";
+	if ((iter = headers.find(_T("content-type"))) != headers.end())
+		sCanonical += iter->second.sContents + _T("\n");
 	else
-		sCanonical += L"\n";
+		sCanonical += _T("\n");
 
 	//		Date
 	if (pszExpires != nullptr)
-		sCanonical += CString(pszExpires) + L"\n";
-	else if ((iter = headers.find(L"x-amz-date")) != headers.end())
-		sCanonical += iter->second.sContents + L"\n";
-	else if ((iter = headers.find(L"date")) != headers.end())
-		sCanonical += iter->second.sContents + L"\n";
+		sCanonical += CString(pszExpires) + _T("\n");
+	else if ((iter = headers.find(_T("x-amz-date"))) != headers.end())
+		sCanonical += iter->second.sContents + _T("\n");
+	else if ((iter = headers.find(_T("date"))) != headers.end())
+		sCanonical += iter->second.sContents + _T("\n");
 	else
-		sCanonical += L"\n";
+		sCanonical += _T("\n");
 
 	//	CanonicalizedAmzHeaders +
 	CString sToken;
-	for (iter = headers.lower_bound(L"x-"); iter != headers.end(); ++iter) {
-		if ((iter->first.Find(L"x-amz") == 0) || (iter->first.Find(L"x-emc") == 0))
+	for (iter = headers.lower_bound(_T("x-")); iter != headers.end(); ++iter) {
+		if ((iter->first.Find(_T("x-amz")) == 0) || (iter->first.Find(_T("x-emc")) == 0))
 		{
 			sToken = iter->second.sContents;
 			// now get rid of multiple spaces
 			int iBlank;
-			while ((iBlank = sToken.Find(L"  ")) >= 0)
+			while ((iBlank = sToken.Find(_T("  "))) >= 0)
 				(void)sToken.Delete(iBlank);
 			(void)sToken.TrimRight();
 			(void)sToken.TrimLeft();
-			sCanonical += iter->first + L':' + sToken + L"\n";
+			sCanonical += iter->first + L':' + sToken + _T("\n");
 		}
 	}
 	//	CanonicalizedResource;
@@ -568,7 +569,7 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 		map<CString,CString> QueryMap;
 		for (;;)
 		{
-			sQuery = sQueryString.Tokenize(L"?&", pos);
+			sQuery = sQueryString.Tokenize(_T("?&"), pos);
 			if (sQuery.IsEmpty())
 				break;
 			CheckQuery(sQuery, QueryMap);
@@ -578,9 +579,9 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 			for (map<CString, CString>::const_iterator itMap = QueryMap.begin(); itMap != QueryMap.end(); ++itMap)
 			{
 				if (itMap == QueryMap.begin())
-					sResource += L"?";
+					sResource += _T("?");
 				else
-					sResource += L"&";
+					sResource += _T("&");
 				sResource += itMap->second;
 			}
 		}
@@ -591,11 +592,16 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 	CAnsiString AnsiPassword;
 	CBuffer Outbuf;
 
+#ifdef _UNICODE
 	// convert input string to UTF-8
 	AnsiPassword.Set(secretStr, -1, CP_UTF8);
 	// convert canonical string to UTF-8
 	CAnsiString UTF8Buf;
 	UTF8Buf.Set(sCanonical, -1, CP_UTF8);
+#else
+	AnsiPassword.Load(secretStr, (DWORD)strlen(secretStr) + 1);
+	CAnsiString UTF8Buf(sCanonical);
+#endif
 	// HMAC-SHA1
 	CCngAES_GCM Hash;
 	Hash.CreateHash(BCRYPT_SHA1_ALGORITHM, AnsiPassword.GetData(), AnsiPassword.GetBufSize());
@@ -606,7 +612,7 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 	// Authorization = "AWS" + " " + AWSAccessKeyId + ":" + Signature;
 	CString sAuthorization;
 	if (pszExpires == NULL)
-		sAuthorization = L"AWS " + sS3KeyID + L":" + Outbuf.EncodeBase64();
+		sAuthorization = _T("AWS ") + sS3KeyID + _T(":") + Outbuf.EncodeBase64();
 	else
 		sAuthorization = Outbuf.EncodeBase64();
 	return sAuthorization;
@@ -653,19 +659,19 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 				{
 					CString sMsg;
 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_REV_FAILED))
-						sMsg += L"Certification revocation checking has been enabled, but the revocation check failed to verify whether a certificate has been revoked. The server used to check for revocation might be unreachable.\r\n";
+						sMsg += _T("Certification revocation checking has been enabled, but the revocation check failed to verify whether a certificate has been revoked. The server used to check for revocation might be unreachable.\r\n");
 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CERT))
-						sMsg += L"SSL certificate is invalid.\r\n";
+						sMsg += _T("SSL certificate is invalid.\r\n");
 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_REVOKED))
-						sMsg += L"SSL certificate was revoked.\r\n";
+						sMsg += _T("SSL certificate was revoked.\r\n");
  					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA))
-						sMsg += L"The function is unfamiliar with the Certificate Authority that generated the server's certificate.\r\n";
+						sMsg += _T("The function is unfamiliar with the Certificate Authority that generated the server's certificate.\r\n");
  					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_CN_INVALID))
-						sMsg += L"SSL certificate common name (host name field) is incorrect, for example, if you entered www.microsoft.com and the common name on the certificate says www.msn.com.\r\n";
+						sMsg += _T("SSL certificate common name (host name field) is incorrect, for example, if you entered www.microsoft.com and the common name on the certificate says www.msn.com.\r\n");
 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_DATE_INVALID))
-						sMsg += L"SSL certificate date that was received from the server is bad. The certificate is expired.\r\n";
+						sMsg += _T("SSL certificate date that was received from the server is bad. The certificate is expired.\r\n");
 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_SECURITY_CHANNEL_ERROR))
-						sMsg += L"The application experienced an internal error loading the SSL libraries.\r\n";
+						sMsg += _T("The application experienced an internal error loading the SSL libraries.\r\n");
 					if (!sMsg.IsEmpty())
 					{
 						bool bDisconnected = false;
@@ -678,7 +684,7 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 							}
 						}
 						if (!bDisconnected)
-							LogMessage(_T(__FILE__), __LINE__, L"%1", ERROR_WINHTTP_SECURE_FAILURE, (LPCTSTR)sMsg);
+							LogMessage(_T(__FILE__), __LINE__, _T("%1"), ERROR_WINHTTP_SECURE_FAILURE, (LPCTSTR)sMsg);
 					}
 				}
 			}
@@ -769,7 +775,7 @@ DWORD CECSConnection::InitSession()
 	DWORD dwError = ERROR_SUCCESS;
 	// Use WinHttpOpen to obtain a session handle.
 	CString sVer;
-	sVer = L"Test/1.0";
+	sVer = _T("Test/1.0");
 	DEBUGF(TEXT("WinHttpOpen: version string:\r\n%s\r\n"), (LPCTSTR)sVer);
 	if (!State.Session.pValue->hSession.IfOpen() || !State.Session.pValue->hConnect.IfOpen())
 	{
@@ -778,16 +784,16 @@ DWORD CECSConnection::InitSession()
 		if (!sProxyString.IsEmpty())
 		{
 			if (dwProxyPort != 0)
-				sProxyString += L":" + FmtNum(dwProxyPort);
-			State.Session.pValue->hSession = WinHttpOpen(sVer,
+				sProxyString += _T(":") + FmtNum(dwProxyPort);
+			State.Session.pValue->hSession = WinHttpOpen(TO_UNICODE(sVer),
 				WINHTTP_ACCESS_TYPE_NAMED_PROXY,
-				sProxyString,
+				TO_UNICODE(sProxyString),
 				L"<local>",
 				WINHTTP_FLAG_ASYNC);
 		}
 		else
 		{
-			State.Session.pValue->hSession = WinHttpOpen(sVer,
+			State.Session.pValue->hSession = WinHttpOpen(TO_UNICODE(sVer),
 				bUseDefaultProxy ? WINHTTP_ACCESS_TYPE_DEFAULT_PROXY : WINHTTP_ACCESS_TYPE_NO_PROXY,
 				WINHTTP_NO_PROXY_NAME,
 				WINHTTP_NO_PROXY_BYPASS,
@@ -810,7 +816,7 @@ DWORD CECSConnection::InitSession()
 		}
 		ASSERT(!State.Session.pValue->hConnect.IfOpen());
 		// Specify an HTTP server.
-		State.Session.pValue->hConnect = WinHttpConnect(State.Session.pValue->hSession, GetCurrentServerIP(), Port, 0);
+		State.Session.pValue->hConnect = WinHttpConnect(State.Session.pValue->hSession, TO_UNICODE(GetCurrentServerIP()), Port, 0);
 		if (!State.Session.pValue->hConnect.IfOpen())
 		{
 			dwError = GetLastError();
@@ -838,11 +844,11 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 			{
 				dwCertError = GetLastError();
 				if (!bDisableSecureLog)
-					LogMessage(_T(__FILE__), __LINE__, L"Error getting certificate context", dwCertError);
+					LogMessage(_T(__FILE__), __LINE__, _T("Error getting certificate context"), dwCertError);
 			}
 			else
 			{
-				WCHAR NameBuf[1024];
+				TCHAR NameBuf[1024];
 				(void)CertGetNameString(pCert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, NameBuf, _countof(NameBuf));
 				CertInfo.sCertName = NameBuf;
 				DWORD dwStrLen;
@@ -856,7 +862,7 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 				{
 					dwCertError = GetLastError();
 					if (!bDisableSecureLog)
-						LogMessage(_T(__FILE__), __LINE__, L"CertSerializeCertificateStoreElement error", dwCertError);
+						LogMessage(_T(__FILE__), __LINE__, _T("CertSerializeCertificateStoreElement error"), dwCertError);
 				}
 				else
 				{
@@ -865,7 +871,7 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 					{
 						dwCertError = GetLastError();
 						if (!bDisableSecureLog)
-							LogMessage(_T(__FILE__), __LINE__, L"CertSerializeCertificateStoreElement error", dwCertError);
+							LogMessage(_T(__FILE__), __LINE__, _T("CertSerializeCertificateStoreElement error"), dwCertError);
 						CertInfo.SerializedCert.Empty();
 					}
 					else
@@ -909,8 +915,8 @@ void CECSConnection::InitHeader(void)
 	State.Headers.clear();
 	// add the list of headers common to all requests
 	CString sDate(GetCanonicalTime());
-	AddHeader(L"Date", sDate);
-	AddHeader(L"host", GetCurrentServerIP());
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
 }
 
 void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride)
@@ -935,7 +941,7 @@ LPCTSTR CECSConnection::GetCurrentServerIP(void)
 {
 	CECSConnectionState& State(GetStateBuf());
 	if (State.IPListLocal.empty())
-		return L"?";
+		return _T("?");
 	if (State.iIPList >= State.IPListLocal.size())
 		State.iIPList = 0;
 	return State.IPListLocal[State.iIPList];
@@ -1062,7 +1068,7 @@ void CECSConnection::LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed)
 			Ret.first->second = Entry;
 		else
 		{
-			LogMessage(itUsed->second.ErrorInfo.sFile, itUsed->second.ErrorInfo.dwLine, L"Server (%1) error caused a failover to a different connection: %2\r\nConnection that failed: %3\r\nConnection that is now in use: %4",
+			LogMessage(itUsed->second.ErrorInfo.sFile, itUsed->second.ErrorInfo.dwLine, _T("Server (%1) error caused a failover to a different connection: %2\r\nConnection that failed: %3\r\nConnection that is now in use: %4"),
 					itUsed->second.ErrorInfo.Error.dwError, (LPCTSTR)GetHost(), (LPCTSTR)itUsed->second.ErrorInfo.Format(), (LPCTSTR)itUsed->first, GetCurrentServerIP());
 		}
 	}
@@ -1141,7 +1147,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 				{
 					DWORD dwMaxWriteRequestSave = dwMaxWriteRequest;
 					DWORD dwWinHttpOptionReceiveResponseTimeoutSave = dwWinHttpOptionReceiveResponseTimeout;
-					if (CString(pszMethod).CompareNoCase(L"PUT") == 0)
+					if (CString(pszMethod).CompareNoCase(_T("PUT")) == 0)
 					{
 						if (dwMaxWriteRequest == 0)
 							dwMaxWriteRequest = MaxWriteRequest;
@@ -1196,7 +1202,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 		{
 			if (Error.Error.dwError != ERROR_OPERATION_ABORTED)
 			{
-				Error.sAdditionalInfo = CString(pszMethod) + L"|" + pszResource;
+				Error.sAdditionalInfo = CString(pszMethod) + _T("|") + pszResource;
 				DisconnectCB(this, &Error, nullptr);
 			}
 		}
@@ -1217,12 +1223,12 @@ struct XML_ECS_ERROR_CONTEXT
 	{}
 };
 
-const TCHAR * const XML_ECS_ADMIN_ERROR_CODE = L"//error/code";
-const TCHAR * const XML_ECS_ADMIN_ERROR_DESC = L"//error/description";
-const TCHAR * const XML_ECS_ADMIN_ERROR_DETAILS = L"//error/details";
-const TCHAR * const XML_ECS_ADMIN_ERROR_RETRYABLE = L"//error/retryable";
+const WCHAR * const XML_ECS_ADMIN_ERROR_CODE = L"//error/code";
+const WCHAR * const XML_ECS_ADMIN_ERROR_DESC = L"//error/description";
+const WCHAR * const XML_ECS_ADMIN_ERROR_DETAILS = L"//error/details";
+const WCHAR * const XML_ECS_ADMIN_ERROR_RETRYABLE = L"//error/retryable";
 
-HRESULT XmlECSAdminErrorCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlECSAdminErrorCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -1234,15 +1240,15 @@ HRESULT XmlECSAdminErrorCB(const CString& sXmlPath, void *pContext, IXmlReader *
 		{
 			if (sXmlPath.CompareNoCase(XML_ECS_ADMIN_ERROR_CODE) == 0)
 			{
-				pInfo->pAtError->S3Error = S3TranslateError(*psValue);
-				pInfo->pAtError->sS3Code = *psValue;
+				pInfo->pAtError->S3Error = S3TranslateError(FROM_UNICODE(*psValue));
+				pInfo->pAtError->sS3Code = FROM_UNICODE(*psValue);
 			}
 			else if ((sXmlPath.CompareNoCase(XML_ECS_ADMIN_ERROR_DESC) == 0)
 				|| (sXmlPath.CompareNoCase(XML_ECS_ADMIN_ERROR_DETAILS) == 0))
 			{
 				if (!pInfo->pAtError->sDetails.IsEmpty())
-					pInfo->pAtError->sDetails += L": ";
-				pInfo->pAtError->sDetails += *psValue;
+					pInfo->pAtError->sDetails += _T(": ");
+				pInfo->pAtError->sDetails += FROM_UNICODE(*psValue);
 			}
 		}
 		break;
@@ -1253,12 +1259,12 @@ HRESULT XmlECSAdminErrorCB(const CString& sXmlPath, void *pContext, IXmlReader *
 	return 0;
 }
 
-const TCHAR * const XML_S3_ERROR_CODE = L"//Error/Code";
-const TCHAR * const XML_S3_ERROR_MESSAGE = L"//Error/Message";
-const TCHAR * const XML_S3_ERROR_RESOURCE = L"//Error/Resource";
-const TCHAR * const XML_S3_ERROR_REQUEST_ID = L"//Error/RequestId";
+const WCHAR * const XML_S3_ERROR_CODE = L"//Error/Code";
+const WCHAR * const XML_S3_ERROR_MESSAGE = L"//Error/Message";
+const WCHAR * const XML_S3_ERROR_RESOURCE = L"//Error/Resource";
+const WCHAR * const XML_S3_ERROR_REQUEST_ID = L"//Error/RequestId";
 
-HRESULT XmlS3ErrorCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3ErrorCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -1270,15 +1276,15 @@ HRESULT XmlS3ErrorCB(const CString& sXmlPath, void *pContext, IXmlReader *pReade
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_ERROR_CODE) == 0)
 			{
-				pInfo->pAtError->S3Error = S3TranslateError(*psValue);
-				pInfo->pAtError->sS3Code = *psValue;
+				pInfo->pAtError->S3Error = S3TranslateError(FROM_UNICODE(*psValue));
+				pInfo->pAtError->sS3Code = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_ERROR_MESSAGE) == 0)
-				pInfo->pAtError->sDetails = *psValue;
+				pInfo->pAtError->sDetails = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_ERROR_RESOURCE) == 0)
-				pInfo->pAtError->sS3Resource = *psValue;
+				pInfo->pAtError->sS3Resource = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_ERROR_REQUEST_ID) == 0)
-				pInfo->pAtError->sS3RequestID = *psValue;
+				pInfo->pAtError->sS3RequestID = FROM_UNICODE(*psValue);
 		}
 		break;
 
@@ -1368,23 +1374,23 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 	{
 		// fixup the host header line (if it exists)
 		{
-			map<CString, HEADER_STRUCT>::iterator itHeader = State.Headers.find(L"host");
+			map<CString, HEADER_STRUCT>::iterator itHeader = State.Headers.find(_T("host"));
 			if (itHeader != State.Headers.end())
-				itHeader->second.sContents = CString(GetCurrentServerIP()) + L":" + FmtNum(Port);
+				itHeader->second.sContents = CString(GetCurrentServerIP()) + _T(":") + FmtNum(Port);
 		}
 		State.dwSecureError = 0;
 		if (pbGotServerResponse != NULL)
 			*pbGotServerResponse = false;
 		if (pStreamSend != NULL)
 		{
-			AddHeader(L"content-length", FmtNum(ullTotalLen));
+			AddHeader(_T("content-length"), FmtNum(ullTotalLen));
 			if (!pStreamSend->bMultiPart)
-				AddHeader(L"content-type", L"application/octet-stream", false);
+				AddHeader(_T("content-type"), _T("application/octet-stream"), false);
 		}
 		else if (dwDataLen != 0)
 		{
-			AddHeader(L"content-length", FmtNum(dwDataLen));
-			AddHeader(L"content-type", L"application/octet-stream", false);			// set to a generic value, but if there is already a header there, leave it
+			AddHeader(_T("content-length"), FmtNum(dwDataLen));
+			AddHeader(_T("content-type"), _T("application/octet-stream"), false);			// set to a generic value, but if there is already a header there, leave it
 		}
 		// now construct the signature for the header
 		CString sMethod(pszMethod), sResource(pszResource);
@@ -1397,7 +1403,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 		// close any current request
 		State.CloseRequest();
 		// Create an HTTP request handle.
-		State.hRequest = WinHttpOpenRequest(State.Session.pValue->hConnect, pszMethod, pszResource,
+		State.hRequest = WinHttpOpenRequest(State.Session.pValue->hConnect, TO_UNICODE(pszMethod), TO_UNICODE(pszResource),
 			NULL, WINHTTP_NO_REFERER, 
 			WINHTTP_DEFAULT_ACCEPT_TYPES, 
 			(bSSL ? WINHTTP_FLAG_SECURE : 0));
@@ -1422,10 +1428,10 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 		map<CString,HEADER_STRUCT>::const_iterator iter;
 		for (iter=State.Headers.begin() ; iter != State.Headers.end() ; ++iter)
 		{
-			sHeaders += iter->second.sLabel + L":" + iter->second.sContents + L"\r\n";
+			sHeaders += iter->second.sLabel + _T(":") + iter->second.sContents + _T("\r\n");
 		}
 		if (!State.bS3Admin)
-			sHeaders += L"Authorization: " + sSignature + L"\r\n";
+			sHeaders += _T("Authorization: ") + sSignature + _T("\r\n");
 		DEBUGF(TEXT("WinHttpSendRequest: headers:\r\n%s\r\n"), (LPCTSTR)sHeaders);
 		DWORD dwIndex;
 		CBuffer RetBuf;
@@ -1442,7 +1448,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				// if passport, we must use WinHttpSetOption instead of WinHttpSetCredentials
 				if (State.dwProxyAuthScheme == WINHTTP_AUTH_SCHEME_PASSPORT)
 				{
-					DEBUGF(L"SetCredentials - passport: '%s', '%s'", (LPCTSTR)sProxyUser, (LPCTSTR)sProxyPassword);
+					DEBUGF(_T("SetCredentials - passport: '%s', '%s'"), (LPCTSTR)sProxyUser, (LPCTSTR)sProxyPassword);
 					if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_PROXY_USERNAME, (void *)(LPCTSTR)sProxyUser, sProxyUser.GetLength()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 					if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_PROXY_PASSWORD, (void *)(LPCTSTR)sProxyPassword, sProxyPassword.GetLength()))
@@ -1450,15 +1456,15 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				}
 				else
 				{
-					DEBUGF(L"WinHttpSetCredentials: '%s', '%s'", (LPCTSTR)sProxyUser, (LPCTSTR)sProxyPassword);
-					if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_PROXY, State.dwProxyAuthScheme, sProxyUser, sProxyPassword, NULL))
+					DEBUGF(_T("WinHttpSetCredentials: '%s', '%s'"), (LPCTSTR)sProxyUser, (LPCTSTR)sProxyPassword);
+					if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_PROXY, State.dwProxyAuthScheme, TO_UNICODE(sProxyUser), TO_UNICODE(sProxyPassword), NULL))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 				}
 			}
 			if ((State.dwAuthScheme != 0) && !State.sHTTPUser.IsEmpty())
 			{
-				DEBUGF(L"WinHttpSetCredentials: '%s', '%s'", (LPCTSTR)State.sHTTPUser, (LPCTSTR)State.sHTTPPassword);
-				if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_SERVER, State.dwAuthScheme, State.sHTTPUser, State.sHTTPPassword, NULL))
+				DEBUGF(_T("WinHttpSetCredentials: '%s', '%s'"), (LPCTSTR)State.sHTTPUser, (LPCTSTR)State.sHTTPPassword);
+				if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_SERVER, State.dwAuthScheme, TO_UNICODE(State.sHTTPUser), TO_UNICODE(State.sHTTPPassword), NULL))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 			}
 			{
@@ -1473,9 +1479,9 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					PrepareCmd();
 					bool bSendReturn;
 					if (pStreamSend == NULL)
-						bSendReturn = WinHttpSendRequest(State.hRequest, (LPCTSTR)sHeaders, (DWORD)sHeaders.GetLength(), const_cast<void *>(pData), dwDataPartLen, dwDataLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
+						bSendReturn = WinHttpSendRequest(State.hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), const_cast<void *>(pData), dwDataPartLen, dwDataLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
 					else
-						bSendReturn = WinHttpSendRequest(State.hRequest, (LPCTSTR)sHeaders, (DWORD)sHeaders.GetLength(), WINHTTP_NO_REQUEST_DATA, 0, (ullTotalLen > ULONG_MAX) ? WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH : (DWORD)ullTotalLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
+						bSendReturn = WinHttpSendRequest(State.hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), WINHTTP_NO_REQUEST_DATA, 0, (ullTotalLen > ULONG_MAX) ? WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH : (DWORD)ullTotalLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
 					if (!bSendReturn)
 					{
 						dwError = GetLastError();
@@ -1508,7 +1514,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					MsgEvent.Enable();
 				}
 //				if (pStreamSend != NULL)
-//					DumpDebugFileFmt(_T(__FILE__), __LINE__, L"SendRequestInternal: %s, before WriteData, %d", pszResource, pStreamSend->StreamData.IsEmpty() ? 0 : pStreamSend->StreamData.GetAt(0)->Data.GetBufSize());
+//					DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("SendRequestInternal: %s, before WriteData, %d"), pszResource, pStreamSend->StreamData.IsEmpty() ? 0 : pStreamSend->StreamData.GetAt(0)->Data.GetBufSize());
 				// stream data available
 				bool bStreamBufAvailable = false;
 				for (;;)
@@ -1531,7 +1537,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 						if (!bStreamBufAvailable)
 						{
 							// need more data
-//							DumpDebugFileFmt(_T(__FILE__), __LINE__, L"StreamSend: %s, %d", pszResource, pStreamSend->StreamData.GetCount());
+//							DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("StreamSend: %s, %d"), pszResource, pStreamSend->StreamData.GetCount());
 							// if queue is empty, wait for something to happen
 							if (pStreamSend->StreamData.empty())
 								if (!WaitStreamSend(pStreamSend, MsgEvent))
@@ -1567,7 +1573,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					if (!bWriteDataSuccess)
 					{
 						dwError = GetLastError();
-//						DumpDebugFileFmt(_T(__FILE__), __LINE__, L"StreamSend: %s, ERROR %s", pszResource, NTLT(dwError));
+//						DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("StreamSend: %s, ERROR %s"), pszResource, NTLT(dwError));
 						CleanupCmd();
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, dwError);
 					}
@@ -1670,7 +1676,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 			if (RetBuf.IsEmpty())
 				Error.dwHttpError = 0;
 			else
-				Error.dwHttpError = _ttoi((LPCTSTR)RetBuf.GetData());
+				Error.dwHttpError = _wtoi((LPCWSTR)RetBuf.GetData());
 			// if proxy authentication error, figure out what to do here
 			if ((Error.dwHttpError != HTTP_STATUS_DENIED) && (Error.dwHttpError != HTTP_STATUS_PROXY_AUTH_REQ))
 				break;
@@ -1682,14 +1688,14 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				// Obtain the supported and preferred schemes.
 				if (!WinHttpQueryAuthSchemes(State.hRequest, &dwSupportedSchemes, &dwFirstScheme, &dwTarget))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-				DEBUGF(L"WinHttpQueryAuthSchemes: Supported: %d, First: %d, Target: %d",
+				DEBUGF(_T("WinHttpQueryAuthSchemes: Supported: %d, First: %d, Target: %d"),
 					dwSupportedSchemes, dwFirstScheme, dwTarget);
 				// Set the credentials before re-sending the request.
 				if (Error.dwHttpError == HTTP_STATUS_PROXY_AUTH_REQ)
 					State.dwProxyAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
 				else
 					State.dwAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
-				DEBUGF(L"ChooseAuthScheme: %d", State.dwProxyAuthScheme);
+				DEBUGF(_T("ChooseAuthScheme: %d"), State.dwProxyAuthScheme);
 			}
 		}
 		// if it required authorization and was successful
@@ -1702,11 +1708,11 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 		{
 			CString sProxyString(sProxy);
 			if (dwProxyPort != 0)
-				sProxyString += L":" + FmtNum(dwProxyPort);
+				sProxyString += _T(":") + FmtNum(dwProxyPort);
 			if (bSSL || (State.dwProxyAuthScheme != WINHTTP_AUTH_SCHEME_BASIC))
-				LogMessage(_T(__FILE__), __LINE__, L"Connection to %1 successfully authenticated through proxy server.\r\nProxy: %2\r\nAuthentication: %3\r\n", ERROR_SUCCESS, (LPCTSTR)sHost, (LPCTSTR)sProxyString, (LPCTSTR)FormatAuthScheme());
+				LogMessage(_T(__FILE__), __LINE__, _T("Connection to %1 successfully authenticated through proxy server.\r\nProxy: %2\r\nAuthentication: %3\r\n"), ERROR_SUCCESS, (LPCTSTR)sHost, (LPCTSTR)sProxyString, (LPCTSTR)FormatAuthScheme());
 			else
-				LogMessage(_T(__FILE__), __LINE__, L"Connection to %1 successfully authenticated through proxy server - NOT SECURE.\r\nWarning: This server is requesting your username and password to be sent in an insecure manner (basic authentication without a secure connection).\r\nProxy: %2\r\nAuthentication: %3\r\n", ERROR_SUCCESS, (LPCTSTR)sHost, (LPCTSTR)sProxyString, (LPCTSTR)FormatAuthScheme());
+				LogMessage(_T(__FILE__), __LINE__, _T("Connection to %1 successfully authenticated through proxy server - NOT SECURE.\r\nWarning: This server is requesting your username and password to be sent in an insecure manner (basic authentication without a secure connection).\r\nProxy: %2\r\nAuthentication: %3\r\n"), ERROR_SUCCESS, (LPCTSTR)sHost, (LPCTSTR)sProxyString, (LPCTSTR)FormatAuthScheme());
 		}
 		if (pHeaderReq != NULL)
 		{
@@ -1716,12 +1722,18 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				if (!WinHttpQueryHeadersBuffer(State.hRequest, WINHTTP_QUERY_RAW_HEADERS, WINHTTP_HEADER_NAME_BY_INDEX, RetBuf, &dwIndex))
 				{
 					dwError = GetLastError();
-					LogMessage(_T(__FILE__), __LINE__, L"WinHttpQueryHeadersBuffer Error", dwError);
+					LogMessage(_T(__FILE__), __LINE__, _T("WinHttpQueryHeadersBuffer Error"), dwError);
 				}
 				else
 				{
 					list<CString> AllHeaders;
-					LoadNullTermStringArray((LPCTSTR)RetBuf.GetData(), AllHeaders);
+#ifdef _UNICODE
+					LoadNullTermStringArray((LPCWSTR)RetBuf.GetData(), AllHeaders);
+#else
+					CAnsiString HeadersStr;
+					HeadersStr.Set((LPCWSTR)RetBuf.GetData(), RetBuf.GetBufSize()/sizeof(WCHAR));
+					LoadNullTermStringArray((LPCSTR)HeadersStr.GetData(), AllHeaders);
+#endif
 					CString sLabel, sContent;
 					for (list<CString>::const_iterator it = AllHeaders.begin(); it != AllHeaders.end(); ++it)
 					{
@@ -1764,10 +1776,10 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 							dwError = GetLastError();
 							if (dwError == ERROR_WINHTTP_HEADER_NOT_FOUND)
 								break;
-							LogMessage(_T(__FILE__), __LINE__, L"WinHttpQueryHeadersBuffer error: %1", dwError, (LPCTSTR)(itReq->sLabel + L" #" + FmtNum(dwIndex)));
+							LogMessage(_T(__FILE__), __LINE__, _T("WinHttpQueryHeadersBuffer error: %1"), dwError, (LPCTSTR)(itReq->sLabel + _T(" #") + FmtNum(dwIndex)));
 							break;
 						}
-						itReq->ContentList.push_back((LPCTSTR)RetBuf.GetData());
+						itReq->ContentList.push_back(FROM_UNICODE((LPCWSTR)RetBuf.GetData()));
 					}
 				}
 			}
@@ -2045,22 +2057,6 @@ void CECSConnection::SetTest(bool bTestParam)
 	bTestConnection = bTestParam;
 }
 
-// CreateChecksumHeader
-// given the checksum algorithm, offset and data, create the checksum header text
-// x-emc-wschecksum: algorithm/offset/checksumValue
-CString CECSConnection::CreateChecksumHeader(
-	LPCTSTR pszChecksumAlg,
-	ULONGLONG lwOffset,
-	const CBuffer *pChecksum)
-{
-	CString sChecksum;
-	if ((pszChecksumAlg == NULL) || (pChecksum == NULL))
-		return L"";
-	for (UINT i = 0; i < pChecksum->GetBufSize(); i++)
-		sChecksum += FmtNum((UINT)(*pChecksum)[i], 2, true, true);
-	return CString(pszChecksumAlg) + L"/" + FmtNum(lwOffset) + L"/" + sChecksum;
-}
-
 CECSConnection::S3_ERROR CECSConnection::Create(
 	LPCTSTR pszPath,
 	const void *pData,
@@ -2079,7 +2075,7 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 
 		InitHeader();
 		if (pChecksum != NULL && !pChecksum->IsEmpty())
-			AddHeader(L"Content-MD5", pChecksum->EncodeBase64());
+			AddHeader(_T("Content-MD5"), pChecksum->EncodeBase64());
 		if (pMDList != nullptr)
 		{
 			for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
@@ -2091,8 +2087,8 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 			}
 		}
 		if (pIfNoneMatch != nullptr)
-			AddHeader(L"if-none-match", pIfNoneMatch);
-		Error = SendRequest(L"PUT", (LPCTSTR)UriEncode(pszPath), pData, dwLen, RetData, NULL, 0, 0, pStreamSend, NULL, ullTotalLen);
+			AddHeader(_T("if-none-match"), pIfNoneMatch);
+		Error = SendRequest(_T("PUT"), (LPCTSTR)UriEncode(pszPath), pData, dwLen, RetData, NULL, 0, 0, pStreamSend, NULL, ullTotalLen);
 		if (Error.IfError())
 			return Error;
 	}
@@ -2141,8 +2137,8 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 			list<HEADER_REQ> Req;
 			CString sHeadPath(sOldPathS3);
 			if (pszVersionId != nullptr)
-				sHeadPath += CString(L"?versionId=") + pszVersionId;
-			Error = SendRequest(L"HEAD", UriEncode(sHeadPath), NULL, 0, RetData, &Req);
+				sHeadPath += CString(_T("?versionId=")) + pszVersionId;
+			Error = SendRequest(_T("HEAD"), UriEncode(sHeadPath), NULL, 0, RetData, &Req);
 			if (Error.IfError())
 				return Error;
 			for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
@@ -2166,7 +2162,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 		if (!bCopy)
 		{
 			InitHeader();
-			Error = SendRequest(L"DELETE", UriEncode(sOldPathS3), NULL, 0, RetData);
+			Error = SendRequest(_T("DELETE"), UriEncode(sOldPathS3), NULL, 0, RetData);
 		}
 	}
 	else
@@ -2220,7 +2216,7 @@ void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY
 			{
 				for (DirEntryList_t::const_iterator itDir = DirList.begin(); itDir != DirList.end(); ++itDir)
 				{
-					PathListAdd.push_back(S3_DELETE_ENTRY(itPath->sKey + itDir->sName + (itDir->bDir ? L"\\" : L"")));
+					PathListAdd.push_back(S3_DELETE_ENTRY(itPath->sKey + itDir->sName + (itDir->bDir ? _T("\\") : _T(""))));
 				}
 				DeleteS3Internal(PathListAdd);
 			}
@@ -2231,12 +2227,12 @@ void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY
 	}
 }
 
-const TCHAR * const XML_DELETES3_ERROR = L"//DeleteResult/Error";
-const TCHAR * const XML_DELETES3_ERROR_CODE = L"//DeleteResult/Error/Code";
-const TCHAR * const XML_DELETES3_ERROR_MESSAGE = L"//DeleteResult/Error/Message";
-const TCHAR * const XML_DELETES3_ERROR_REQUESTID = L"//DeleteResult/Error/RequestId";
-const TCHAR * const XML_DELETES3_ERROR_HOSTID = L"//DeleteResult/Error/HostId";
-const TCHAR * const XML_DELETES3_ERROR_KEY = L"//DeleteResult/Error/Key";
+const WCHAR * const XML_DELETES3_ERROR = L"//DeleteResult/Error";
+const WCHAR * const XML_DELETES3_ERROR_CODE = L"//DeleteResult/Error/Code";
+const WCHAR * const XML_DELETES3_ERROR_MESSAGE = L"//DeleteResult/Error/Message";
+const WCHAR * const XML_DELETES3_ERROR_REQUESTID = L"//DeleteResult/Error/RequestId";
+const WCHAR * const XML_DELETES3_ERROR_HOSTID = L"//DeleteResult/Error/HostId";
+const WCHAR * const XML_DELETES3_ERROR_KEY = L"//DeleteResult/Error/Key";
 
 struct XML_DELETES3_ENTRY
 {
@@ -2264,7 +2260,7 @@ struct XML_DELETES3_CONTEXT
 	XML_DELETES3_ENTRY Rec;
 };
 
-HRESULT XmlDeleteS3CB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlDeleteS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -2276,24 +2272,24 @@ HRESULT XmlDeleteS3CB(const CString& sXmlPath, void *pContext, IXmlReader *pRead
 		{
 			if (sXmlPath.CompareNoCase(XML_DELETES3_ERROR_CODE) == 0)
 			{
-				pInfo->Rec.sCode = *psValue;
-				pInfo->Rec.Error = S3TranslateError(*psValue);
+				pInfo->Rec.sCode = FROM_UNICODE(*psValue);
+				pInfo->Rec.Error = S3TranslateError(FROM_UNICODE(*psValue));
 			}
 			else if (sXmlPath.CompareNoCase(XML_DELETES3_ERROR_MESSAGE) == 0)
 			{
-				pInfo->Rec.sMessage = *psValue;
+				pInfo->Rec.sMessage = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_DELETES3_ERROR_REQUESTID) == 0)
 			{
-				pInfo->Rec.sRequestId = *psValue;
+				pInfo->Rec.sRequestId = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_DELETES3_ERROR_HOSTID) == 0)
 			{
-				pInfo->Rec.sHostId = *psValue;
+				pInfo->Rec.sHostId = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_DELETES3_ERROR_KEY) == 0)
 			{
-				pInfo->Rec.sKey = *psValue;
+				pInfo->Rec.sKey = FROM_UNICODE(*psValue);
 			}
 		}
 		break;
@@ -2366,7 +2362,7 @@ void CECSConnection::DeleteS3Send()
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"Key", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		if (FAILED(pWriter->WriteString(sKey)))
+		if (FAILED(pWriter->WriteString(TO_UNICODE(sKey))))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteFullEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -2374,7 +2370,7 @@ void CECSConnection::DeleteS3Send()
 		{
 			if (FAILED(pWriter->WriteStartElement(NULL, L"VersionId", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString(itPath->sVersionId)))
+			if (FAILED(pWriter->WriteString(TO_UNICODE(itPath->sVersionId))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -2392,10 +2388,13 @@ void CECSConnection::DeleteS3Send()
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 	if (FAILED(pWriter->Flush()))
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-	CString sXmlOut(L"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + pBufStream->GetXml());
-	CAnsiString XmlUTF8;
-	XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-	XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
+	CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+#ifdef _UNICODE
+	CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+	CAnsiString XmlUTF8(sXmlOut);
+#endif
+	XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
 	{
 		CBuffer RetData;
 		InitHeader();
@@ -2404,9 +2403,9 @@ void CECSConnection::DeleteS3Send()
 		HashObj.AddHashData(XmlUTF8);
 		CBuffer MD5Hash;
 		HashObj.GetHashData(MD5Hash);
-		AddHeader(L"Content-MD5", MD5Hash.EncodeBase64());
-		AddHeader(L"Content-Type", L"application/xml");
-		Error = SendRequest(L"POST", L"/" + sBucket + L"/?delete", XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
+		AddHeader(_T("Content-MD5"), MD5Hash.EncodeBase64());
+		AddHeader(_T("Content-Type"), _T("application/xml"));
+		Error = SendRequest(_T("POST"), _T("/") + sBucket + _T("/?delete"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 
@@ -2420,7 +2419,7 @@ void CECSConnection::DeleteS3Send()
 			Error.sDetails.Empty();
 			for (list<XML_DELETES3_ENTRY>::const_iterator itList = Context.ErrorList.begin(); itList != Context.ErrorList.end(); ++itList)
 			{
-				Error.sDetails += itList->sCode + L":" + itList->sMessage + L": " + itList->sKey + L"\n";
+				Error.sDetails += itList->sCode + _T(":") + itList->sMessage + _T(": ") + itList->sKey + _T("\n");
 			}
 			Error.dwHttpError = 500;
 			Error.S3Error = Context.ErrorList.front().Error;
@@ -2446,19 +2445,19 @@ CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, 
 		CString sRange;
 		for (UINT iRetry = 0; iRetry < READ_RETRY_MAX_TRIES; iRetry++)
 		{
-			(void)State.Headers.erase(L"range");			// erase it in case of a retry
+			(void)State.Headers.erase(_T("range"));			// erase it in case of a retry
 			HeaderReq.clear();
-			HeaderReq.push_back(HEADER_REQ(L"Content-Length"));
-			HeaderReq.push_back(HEADER_REQ(L"Content-Range"));
+			HeaderReq.push_back(HEADER_REQ(_T("Content-Length")));
+			HeaderReq.push_back(HEADER_REQ(_T("Content-Range")));
 			if ((lwOffset != 0) || (lwLen != 0))
 			{
-				sRange = L"bytes=" + FmtNum(lwOffset) + L"-";
+				sRange = _T("bytes=") + FmtNum(lwOffset) + _T("-");
 				if (lwLen != 0)
 					sRange += FmtNum(lwOffset + lwLen - 1);
-				AddHeader(L"range", sRange);
+				AddHeader(_T("range"), sRange);
 			}
 			State.ullReadBytes = 0ULL;
-			Error = SendRequest(L"GET", (LPCTSTR)UriEncode(pszPath), NULL, 0, RetData, &HeaderReq,
+			Error = SendRequest(_T("GET"), (LPCTSTR)UriEncode(pszPath), NULL, 0, RetData, &HeaderReq,
 				((pStreamReceive == nullptr) && (lwLen != 0)) ? ((DWORD)lwLen + 1024) : 0, dwBufOffset, NULL, pStreamReceive, lwOffset);
 			if (!Error.IfError())
 			{
@@ -2473,21 +2472,21 @@ CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, 
 				// make sure we have all the bytes we asked for
 				for (list<HEADER_REQ>::const_iterator it = HeaderReq.begin(); it != HeaderReq.end(); ++it)
 				{
-					if (it->sLabel == L"Content-Length")
+					if (it->sLabel == _T("Content-Length"))
 					{
 						if (it->ContentList.size() == 1)				// there should only be 1
 						{
-							llExpectedLength = _wtoi64(it->ContentList.front());
+							llExpectedLength = _ttoi64(it->ContentList.front());
 							bWrongSize = ullTotalLength != (ULONGLONG)llExpectedLength;
 							if (bWrongSize)
 								break;
 						}
 					}
-					else if (it->sLabel == L"Content-Range")
+					else if (it->sLabel == _T("Content-Range"))
 					{
 						if (it->ContentList.size() == 1)				// there should only be 1
 						{
-							if (swscanf_s(it->ContentList.front(), L"bytes %I64d-%I64d/%I64d", &llStartRange, &llExpectedLength, &llTotalSize) == 3)
+							if (_stscanf_s(it->ContentList.front(), _T("bytes %I64d-%I64d/%I64d"), &llStartRange, &llExpectedLength, &llTotalSize) == 3)
 							{
 								bWrongSize = ullTotalLength != (ULONGLONG)(llExpectedLength + 1 - llStartRange);
 								if (bWrongSize)
@@ -2500,7 +2499,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, 
 				{
 					if ((pStreamReceive == nullptr) && (iRetry < (READ_RETRY_MAX_TRIES - 1)))
 					{
-//						DumpDebugFileFmt(_T(__FILE__), __LINE__, L"CECSConnection::S3_ERROR CECSConnection::Read: %s - RETRY:%d",
+//						DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("CECSConnection::S3_ERROR CECSConnection::Read: %s - RETRY:%d"),
 //							(LPCTSTR)sPath, iRetry);
 						continue;
 					}
@@ -2550,31 +2549,31 @@ CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, 
         </Owner>    
     </DeleteMarker>
 */
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_Prefix = L"//ListVersionsResult/Prefix";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_IsTruncated = L"//ListVersionsResult/IsTruncated";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_NextKeyMarker = L"//ListVersionsResult/NextKeyMarker";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_NextVersionIdMarker = L"//ListVersionsResult/NextVersionIdMarker";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_Key = L"//ListVersionsResult/Version/Key";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_VersionId = L"//ListVersionsResult/Version/VersionId";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_IsLatest = L"//ListVersionsResult/Version/IsLatest";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_LastModified = L"//ListVersionsResult/Version/LastModified";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_ETag = L"//ListVersionsResult/Version/ETag";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_Size = L"//ListVersionsResult/Version/Size";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_Owner_ID = L"//ListVersionsResult/Version/Owner/ID";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_Owner_DisplayName = L"//ListVersionsResult/Version/Owner/DisplayName";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_ELEMENT_Contents = L"//ListVersionsResult/Version";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_ELEMENT = L"//ListVersionsResult/DeleteMarker";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_Key = L"//ListVersionsResult/DeleteMarker/Key";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_VersionId = L"//ListVersionsResult/DeleteMarker/VersionId";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_IsLatest = L"//ListVersionsResult/DeleteMarker/IsLatest";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_LastModified = L"//ListVersionsResult/DeleteMarker/LastModified";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_Owner_ID = L"//ListVersionsResult/DeleteMarker/Owner/ID";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_Owner_DisplayName = L"//ListVersionsResult/DeleteMarker/Owner/DisplayName";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_CommonPrefixes_Prefix = L"//ListVersionsResult/CommonPrefixes/Prefix";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_ELEMENT_CommonPrefixes = L"//ListVersionsResult/CommonPrefixes";
-const TCHAR * const XML_S3_DIR_LISTING_VERSIONS_ROOT_ELEMENT = L"//ListVersionsResult";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_Prefix = L"//ListVersionsResult/Prefix";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_IsTruncated = L"//ListVersionsResult/IsTruncated";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_NextKeyMarker = L"//ListVersionsResult/NextKeyMarker";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_NextVersionIdMarker = L"//ListVersionsResult/NextVersionIdMarker";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_Key = L"//ListVersionsResult/Version/Key";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_VersionId = L"//ListVersionsResult/Version/VersionId";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_IsLatest = L"//ListVersionsResult/Version/IsLatest";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_LastModified = L"//ListVersionsResult/Version/LastModified";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_ETag = L"//ListVersionsResult/Version/ETag";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_Size = L"//ListVersionsResult/Version/Size";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_Owner_ID = L"//ListVersionsResult/Version/Owner/ID";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_Owner_DisplayName = L"//ListVersionsResult/Version/Owner/DisplayName";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_ELEMENT_Contents = L"//ListVersionsResult/Version";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_ELEMENT = L"//ListVersionsResult/DeleteMarker";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_Key = L"//ListVersionsResult/DeleteMarker/Key";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_VersionId = L"//ListVersionsResult/DeleteMarker/VersionId";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_IsLatest = L"//ListVersionsResult/DeleteMarker/IsLatest";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_LastModified = L"//ListVersionsResult/DeleteMarker/LastModified";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_Owner_ID = L"//ListVersionsResult/DeleteMarker/Owner/ID";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_DELETED_Owner_DisplayName = L"//ListVersionsResult/DeleteMarker/Owner/DisplayName";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_CommonPrefixes_Prefix = L"//ListVersionsResult/CommonPrefixes/Prefix";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_ELEMENT_CommonPrefixes = L"//ListVersionsResult/CommonPrefixes";
+const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_ROOT_ELEMENT = L"//ListVersionsResult";
 
-HRESULT XmlDirListingS3VersionsCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -2586,26 +2585,26 @@ HRESULT XmlDirListingS3VersionsCB(const CString& sXmlPath, void *pContext, IXmlR
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_Prefix) == 0)
 			{
-				pInfo->sPrefix = *psValue;
+				pInfo->sPrefix = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_IsTruncated) == 0)
 			{
-				pInfo->bIsTruncated = *psValue == L"true";
+				pInfo->bIsTruncated = FROM_UNICODE(*psValue) == _T("true");
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_NextKeyMarker) == 0)
 			{
-				pInfo->sS3NextKeyMarker = *psValue;
+				pInfo->sS3NextKeyMarker = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_NextVersionIdMarker) == 0)
 			{
-				pInfo->sS3NextVersionIdMarker = *psValue;
+				pInfo->sS3NextVersionIdMarker = FROM_UNICODE(*psValue);
 			}
 			else if ((sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_Key) == 0)
 				|| (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_DELETED_Key) == 0))
 			{
 				pInfo->bGotKey = true;
 				pInfo->Rec.bDir = false;
-				pInfo->Rec.sName = *psValue;
+				pInfo->Rec.sName = FROM_UNICODE(*psValue);
 				ASSERT(pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0);
 				if (pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0)
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
@@ -2621,48 +2620,44 @@ HRESULT XmlDirListingS3VersionsCB(const CString& sXmlPath, void *pContext, IXmlR
 			else if ((sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_LastModified) == 0)
 				|| (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_DELETED_LastModified) == 0))
 			{
-				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(*psValue, pInfo->Rec.Properties.ftLastMod);
+				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Rec.Properties.ftLastMod);
 				if (Error.IfError())
 					return Error.dwError;
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_ETag) == 0)
 			{
-				pInfo->Rec.Properties.sETag = *psValue;
+				pInfo->Rec.Properties.sETag = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_Size) == 0)
 			{
-				wistringstream In;
-				In.str((LPCTSTR)*psValue);
-				In >> pInfo->Rec.Properties.llSize;
-				if (In.fail())
-					return ERROR_INVALID_DATA;
+				_stscanf_s(FROM_UNICODE(*psValue), _T("%I64u"), &pInfo->Rec.Properties.llSize);
 			}
 			else if ((sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_Owner_ID) == 0)
 				|| (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_DELETED_Owner_ID) == 0))
 			{
-				pInfo->Rec.Properties.sOwnerID = *psValue;
+				pInfo->Rec.Properties.sOwnerID = FROM_UNICODE(*psValue);
 			}
 			else if ((sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_Owner_DisplayName) == 0)
 				|| (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_DELETED_Owner_DisplayName) == 0))
 			{
-				pInfo->Rec.Properties.sOwnerDisplayName = *psValue;
+				pInfo->Rec.Properties.sOwnerDisplayName = FROM_UNICODE(*psValue);
 			}
 			else if ((sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_VersionId) == 0)
 				|| (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_DELETED_VersionId) == 0))
 			{
-				pInfo->Rec.Properties.sVersionId = *psValue;
-				if (pInfo->Rec.Properties.sVersionId == L"null")
+				pInfo->Rec.Properties.sVersionId = FROM_UNICODE(*psValue);
+				if (pInfo->Rec.Properties.sVersionId == _T("null"))
 					pInfo->Rec.Properties.sVersionId.Empty();
 			}
 			else if ((sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_IsLatest) == 0)
 				|| (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_DELETED_IsLatest) == 0))
 			{
-				pInfo->Rec.Properties.bIsLatest = *psValue == L"true";
+				pInfo->Rec.Properties.bIsLatest = FROM_UNICODE(*psValue) == _T("true");
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_CommonPrefixes_Prefix) == 0)
 			{
-				pInfo->Rec.sName = *psValue;
-				if (pInfo->sPrefix == psValue->Left(pInfo->sPrefix.GetLength()))
+				pInfo->Rec.sName = FROM_UNICODE(*psValue);
+				if (pInfo->sPrefix == pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength()))
 				{
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
 					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/'))
@@ -2746,21 +2741,21 @@ HRESULT XmlDirListingS3VersionsCB(const CString& sXmlPath, void *pContext, IXmlR
 </ListBucketResult>
 */
 
-const TCHAR * const XML_S3_DIR_LISTING_Prefix = L"//ListBucketResult/Prefix";
-const TCHAR * const XML_S3_DIR_LISTING_IsTruncated = L"//ListBucketResult/IsTruncated";
-const TCHAR * const XML_S3_DIR_LISTING_NextMarker = L"//ListBucketResult/NextMarker";
-const TCHAR * const XML_S3_DIR_LISTING_Key = L"//ListBucketResult/Contents/Key";
-const TCHAR * const XML_S3_DIR_LISTING_LastModified = L"//ListBucketResult/Contents/LastModified";
-const TCHAR * const XML_S3_DIR_LISTING_ETag = L"//ListBucketResult/Contents/ETag";
-const TCHAR * const XML_S3_DIR_LISTING_Size = L"//ListBucketResult/Contents/Size";
-const TCHAR * const XML_S3_DIR_LISTING_Owner_ID = L"//ListBucketResult/Contents/Owner/ID";
-const TCHAR * const XML_S3_DIR_LISTING_Owner_DisplayName = L"//ListBucketResult/Contents/Owner/DisplayName";
-const TCHAR * const XML_S3_DIR_LISTING_ELEMENT_Contents = L"//ListBucketResult/Contents";
-const TCHAR * const XML_S3_DIR_LISTING_CommonPrefixes_Prefix = L"//ListBucketResult/CommonPrefixes/Prefix";
-const TCHAR * const XML_S3_DIR_LISTING_ELEMENT_CommonPrefixes = L"//ListBucketResult/CommonPrefixes";
-const TCHAR * const XML_S3_DIR_LISTING_ROOT_ELEMENT = L"//ListBucketResult";
+const WCHAR * const XML_S3_DIR_LISTING_Prefix = L"//ListBucketResult/Prefix";
+const WCHAR * const XML_S3_DIR_LISTING_IsTruncated = L"//ListBucketResult/IsTruncated";
+const WCHAR * const XML_S3_DIR_LISTING_NextMarker = L"//ListBucketResult/NextMarker";
+const WCHAR * const XML_S3_DIR_LISTING_Key = L"//ListBucketResult/Contents/Key";
+const WCHAR * const XML_S3_DIR_LISTING_LastModified = L"//ListBucketResult/Contents/LastModified";
+const WCHAR * const XML_S3_DIR_LISTING_ETag = L"//ListBucketResult/Contents/ETag";
+const WCHAR * const XML_S3_DIR_LISTING_Size = L"//ListBucketResult/Contents/Size";
+const WCHAR * const XML_S3_DIR_LISTING_Owner_ID = L"//ListBucketResult/Contents/Owner/ID";
+const WCHAR * const XML_S3_DIR_LISTING_Owner_DisplayName = L"//ListBucketResult/Contents/Owner/DisplayName";
+const WCHAR * const XML_S3_DIR_LISTING_ELEMENT_Contents = L"//ListBucketResult/Contents";
+const WCHAR * const XML_S3_DIR_LISTING_CommonPrefixes_Prefix = L"//ListBucketResult/CommonPrefixes/Prefix";
+const WCHAR * const XML_S3_DIR_LISTING_ELEMENT_CommonPrefixes = L"//ListBucketResult/CommonPrefixes";
+const WCHAR * const XML_S3_DIR_LISTING_ROOT_ELEMENT = L"//ListBucketResult";
 
-HRESULT XmlDirListingS3CB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -2772,21 +2767,21 @@ HRESULT XmlDirListingS3CB(const CString& sXmlPath, void *pContext, IXmlReader *p
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_Prefix) == 0)
 			{
-				pInfo->sPrefix = *psValue;
+				pInfo->sPrefix = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_IsTruncated) == 0)
 			{
-				pInfo->bIsTruncated = *psValue == L"true";
+				pInfo->bIsTruncated = FROM_UNICODE(*psValue) == _T("true");
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_NextMarker) == 0)
 			{
-				pInfo->sS3NextMarker = *psValue;
+				pInfo->sS3NextMarker = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_Key) == 0)
 			{
 				pInfo->bGotKey = true;
 				pInfo->Rec.bDir = false;
-				pInfo->Rec.sName = *psValue;
+				pInfo->Rec.sName = FROM_UNICODE(*psValue);
 				ASSERT(pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0);
 				if (pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0)
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
@@ -2801,34 +2796,30 @@ HRESULT XmlDirListingS3CB(const CString& sXmlPath, void *pContext, IXmlReader *p
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_LastModified) == 0)
 			{
-				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(*psValue, pInfo->Rec.Properties.ftLastMod);
+				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Rec.Properties.ftLastMod);
 				if (Error.IfError())
 					return Error.dwError;
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_ETag) == 0)
 			{
-				pInfo->Rec.Properties.sETag = *psValue;
+				pInfo->Rec.Properties.sETag = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_Size) == 0)
 			{
-				wistringstream In;
-				In.str((LPCTSTR)*psValue);
-				In >> pInfo->Rec.Properties.llSize;
-				if (In.fail())
-					return ERROR_INVALID_DATA;
+				_stscanf_s(FROM_UNICODE(*psValue), _T("%I64u"), &pInfo->Rec.Properties.llSize);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_Owner_ID) == 0)
 			{
-				pInfo->Rec.Properties.sOwnerID = *psValue;
+				pInfo->Rec.Properties.sOwnerID = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_Owner_DisplayName) == 0)
 			{
-				pInfo->Rec.Properties.sOwnerDisplayName = *psValue;
+				pInfo->Rec.Properties.sOwnerDisplayName = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_CommonPrefixes_Prefix) == 0)
 			{
-				pInfo->Rec.sName = *psValue;
-				if (pInfo->sPrefix == psValue->Left(pInfo->sPrefix.GetLength()))
+				pInfo->Rec.sName = FROM_UNICODE(*psValue);
+				if (pInfo->sPrefix == pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength()))
 				{
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
 					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/'))
@@ -2934,24 +2925,24 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					sPrefix = Context.sPathIn.Mid(iSlash + 1);
 					sPrefix = UriEncode(sPrefix, true);
 				}
-				sResource = sBucket + L"/";
+				sResource = sBucket + _T("/");
 				if (bS3Versions)
-					sResource += L"?versions&delimiter=/";
+					sResource += _T("?versions&delimiter=/");
 				else
-					sResource += L"?delimiter=/";
+					sResource += _T("?delimiter=/");
 				if (bSingle || (MaxS3ListingSize < 1000))						//lint !e774	// (Info -- Boolean within 'if' always evaluates to True
-					sResource += CString(L"&max-keys=") + (bSingle ? L"10" : (LPCTSTR)FmtNum(MaxS3ListingSize));
+					sResource += CString(_T("&max-keys=")) + (bSingle ? _T("10") : (LPCTSTR)FmtNum(MaxS3ListingSize));
 				if (!sPrefix.IsEmpty())
-					sResource += L"&prefix=" + sPrefix;
+					sResource += _T("&prefix=") + sPrefix;
 				if (!State.sEmcToken.IsEmpty())
-					sResource += UriEncode(L"&marker=" + State.sEmcToken);
+					sResource += UriEncode(_T("&marker=") + State.sEmcToken);
 				if (pdwGetECSRetention != nullptr)
 				{
-					Req.push_back(HEADER_REQ(L"x-emc-retention-period"));
+					Req.push_back(HEADER_REQ(_T("x-emc-retention-period")));
 					*pdwGetECSRetention = 0;
 				}
 			}
-			Error = SendRequest(L"GET", (LPCTSTR)sResource, NULL, 0, RetData, &Req);
+			Error = SendRequest(_T("GET"), (LPCTSTR)sResource, NULL, 0, RetData, &Req);
 			if (Error.IfError())
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			if (pdwGetECSRetention != nullptr)
@@ -2960,7 +2951,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				CString sRetentionPeriod;
 				for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 				{
-					if (it->sLabel == L"x-emc-retention-period")
+					if (it->sLabel == _T("x-emc-retention-period"))
 					{
 						for (list<CString>::const_iterator itResp = it->ContentList.begin(); itResp != it->ContentList.end(); ++itResp)
 						{
@@ -2987,8 +2978,8 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				// maybe there is a man-in-middle attack?
 				Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 				Error.S3Error = S3_ERROR_MalformedXML;
-				Error.sS3Code = L"MalformedXML";
-				Error.sS3RequestID = L"GET";
+				Error.sS3Code = _T("MalformedXML");
+				Error.sS3RequestID = _T("GET");
 				Error.sS3Resource = sResource;
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			}
@@ -3106,9 +3097,9 @@ CString CECSConnection::S3_ERROR::Format(bool bOneLine) const
 {
 	CString sMsg, sLineEnd;
 	if (bOneLine)
-		sLineEnd = L", ";
+		sLineEnd = _T(", ");
 	else
-		sLineEnd = L"\r\n";
+		sLineEnd = _T("\r\n");
 	if (dwError != ERROR_SUCCESS)
 		sMsg = GetNTErrorText(dwError);
 	// if HTTP error unexpected, be sure to display it
@@ -3118,31 +3109,31 @@ CString CECSConnection::S3_ERROR::Format(bool bOneLine) const
 		sHttpMsg = FmtNum(dwHttpError);
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
-		sMsg += L"Http: " + sHttpMsg;
+		sMsg += _T("Http: ") + sHttpMsg;
 	}
 	if (!sS3Code.IsEmpty())
 	{
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
-		sMsg += L"S3 Code: " + sS3Code;
+		sMsg += _T("S3 Code: ") + sS3Code;
 	}
 	if (!sS3Resource.IsEmpty())
 	{
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
-		sMsg += L"S3 Resource: " + sS3Resource;
+		sMsg += _T("S3 Resource: ") + sS3Resource;
 	}
 	if (!sS3RequestID.IsEmpty())
 	{
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
-		sMsg += L"S3 RequestID: " + sS3RequestID;
+		sMsg += _T("S3 RequestID: ") + sS3RequestID;
 	}
 	if (!sDetails.IsEmpty())
 	{
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
-		sMsg += L"Details: " + sDetails;
+		sMsg += _T("Details: ") + sDetails;
 	}
 	if (bOneLine)
 	{
@@ -3150,7 +3141,7 @@ CString CECSConnection::S3_ERROR::Format(bool bOneLine) const
 		int iEnd;
 		for (;;)
 		{
-			iEnd = sMsg.Find(L"\r\n");
+			iEnd = sMsg.Find(_T("\r\n"));
 			if (iEnd < 0)
 				break;
 			(void)sMsg.Delete(iEnd);
@@ -3158,7 +3149,7 @@ CString CECSConnection::S3_ERROR::Format(bool bOneLine) const
 		} 
 		for (;;)
 		{
-			iEnd = sMsg.Find(L"\n\r");
+			iEnd = sMsg.Find(_T("\n\r"));
 			if (iEnd < 0)
 				break;
 			(void)sMsg.Delete(iEnd);
@@ -3166,14 +3157,14 @@ CString CECSConnection::S3_ERROR::Format(bool bOneLine) const
 		}
 		for (;;)
 		{
-			iEnd = sMsg.Find(L"\n");
+			iEnd = sMsg.Find(_T("\n"));
 			if (iEnd < 0)
 				break;
 			sMsg.SetAt(iEnd, L' ');
 		}
 		for (;;)
 		{
-			iEnd = sMsg.Find(L"\r");
+			iEnd = sMsg.Find(_T("\r"));
 			if (iEnd < 0)
 				break;
 			sMsg.SetAt(iEnd, L' ');
@@ -3247,13 +3238,13 @@ struct XML_S3_SERVICE_INFO_CONTEXT
 	CECSConnection::S3_BUCKET_INFO Entry;
 };
 
-const TCHAR * const XML_S3_SERVICE_OWNER_ID = L"//ListAllMyBucketsResult/Owner/ID";
-const TCHAR * const XML_S3_SERVICE_OWNER_NAME = L"//ListAllMyBucketsResult/Owner/DisplayName";
-const TCHAR * const XML_S3_SERVICE_BUCKET_NAME = L"//ListAllMyBucketsResult/Buckets/Bucket/Name";
-const TCHAR * const XML_S3_SERVICE_BUCKET_DATE = L"//ListAllMyBucketsResult/Buckets/Bucket/CreationDate";
-const TCHAR * const XML_S3_SERVICE_BUCKET_ELEMENT = L"//ListAllMyBucketsResult/Buckets/Bucket";
+const WCHAR * const XML_S3_SERVICE_OWNER_ID = L"//ListAllMyBucketsResult/Owner/ID";
+const WCHAR * const XML_S3_SERVICE_OWNER_NAME = L"//ListAllMyBucketsResult/Owner/DisplayName";
+const WCHAR * const XML_S3_SERVICE_BUCKET_NAME = L"//ListAllMyBucketsResult/Buckets/Bucket/Name";
+const WCHAR * const XML_S3_SERVICE_BUCKET_DATE = L"//ListAllMyBucketsResult/Buckets/Bucket/CreationDate";
+const WCHAR * const XML_S3_SERVICE_BUCKET_ELEMENT = L"//ListAllMyBucketsResult/Buckets/Bucket";
 
-HRESULT XmlS3ServiceInfoCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3ServiceInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -3267,23 +3258,23 @@ HRESULT XmlS3ServiceInfoCB(const CString& sXmlPath, void *pContext, IXmlReader *
 		if (sXmlPath.CompareNoCase(XML_S3_SERVICE_OWNER_ID) == 0)
 		{
 			if ((psValue != NULL) && !psValue->IsEmpty())
-				pInfo->pServiceInfo->sOwnerID = *psValue;
+				pInfo->pServiceInfo->sOwnerID = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_S3_SERVICE_OWNER_NAME) == 0)
 		{
 			if ((psValue != NULL) && !psValue->IsEmpty())
-				pInfo->pServiceInfo->sOwnerDisplayName = *psValue;
+				pInfo->pServiceInfo->sOwnerDisplayName = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_S3_SERVICE_BUCKET_NAME) == 0)
 		{
 			if ((psValue != NULL) && !psValue->IsEmpty())
-				pInfo->Entry.sName = *psValue;
+				pInfo->Entry.sName = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_S3_SERVICE_BUCKET_DATE) == 0)
 		{
 			if ((psValue != NULL) && !psValue->IsEmpty())
 			{
-				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(*psValue, pInfo->Entry.ftCreationDate);
+				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Entry.ftCreationDate);
 				if (Error.IfError())
 					ZeroFT(pInfo->Entry.ftCreationDate);
 			}
@@ -3317,7 +3308,7 @@ CECSConnection::S3_ERROR CECSConnection::S3ServiceInformation(S3_SERVICE_INFO& S
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	Error = SendRequest(L"GET", L"/", NULL, 0, RetData, &Req);
+	Error = SendRequest(_T("GET"), _T("/"), NULL, 0, RetData, &Req);
 	if (Error.IfError())
 		return Error;
 	ServiceInfo.BucketList.clear();
@@ -3337,9 +3328,9 @@ CECSConnection::S3_ERROR CECSConnection::S3ServiceInformation(S3_SERVICE_INFO& S
 		// maybe there is a man-in-middle attack?
 		Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 		Error.S3Error = S3_ERROR_MalformedXML;
-		Error.sS3Code = L"MalformedXML";
-		Error.sS3RequestID = L"GET";
-		Error.sS3Resource = L"/";
+		Error.sS3Code = _T("MalformedXML");
+		Error.sS3RequestID = _T("GET");
+		Error.sS3Resource = _T("/");
 	}
 	return Error;
 }
@@ -3359,7 +3350,7 @@ CECSConnection::S3_ERROR CECSConnection::GetTags(LPCTSTR pszPathIn, list<CString
 		InitHeader();
 		// get the complete list of metadata for this object
 		list<HEADER_REQ> Req;
-		Error = SendRequest(L"HEAD", UriEncode(pszPathIn), NULL, 0, RetData, &Req);
+		Error = SendRequest(_T("HEAD"), UriEncode(pszPathIn), NULL, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 		for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
@@ -3426,14 +3417,14 @@ CECSConnection::S3_ERROR CECSConnection::GetObjectSizeS3(
 		return ERROR_INVALID_DATA;
 	CString sResource(sSrcPath.Left(iSlash + 1));	// get terminating slash on bucket
 	CString sPrefix(sSrcPath.Mid(iSlash + 1));
-	sResource += L"?versions&delimiter=/";
+	sResource += _T("?versions&delimiter=/");
 	if (!sPrefix.IsEmpty())
 	{
 		sPrefix = UriEncode(sPrefix, true);
-		sResource += L"&prefix=" + sPrefix;
+		sResource += _T("&prefix=") + sPrefix;
 	}
 	CBuffer RetData;
-	S3_ERROR Error = SendRequest(L"GET", (LPCTSTR)sResource, NULL, 0, RetData);
+	S3_ERROR Error = SendRequest(_T("GET"), (LPCTSTR)sResource, NULL, 0, RetData);
 	if (Error.IfError())
 		return Error;
 	if (RetData.IsEmpty())
@@ -3450,8 +3441,8 @@ CECSConnection::S3_ERROR CECSConnection::GetObjectSizeS3(
 		// maybe there is a man-in-middle attack?
 		Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 		Error.S3Error = S3_ERROR_MalformedXML;
-		Error.sS3Code = L"MalformedXML";
-		Error.sS3RequestID = L"GET";
+		Error.sS3Code = _T("MalformedXML");
+		Error.sS3RequestID = _T("GET");
 		Error.sS3Resource = sResource;
 		return Error;
 	}
@@ -3521,16 +3512,16 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 		{
 			CString sSrcPath(UriEncode(pszSrcPath));
 			if (pszVersionId != nullptr)
-				sSrcPath += CString(L"?versionId=") + pszVersionId;
-			AddHeader(L"x-amz-copy-source", sSrcPath);							// specify source of copy
-			AddHeader(L"x-amz-metadata-directive", bCopyMD ? L"COPY" : L"REPLACE");
+				sSrcPath += CString(_T("?versionId=")) + pszVersionId;
+			AddHeader(_T("x-amz-copy-source"), sSrcPath);							// specify source of copy
+			AddHeader(_T("x-amz-metadata-directive"), bCopyMD ? _T("COPY") : _T("REPLACE"));
 			if ((pMDList != nullptr) && !pMDList->empty())
 			{
 				// add in all metadata
 				for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 					AddHeader(sAmzMetaPrefix + itList->sTag, itList->sData);
 			}
-			Error = SendRequest(L"PUT", UriEncode(pszTargetPath), NULL, 0, RetData, &Req);
+			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath), NULL, 0, RetData, &Req);
 			return Error;
 		}
 		Error = S3MultiPartInitiate(pszTargetPath, MultiPartInfo, pMDList);
@@ -3585,7 +3576,7 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadataS3(LPCTSTR pszPath, const
 		list<HEADER_REQ> Req;
 		CString sPath(pszPath);
 		InitHeader();
-		Error = SendRequest(L"HEAD", UriEncode(sPath), NULL, 0, RetData, &Req);
+		Error = SendRequest(_T("HEAD"), UriEncode(sPath), NULL, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 
@@ -3623,9 +3614,9 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadataS3(LPCTSTR pszPath, const
 				(void)State.Headers.erase(sTag);
 			}
 		}
-		AddHeader(L"x-amz-copy-source", UriEncode(sPath));							// copy it to itself
-		AddHeader(L"x-amz-metadata-directive", L"REPLACE");
-		Error = SendRequest(L"PUT", UriEncode(sPath), NULL, 0, RetData, &Req);
+		AddHeader(_T("x-amz-copy-source"), UriEncode(sPath));							// copy it to itself
+		AddHeader(_T("x-amz-metadata-directive"), _T("REPLACE"));
+		Error = SendRequest(_T("PUT"), UriEncode(sPath), NULL, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 	}
@@ -3716,8 +3707,8 @@ CECSConnection::S3_ERROR CECSConnection::ReadMetadataBulkInternalS3(LPCTSTR pszP
 	{
 		InitHeader();
 		if ((pszVersionId != nullptr) && (*pszVersionId != NUL))
-			sPath += CString(L"?versionId=") + pszVersionId;
-		Error = SendRequest(L"HEAD", UriEncode(sPath), NULL, 0, RetData, &Req);
+			sPath += CString(_T("?versionId=")) + pszVersionId;
+		Error = SendRequest(_T("HEAD"), UriEncode(sPath), NULL, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 
@@ -3797,10 +3788,10 @@ CECSConnection::S3_ERROR CECSConnection::ParseS3Timestamp(const CString& sS3Time
 	int iMilliSec = 0;
 	ZeroMemory(&stTime, sizeof(stTime));
 	// the format of this field: 2010-07-05T19:51:19Z
-	int iConv = swscanf_s(sS3Time, L"%d-%d-%dT%d:%d:%dZ", &iYear, &iMonth, &iDay, &iHour, &iMin, &iSec);
+	int iConv = _stscanf_s(sS3Time, _T("%d-%d-%dT%d:%d:%dZ"), &iYear, &iMonth, &iDay, &iHour, &iMin, &iSec);
 	if (iConv != 6)
 	{
-		iConv = swscanf_s(sS3Time, L"%d-%d-%dT%d:%d:%d.%dZ", &iYear, &iMonth, &iDay, &iHour, &iMin, &iSec, &iMilliSec);
+		iConv = _stscanf_s(sS3Time, _T("%d-%d-%dT%d:%d:%d.%dZ"), &iYear, &iMonth, &iDay, &iHour, &iMin, &iSec, &iMilliSec);
 		if (iConv != 7)
 		{
 			Error.sDetails = sS3Time;
@@ -3850,17 +3841,17 @@ CECSConnection::E_S3_ACL_VALUES TranslateACLText(LPCTSTR pszEntry)
 	CString sValue(pszEntry);
 	sValue.TrimLeft();
 	sValue.TrimRight();
-	if (sValue.CompareNoCase(L"NONE") == 0)
+	if (sValue.CompareNoCase(_T("NONE")) == 0)
 		return CECSConnection::AAV_NONE;
-	if (sValue.CompareNoCase(L"READ") == 0)
+	if (sValue.CompareNoCase(_T("READ")) == 0)
 		return CECSConnection::AAV_READ;
-	if (sValue.CompareNoCase(L"WRITE") == 0)
+	if (sValue.CompareNoCase(_T("WRITE")) == 0)
 		return CECSConnection::AAV_WRITE;
-	if (sValue.CompareNoCase(L"FULL_CONTROL") == 0)
+	if (sValue.CompareNoCase(_T("FULL_CONTROL")) == 0)
 		return CECSConnection::AAV_FULL_CONTROL;
-	if (sValue.CompareNoCase(L"READ_ACP") == 0)
+	if (sValue.CompareNoCase(_T("READ_ACP")) == 0)
 		return CECSConnection::AAV_READ_ACP;
-	if (sValue.CompareNoCase(L"WRITE_ACP") == 0)
+	if (sValue.CompareNoCase(_T("WRITE_ACP")) == 0)
 		return CECSConnection::AAV_WRITE_ACP;
 	return CECSConnection::AAV_INVALID;
 }
@@ -3881,16 +3872,16 @@ struct XML_S3_ACL_CONTEXT
 	{}
 };
 
-const TCHAR * const XML_S3_ACL_OWNER_ID =							L"//AccessControlPolicy/Owner/ID";
-const TCHAR * const XML_S3_ACL_OWNER_DISPLAYNAME =					L"//AccessControlPolicy/Owner/DisplayName";
-const TCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_ID =				L"//AccessControlPolicy/AccessControlList/Grant/Grantee/ID";
-const TCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_URI =			L"//AccessControlPolicy/AccessControlList/Grant/Grantee/URI";
-const TCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_DISPLAYNAME =	L"//AccessControlPolicy/AccessControlList/Grant/Grantee/DisplayName";
-const TCHAR * const XML_S3_ACL_OWNER_GRANT_PERMISSION =				L"//AccessControlPolicy/AccessControlList/Grant/Permission";
-const TCHAR * const XML_S3_ACL_OWNER_GRANT_ELEMENT =				L"//AccessControlPolicy/AccessControlList/Grant";
-const TCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_ELEMENT =		L"//AccessControlPolicy/AccessControlList/Grant/Grantee";
+const WCHAR * const XML_S3_ACL_OWNER_ID =							L"//AccessControlPolicy/Owner/ID";
+const WCHAR * const XML_S3_ACL_OWNER_DISPLAYNAME =					L"//AccessControlPolicy/Owner/DisplayName";
+const WCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_ID =				L"//AccessControlPolicy/AccessControlList/Grant/Grantee/ID";
+const WCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_URI =			L"//AccessControlPolicy/AccessControlList/Grant/Grantee/URI";
+const WCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_DISPLAYNAME =	L"//AccessControlPolicy/AccessControlList/Grant/Grantee/DisplayName";
+const WCHAR * const XML_S3_ACL_OWNER_GRANT_PERMISSION =				L"//AccessControlPolicy/AccessControlList/Grant/Permission";
+const WCHAR * const XML_S3_ACL_OWNER_GRANT_ELEMENT =				L"//AccessControlPolicy/AccessControlList/Grant";
+const WCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_ELEMENT =		L"//AccessControlPolicy/AccessControlList/Grant/Grantee";
 
-HRESULT XmlS3AclContext_CB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3AclContext_CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -3901,17 +3892,17 @@ HRESULT XmlS3AclContext_CB(const CString& sXmlPath, void *pContext, IXmlReader *
 		if ((psValue != NULL) && !psValue->IsEmpty())
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_ACL_OWNER_ID) == 0)
-				pInfo->sOwner = *psValue;
+				pInfo->sOwner = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_ACL_OWNER_DISPLAYNAME) == 0)
-				pInfo->sDisplayName = *psValue;
+				pInfo->sDisplayName = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_ACL_OWNER_GRANT_GRANTEE_ID) == 0)
-				pInfo->Rec.sID = *psValue;
+				pInfo->Rec.sID = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_ACL_OWNER_GRANT_GRANTEE_URI) == 0)
-				pInfo->Rec.sID = *psValue;
+				pInfo->Rec.sID = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_ACL_OWNER_GRANT_GRANTEE_DISPLAYNAME) == 0)
-				pInfo->Rec.sDisplayName = *psValue;
+				pInfo->Rec.sDisplayName = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_ACL_OWNER_GRANT_PERMISSION) == 0)
-				pInfo->Rec.Acl = TranslateACLText(*psValue);
+				pInfo->Rec.Acl = TranslateACLText(FROM_UNICODE(*psValue));
 		}
 		break;
 	case XmlNodeType_EndElement:
@@ -3967,11 +3958,11 @@ CECSConnection::S3_ERROR CECSConnection::ReadACL(
 	{
 		InitHeader();
 		list<HEADER_REQ> Req;
-		CString sResource(UriEncode(CString(pszPath) + L"?acl"));
+		CString sResource(UriEncode(CString(pszPath) + _T("?acl")));
 		CString sVersion(pszVersion);
 		if (!sVersion.IsEmpty())
-			sResource += L"&versionId=" + sVersion;
-		Error = SendRequest(L"GET", sResource, NULL, 0, RetData, &Req);
+			sResource += _T("&versionId=") + sVersion;
+		Error = SendRequest(_T("GET"), sResource, NULL, 0, RetData, &Req);
 		if (Error.IfError())
 			return Error;
 		// parse the output and fill the output lists
@@ -4022,7 +4013,7 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 
 		if (FAILED(pWriter->WriteStartElement(NULL, L"ID", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		if (FAILED(pWriter->WriteString(S3Info.sOwnerID)))
+		if (FAILED(pWriter->WriteString(TO_UNICODE(S3Info.sOwnerID))))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -4053,7 +4044,7 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 
 			if (FAILED(pWriter->WriteStartElement(NULL, L"ID", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString(it->sID)))
+			if (FAILED(pWriter->WriteString(TO_UNICODE(it->sID))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -4063,7 +4054,7 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 
 			if (FAILED(pWriter->WriteStartElement(NULL, L"Permission", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString(it->GetAclString())))
+			if (FAILED(pWriter->WriteString(TO_UNICODE(it->GetAclString()))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -4080,15 +4071,18 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(L"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + pBufStream->GetXml());
-		CAnsiString XmlUTF8;
-		XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
-		CString sResource(UriEncode(CString(pszPath) + L"?acl"));
+		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+#ifdef _UNICODE
+		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+		CAnsiString XmlUTF8(sXmlOut);
+#endif
+		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		CString sResource(UriEncode(CString(pszPath) + _T("?acl")));
 		CString sVersion(pszVersion);
 		if (!sVersion.IsEmpty())
-			sResource += L"&versionId=" + sVersion;
-		Error = SendRequest(L"PUT", sResource, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
+			sResource += _T("&versionId=") + sVersion;
+		Error = SendRequest(_T("PUT"), sResource, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -4251,7 +4245,7 @@ void CECSConnection::GetCertInfo(ECS_CERT_INFO& Rec)
 DWORD CECSConnection::ChooseAuthScheme(DWORD dwSupportedSchemes)
 {
 //	DWORD dwMask;
-//	if (RegistryGet(HKEY_LOCAL_MACHINE, LgtoavlibData.msgfmt_data.sORK_OCTOPUS, L"ProxyAuthMask", &dwMask) == ERROR_SUCCESS)
+//	if (RegistryGet(HKEY_LOCAL_MACHINE, LgtoavlibData.msgfmt_data.sORK_OCTOPUS, _T("ProxyAuthMask"), &dwMask) == ERROR_SUCCESS)
 //		dwSupportedSchemes &= ~dwMask;
 
 	//  It is the server's responsibility only to accept 
@@ -4295,16 +4289,16 @@ CString CECSConnection::FormatAuthScheme()
 	//  and password to anyone monitoring the connection.
   
 	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_NEGOTIATE))
-		return L"Negotiate";
+		return _T("Negotiate");
 	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_NTLM))
-		return L"NTLM";
+		return _T("NTLM");
 	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_PASSPORT))
-		return L"Passport";
+		return _T("Passport");
 	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_DIGEST))
-		return L"Digest";
+		return _T("Digest");
 	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_BASIC))
-		return L"Basic";
-	return L"";
+		return _T("Basic");
+	return _T("");
 }
 
 DWORD CECSConnection::GetSecureError(void)
@@ -4316,7 +4310,7 @@ DWORD CECSConnection::GetSecureError(void)
 CString CECSConnection::signS3ShareableURL(const CString& sResource, const CString& sExpire)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CString sSignature(signRequestS3v2(sSecret, L"GET", sResource, State.Headers, sExpire));
+	CString sSignature(signRequestS3v2(sSecret, _T("GET"), sResource, State.Headers, sExpire));
 	return sSignature;
 }
 
@@ -4329,28 +4323,28 @@ CString CECSConnection::GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExp
 		{
 			CSimpleRWLockAcquire lock(&rwlIPListHost, false);			// read lock
 			if (IPListHost.empty())
-				return L"";
+				return _T("");
 			sIP = IPListHost[0];
 		}
 		CTime Time(*pstExpire);
 		CString sExpire(FmtNum(Time.GetTime()));
 		CString sSignature;
 		if (bSSL)
-			sURL = L"https:";
+			sURL = _T("https:");
 		else
-			sURL = L"http:";
+			sURL = _T("http:");
 		CString sPort;
 		if ((bSSL && (Port != INTERNET_DEFAULT_HTTPS_PORT))
 				|| (!bSSL && (Port != INTERNET_DEFAULT_HTTP_PORT)))
-			sPort = L":" + FmtNum(Port);
+			sPort = _T(":") + FmtNum(Port);
 		sSignature = UriEncodeS3(signS3ShareableURL(sPath, sExpire), true);
-		sURL += L"//" + sIP + sPort + sPath + L"?AWSAccessKeyId=" + sS3KeyID + L"&Expires=" + sExpire + L"&Signature";
-		sURL = EncodeSpecialChars(UriEncode(sURL)) + L"=" + sSignature;
+		sURL += _T("//") + sIP + sPort + sPath + _T("?AWSAccessKeyId=") + sS3KeyID + _T("&Expires=") + sExpire + _T("&Signature");
+		sURL = EncodeSpecialChars(UriEncode(sURL)) + _T("=") + sSignature;
 	}
 	catch (const CS3ErrorInfo& E)
 	{
 		(void)E;
-		return L"";
+		return _T("");
 	}
 	return sURL;
 }
@@ -4393,7 +4387,7 @@ void CECSConnection::RemoveACLDups(deque<CECSConnection::ACL_ENTRY>& AclList)
 bool CECSConnection::IfValidMetadataTag(LPCTSTR pszMDString)
 {
 	CString sStr(pszMDString);
-	if (sStr.FindOneOf(L"=,") >= 0)
+	if (sStr.FindOneOf(_T("=,")) >= 0)
 		return false;
 	for (int i=0 ; i<sStr.GetLength() ; i++)
 	{
@@ -4478,7 +4472,7 @@ void CECSConnection::CECSConnectionSession::ReleaseSession(void) throw()
 
 CString CECSConnection::CECSConnectionSession::Format(void) const
 {
-	return Key.Format() + L": " + ((pValue != NULL) ? (LPCTSTR)pValue->Format() : L"");
+	return Key.Format() + _T(": ") + ((pValue != NULL) ? (LPCTSTR)pValue->Format() : _T(""));
 }
 
 // invalidate all entries for this host
@@ -4541,7 +4535,7 @@ bool CECSConnection::ValidateS3BucketName(LPCTSTR pszBucketName)
 		|| (sBucket.GetLength() > 63)
 		|| (sBucket[0] == L'.')
 		|| (sBucket[sBucket.GetLength() - 1] == L'.')
-		|| (sBucket.Find(L"..") >= 0))
+		|| (sBucket.Find(_T("..")) >= 0))
 		return false;
 	for (int i = 0; i < sBucket.GetLength(); i++)
 	{
@@ -4601,11 +4595,11 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
 			}
 		}
 		InitHeader();
-		AddHeader(L"Content-Length", L"0");
+		AddHeader(_T("Content-Length"), _T("0"));
 
 		// set location constraint if any other region except for us-east-1
 		CAnsiString XmlUTF8;
-		if (!sS3Region.IsEmpty() && (sS3Region != L"us-east-1"))
+		if (!sS3Region.IsEmpty() && (sS3Region != _T("us-east-1")))
 		{
 			// create XML request
 			CBufferStream *pBufStream = new CBufferStream;
@@ -4621,7 +4615,7 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
 
 			if (FAILED(pWriter->WriteStartElement(NULL, L"LocationConstraint", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString(sS3Region)))
+			if (FAILED(pWriter->WriteString(TO_UNICODE(sS3Region))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -4632,12 +4626,16 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->Flush()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			CString sXmlOut(L"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + pBufStream->GetXml());
-			XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-			XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
+			CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+#ifdef _UNICODE
+			CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+			CAnsiString XmlUTF8(sXmlOut);
+#endif
+			XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
 		}
 
-		Error = SendRequest(L"PUT", CString(L"/") + pszBucketName + L"/", XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
+		Error = SendRequest(_T("PUT"), CString(_T("/")) + pszBucketName + _T("/"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 	}
@@ -4657,7 +4655,7 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3Bucket(LPCTSTR pszBucketName)
 	try
 	{
 		InitHeader();
-		Error = SendRequest(L"DELETE", CString(L"/") + pszBucketName + L"/", nullptr, 0, RetData);
+		Error = SendRequest(_T("DELETE"), CString(_T("/")) + pszBucketName + _T("/"), nullptr, 0, RetData);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 	}
@@ -4674,16 +4672,16 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3Bucket(LPCTSTR pszBucketName)
 //  <Key>example-object</Key>
 //  <UploadId>VXBsb2FkIElEIGZvciA2aWWpbmcncyBteS1tb3ZpZS5tMnRzIHVwbG9hZA</UploadId>
 //</InitiateMultipartUploadResult>
-const TCHAR * const XML_MULTI_PART_BUCKET = L"//InitiateMultipartUploadResult/Bucket";
-const TCHAR * const XML_MULTI_PART_KEY = L"//InitiateMultipartUploadResult/Key";
-const TCHAR * const XML_MULTI_PART_UPLOAD_ID = L"//InitiateMultipartUploadResult/UploadId";
+const WCHAR * const XML_MULTI_PART_BUCKET = L"//InitiateMultipartUploadResult/Bucket";
+const WCHAR * const XML_MULTI_PART_KEY = L"//InitiateMultipartUploadResult/Key";
+const WCHAR * const XML_MULTI_PART_UPLOAD_ID = L"//InitiateMultipartUploadResult/UploadId";
 
 struct XML_MULTI_PART_CONTEXT
 {
 	CECSConnection::S3_UPLOAD_PART_INFO *pMultiPartInfo;
 };
 
-HRESULT XmlMultiPartCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlMultiPartCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -4695,15 +4693,15 @@ HRESULT XmlMultiPartCB(const CString& sXmlPath, void *pContext, IXmlReader *pRea
 		{
 			if (sXmlPath.CompareNoCase(XML_MULTI_PART_BUCKET) == 0)
 			{
-				pInfo->pMultiPartInfo->sBucket = *psValue;
+				pInfo->pMultiPartInfo->sBucket = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_MULTI_PART_KEY) == 0)
 			{
-				pInfo->pMultiPartInfo->sKey = *psValue;
+				pInfo->pMultiPartInfo->sKey = FROM_UNICODE(*psValue);
 			}
 			else if (sXmlPath.CompareNoCase(XML_MULTI_PART_UPLOAD_ID) == 0)
 			{
-				pInfo->pMultiPartInfo->sUploadId = *psValue;
+				pInfo->pMultiPartInfo->sUploadId = FROM_UNICODE(*psValue);
 			}
 		}
 		break;
@@ -4729,9 +4727,9 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 		for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 			AddHeader(sAmzMetaPrefix + itList->sTag, itList->sData);
 	}
-	AddHeader(L"content-type", L"application/octet-stream");
+	AddHeader(_T("content-type"), _T("application/octet-stream"));
 	// try deleting the dir (this won't work if the dir has anything in it)
-	Error = SendRequest(L"POST", UriEncode(MultiPartInfo.sResource) + L"?uploads", NULL, 0, RetData);
+	Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploads"), NULL, 0, RetData);
 	if (Error.IfError())
 		return Error;
 	// parse XML
@@ -4752,12 +4750,12 @@ struct XML_MPU_COMPLETE_CONTEXT
 	{}
 };
 
-const TCHAR * const XML_MPU_COMPLETE_LOCATION = L"//CompleteMultipartUploadResult/Location";
-const TCHAR * const XML_MPU_COMPLETE_BUCKET = L"//CompleteMultipartUploadResult/Bucket";
-const TCHAR * const XML_MPU_COMPLETE_KEY = L"//CompleteMultipartUploadResult/Key";
-const TCHAR * const XML_MPU_COMPLETE_ETAG = L"//CompleteMultipartUploadResult/ETag";
+const WCHAR * const XML_MPU_COMPLETE_LOCATION = L"//CompleteMultipartUploadResult/Location";
+const WCHAR * const XML_MPU_COMPLETE_BUCKET = L"//CompleteMultipartUploadResult/Bucket";
+const WCHAR * const XML_MPU_COMPLETE_KEY = L"//CompleteMultipartUploadResult/Key";
+const WCHAR * const XML_MPU_COMPLETE_ETAG = L"//CompleteMultipartUploadResult/ETag";
 
-HRESULT XmlMPUCompleteCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlMPUCompleteCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -4768,13 +4766,13 @@ HRESULT XmlMPUCompleteCB(const CString& sXmlPath, void *pContext, IXmlReader *pR
 		if ((psValue != NULL) && !psValue->IsEmpty())
 		{
 			if (sXmlPath.CompareNoCase(XML_MPU_COMPLETE_LOCATION) == 0)
-				pInfo->pMPUComplete->sLocation = *psValue;
+				pInfo->pMPUComplete->sLocation = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_MPU_COMPLETE_BUCKET) == 0)
-				pInfo->pMPUComplete->sBucket = *psValue;
+				pInfo->pMPUComplete->sBucket = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_MPU_COMPLETE_KEY) == 0)
-				pInfo->pMPUComplete->sKey = *psValue;
+				pInfo->pMPUComplete->sKey = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_MPU_COMPLETE_ETAG) == 0)
-				pInfo->pMPUComplete->sETag = *psValue;
+				pInfo->pMPUComplete->sETag = FROM_UNICODE(*psValue);
 		}
 		break;
 
@@ -4819,14 +4817,14 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 
 			if (FAILED(pWriter->WriteStartElement(NULL, L"PartNumber", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString(FmtNum((*itList)->uPartNum))))
+			if (FAILED(pWriter->WriteString(TO_UNICODE(FmtNum((*itList)->uPartNum)))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
 			if (FAILED(pWriter->WriteStartElement(NULL, L"ETag", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString((*itList)->sETag)))
+			if (FAILED(pWriter->WriteString(TO_UNICODE((*itList)->sETag))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -4840,13 +4838,16 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(L"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + pBufStream->GetXml());
-		CAnsiString XmlUTF8;
-		XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
+		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+#ifdef _UNICODE
+		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+		CAnsiString XmlUTF8(sXmlOut);
+#endif
+		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
 
 		InitHeader();
-		Error = SendRequest(L"POST", UriEncode(MultiPartInfo.sResource) + L"?uploadId=" + MultiPartInfo.sUploadId, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
+		Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploadId=") + MultiPartInfo.sUploadId, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
 		if (!Error.IfError() && !RetData.IsEmpty())
 		{
 			{
@@ -4880,24 +4881,24 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartAbort(const S3_UPLOAD_PART_I
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	Error = SendRequest(L"DELETE", UriEncode(MultiPartInfo.sResource) + L"?uploadId=" + MultiPartInfo.sUploadId, NULL, 0, RetData);
+	Error = SendRequest(_T("DELETE"), UriEncode(MultiPartInfo.sResource) + _T("?uploadId=") + MultiPartInfo.sUploadId, NULL, 0, RetData);
 	return Error;
 }
 
-const TCHAR * const XML_S3_MULTIPART_LIST_BUCKET =							L"//ListMultipartUploadsResult/Bucket";
-const TCHAR * const XML_S3_MULTIPART_LIST_NEXTKEYMARKER=					L"//ListMultipartUploadsResult/NextKeyMarker";
-const TCHAR * const XML_S3_MULTIPART_LIST_NEXTUPLOADIDMARKER =				L"//ListMultipartUploadsResult/NextUploadIdMarker";
-const TCHAR * const XML_S3_MULTIPART_LIST_MAXUPLOADS =						L"//ListMultipartUploadsResult/MaxUploads";
-const TCHAR * const XML_S3_MULTIPART_LIST_ISTRUNCATED =						L"//ListMultipartUploadsResult/IsTruncated";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_ELEMENT =					L"//ListMultipartUploadsResult/Upload";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_KEY =						L"//ListMultipartUploadsResult/Upload/Key";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_UPLOADID =					L"//ListMultipartUploadsResult/Upload/UploadId";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_INITIATOR_ID =				L"//ListMultipartUploadsResult/Upload/Initiator/ID";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_INITIATOR_DISPLAYNAME =	L"//ListMultipartUploadsResult/Upload/Initiator/DisplayName";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_OWNER_ID =					L"//ListMultipartUploadsResult/Upload/Owner/ID";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_OWNER_DISPLAYNAME =		L"//ListMultipartUploadsResult/Upload/Owner/DisplayName";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_STORAGECLASS =				L"//ListMultipartUploadsResult/Upload/StorageClass";
-const TCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_INITIATED =				L"//ListMultipartUploadsResult/Upload/Initiated";
+const WCHAR * const XML_S3_MULTIPART_LIST_BUCKET =							L"//ListMultipartUploadsResult/Bucket";
+const WCHAR * const XML_S3_MULTIPART_LIST_NEXTKEYMARKER=					L"//ListMultipartUploadsResult/NextKeyMarker";
+const WCHAR * const XML_S3_MULTIPART_LIST_NEXTUPLOADIDMARKER =				L"//ListMultipartUploadsResult/NextUploadIdMarker";
+const WCHAR * const XML_S3_MULTIPART_LIST_MAXUPLOADS =						L"//ListMultipartUploadsResult/MaxUploads";
+const WCHAR * const XML_S3_MULTIPART_LIST_ISTRUNCATED =						L"//ListMultipartUploadsResult/IsTruncated";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_ELEMENT =					L"//ListMultipartUploadsResult/Upload";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_KEY =						L"//ListMultipartUploadsResult/Upload/Key";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_UPLOADID =					L"//ListMultipartUploadsResult/Upload/UploadId";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_INITIATOR_ID =				L"//ListMultipartUploadsResult/Upload/Initiator/ID";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_INITIATOR_DISPLAYNAME =	L"//ListMultipartUploadsResult/Upload/Initiator/DisplayName";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_OWNER_ID =					L"//ListMultipartUploadsResult/Upload/Owner/ID";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_OWNER_DISPLAYNAME =		L"//ListMultipartUploadsResult/Upload/Owner/DisplayName";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_STORAGECLASS =				L"//ListMultipartUploadsResult/Upload/StorageClass";
+const WCHAR * const XML_S3_MULTIPART_LIST_UPLOAD_INITIATED =				L"//ListMultipartUploadsResult/Upload/Initiated";
 
 struct S3_MULTIPART_LIST_CONTEXT
 {
@@ -4913,7 +4914,7 @@ struct S3_MULTIPART_LIST_CONTEXT
 	{}
 };
 
-HRESULT XmlS3MultiPartListCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3MultiPartListCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -4924,32 +4925,32 @@ HRESULT XmlS3MultiPartListCB(const CString& sXmlPath, void *pContext, IXmlReader
 		if ((psValue != NULL) && !psValue->IsEmpty())
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_BUCKET) == 0)
-				pInfo->pMultiPartList->sBucket = *psValue;
+				pInfo->pMultiPartList->sBucket = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_NEXTKEYMARKER) == 0)
-				pInfo->sNextKeyMarker = *psValue;
+				pInfo->sNextKeyMarker = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_NEXTUPLOADIDMARKER) == 0)
-				pInfo->sNextUploadIdMarker = *psValue;
+				pInfo->sNextUploadIdMarker = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_MAXUPLOADS) == 0)
-				pInfo->pMultiPartList->uMaxUploads = _ttoi(*psValue);
+				pInfo->pMultiPartList->uMaxUploads = _ttoi(FROM_UNICODE(*psValue));
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_ISTRUNCATED) == 0)
-				pInfo->bIsTruncated = *psValue == L"true";
+				pInfo->bIsTruncated = FROM_UNICODE(*psValue) == _T("true");
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_KEY) == 0)
-				pInfo->Rec.sKey = *psValue;
+				pInfo->Rec.sKey = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_UPLOADID) == 0)
-				pInfo->Rec.sUploadId = *psValue;
+				pInfo->Rec.sUploadId = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_INITIATOR_ID) == 0)
-				pInfo->Rec.sInitiatorId = *psValue;
+				pInfo->Rec.sInitiatorId = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_INITIATOR_DISPLAYNAME) == 0)
-				pInfo->Rec.sInitiatorDisplayName = *psValue;
+				pInfo->Rec.sInitiatorDisplayName = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_OWNER_ID) == 0)
-				pInfo->Rec.sOwnerId = *psValue;
+				pInfo->Rec.sOwnerId = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_OWNER_DISPLAYNAME) == 0)
-				pInfo->Rec.sOwnerDisplayName = *psValue;
+				pInfo->Rec.sOwnerDisplayName = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_STORAGECLASS) == 0)
-				pInfo->Rec.sStorageClass = *psValue;
+				pInfo->Rec.sStorageClass = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_MULTIPART_LIST_UPLOAD_INITIATED) == 0)
 			{
-				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(*psValue, pInfo->Rec.ftInitiated);
+				CECSConnection::S3_ERROR Error = CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Rec.ftInitiated);
 				if (Error.IfError())
 					return Error.dwError;
 			}
@@ -4981,15 +4982,15 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartList(LPCTSTR pszBucketName, 
 
 	Context.pMultiPartList = &MultiPartList;
 	InitHeader();
-	CString sResource(CString(L"/") + pszBucketName + L"/?uploads&delimiter=/");
+	CString sResource(CString(_T("/")) + pszBucketName + _T("/?uploads&delimiter=/"));
 	for (;;)
 	{
 		CString sTempResource(sResource);
 		if (!Context.sNextKeyMarker.IsEmpty())
-			sTempResource += L"&" + UriEncode(Context.sNextKeyMarker, true);
+			sTempResource += _T("&") + UriEncode(Context.sNextKeyMarker, true);
 		if (!Context.sNextUploadIdMarker.IsEmpty())
-			sTempResource += L"&" + Context.sNextUploadIdMarker;
-		Error = SendRequest(L"GET", sTempResource, NULL, 0, RetData);
+			sTempResource += _T("&") + Context.sNextUploadIdMarker;
+		Error = SendRequest(_T("GET"), sTempResource, NULL, 0, RetData);
 		if (Error.IfError())
 			return Error;
 		// parse XML
@@ -5008,9 +5009,9 @@ struct XML_MULTIPART_COPY_CONTEXT
 	CString sETag;
 };
 
-const TCHAR * const XML_MULTIPART_COPY_ETAG = L"//CopyPartResult/ETag";
+const WCHAR * const XML_MULTIPART_COPY_ETAG = L"//CopyPartResult/ETag";
 
-HRESULT XmlMultipartCopyCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlMultipartCopyCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5024,7 +5025,7 @@ HRESULT XmlMultipartCopyCB(const CString& sXmlPath, void *pContext, IXmlReader *
 		if (sXmlPath.CompareNoCase(XML_MULTIPART_COPY_ETAG) == 0)
 		{
 			if ((psValue != NULL) && !psValue->IsEmpty())
-				pInfo->sETag = *psValue;
+				pInfo->sETag = FROM_UNICODE(*psValue);
 		}
 		break;
 	default:
@@ -5047,9 +5048,9 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 	list<HEADER_REQ> Req;
 	CBuffer RetData;
 	InitHeader();
-	Req.emplace_back(L"ETag");
+	Req.emplace_back(_T("ETag"));
 	if (!PartEntry.Checksum.IsEmpty())
-		AddHeader(L"Content-MD5", PartEntry.Checksum.EncodeBase64());
+		AddHeader(_T("Content-MD5"), PartEntry.Checksum.EncodeBase64());
 	
 	// extract the bucket
 	CString sBucket;
@@ -5057,15 +5058,15 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 	sBucket = MultiPartInfo.sResource.Mid(1, iSlash - 1);
 	CString sResource;
 	sResource = L'/' + sBucket + UriEncode(MultiPartInfo.sResource.Mid(iSlash), true);
-	sResource += L"?partNumber=" + FmtNum(PartEntry.uPartNum) + L"&uploadId=" + MultiPartInfo.sUploadId;
+	sResource += _T("?partNumber=") + FmtNum(PartEntry.uPartNum) + _T("&uploadId=") + MultiPartInfo.sUploadId;
 	if (pszCopySource != nullptr)
 	{
 		CString sSource(UriEncode(pszCopySource));
 		if ((pszVersionId != nullptr) && (*pszVersionId != NUL))
-			sSource += CString(L"?versionId=") + pszVersionId;
-		AddHeader(L"x-amz-copy-source", sSource);
-		AddHeader(L"x-amz-copy-source-range", L"bytes=" + FmtNum(ullStartRange) + L"-" + FmtNum(ullStartRange + ullTotalLen - 1));
-		Error = SendRequest(L"PUT", sResource, NULL, 0, RetData, &Req, 0, 0, nullptr, nullptr, 0ULL);
+			sSource += CString(_T("?versionId=")) + pszVersionId;
+		AddHeader(_T("x-amz-copy-source"), sSource);
+		AddHeader(_T("x-amz-copy-source-range"), _T("bytes=") + FmtNum(ullStartRange) + _T("-") + FmtNum(ullStartRange + ullTotalLen - 1));
+		Error = SendRequest(_T("PUT"), sResource, NULL, 0, RetData, &Req, 0, 0, nullptr, nullptr, 0ULL);
 		if (!Error.IfError())
 		{
 			XML_MULTIPART_COPY_CONTEXT Context;
@@ -5079,12 +5080,12 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 	}
 	else
 	{
-		Error = SendRequest(L"PUT", sResource, NULL, 0, RetData, &Req, 0, 0, pStreamSend, NULL, ullTotalLen);
+		Error = SendRequest(_T("PUT"), sResource, NULL, 0, RetData, &Req, 0, 0, pStreamSend, NULL, ullTotalLen);
 		if (!Error.IfError())
 		{
 			for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 			{
-				if (it->sLabel.CompareNoCase(L"ETag") == 0)
+				if (it->sLabel.CompareNoCase(_T("ETag")) == 0)
 				{
 					if (it->ContentList.size() != 1)
 						return ERROR_INVALID_DATA;
@@ -5107,9 +5108,9 @@ struct XML_S3_VERSIONING_CONTEXT
 	{}
 };
 
-const TCHAR * const XML_S3_VERSIONING_STATUS = L"//VersioningConfiguration/Status";
+const WCHAR * const XML_S3_VERSIONING_STATUS = L"//VersioningConfiguration/Status";
 
-HRESULT XmlS3VersioningCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3VersioningCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5145,7 +5146,7 @@ CECSConnection::S3_ERROR CECSConnection::S3GetBucketVersioning(LPCTSTR pszBucket
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	Error = SendRequest(L"GET", CString(L"/") + pszBucket + L"?versioning", NULL, 0, RetData, &Req);
+	Error = SendRequest(_T("GET"), CString(_T("/")) + pszBucket + _T("?versioning"), NULL, 0, RetData, &Req);
 	if (Error.IfError())
 		return Error;
 	if ((RetData.GetBufSize() > 5) && (strncmp((LPCSTR)RetData.GetData(), "<?xml", 5) == 0))
@@ -5163,9 +5164,9 @@ CECSConnection::S3_ERROR CECSConnection::S3GetBucketVersioning(LPCTSTR pszBucket
 		// maybe there is a man-in-middle attack?
 		Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 		Error.S3Error = S3_ERROR_MalformedXML;
-		Error.sS3Code = L"MalformedXML";
-		Error.sS3RequestID = L"GET";
-		Error.sS3Resource = L"/";
+		Error.sS3Code = _T("MalformedXML");
+		Error.sS3RequestID = _T("GET");
+		Error.sS3Resource = _T("/");
 	}
 	return Error;
 }
@@ -5196,10 +5197,10 @@ CECSConnection::S3_ERROR CECSConnection::S3PutBucketVersioning(LPCTSTR pszBucket
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		CString sStatus;
 		if (Versioning == E_S3_VERSIONING::On)
-			sStatus = L"Enabled";
+			sStatus = _T("Enabled");
 		else
-			sStatus = L"Suspended";
-		if (FAILED(pWriter->WriteString(sStatus)))
+			sStatus = _T("Suspended");
+		if (FAILED(pWriter->WriteString(TO_UNICODE(sStatus))))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteFullEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5210,12 +5211,15 @@ CECSConnection::S3_ERROR CECSConnection::S3PutBucketVersioning(LPCTSTR pszBucket
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(L"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + pBufStream->GetXml());
-		CAnsiString XmlUTF8;
-		XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
-		AddHeader(L"Content-Type", L"application/xml");
-		Error = SendRequest(L"PUT", CString(L"/") + pszBucket + L"?versioning", XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
+		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+#ifdef _UNICODE
+		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+		CAnsiString XmlUTF8(sXmlOut);
+#endif
+		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		AddHeader(_T("Content-Type"), _T("application/xml"));
+		Error = SendRequest(_T("PUT"), CString(_T("/")) + pszBucket + _T("?versioning"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -5243,16 +5247,16 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogin(LPCTSTR pszUser, LPCTSTR 
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Headers.clear();
-	AddHeader(L"accept", L"*/*");
+	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
-	AddHeader(L"Date", sDate);
-	AddHeader(L"host", GetCurrentServerIP());
-	Error = SendRequest(L"GET", L"/login", NULL, 0, RetData, &Req);
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	Error = SendRequest(_T("GET"), _T("/login"), NULL, 0, RetData, &Req);
 	if (!Error.IfError())
 	{
 		for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 		{
-			if ((it->sLabel.CompareNoCase(L"X-SDS-AUTH-TOKEN") == 0) && (it->ContentList.size() == 1))
+			if ((it->sLabel.CompareNoCase(_T("X-SDS-AUTH-TOKEN")) == 0) && (it->ContentList.size() == 1))
 				State.sX_SDS_AUTH_TOKEN = it->ContentList.front();
 		}
 		if (State.sX_SDS_AUTH_TOKEN.IsEmpty())
@@ -5274,12 +5278,12 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogout()
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Headers.clear();
-	AddHeader(L"accept", L"*/*");
+	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
-	AddHeader(L"Date", sDate);
-	AddHeader(L"host", GetCurrentServerIP());
-	AddHeader(L"X-SDS-AUTH-TOKEN", State.sX_SDS_AUTH_TOKEN);
-	Error = SendRequest(L"GET", L"/logout", NULL, 0, RetData, &Req);
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	Error = SendRequest(_T("GET"), _T("/logout"), NULL, 0, RetData, &Req);
 	if (!Error.IfError())
 		State.sX_SDS_AUTH_TOKEN.Empty();
 	SetPort(wSavePort);
@@ -5295,11 +5299,11 @@ struct XML_ECS_GET_USERS_CONTEXT
 	{}
 };
 
-const TCHAR * const XML_ECS_GET_USERS_USERID = L"//users/blobuser/userid";
-const TCHAR * const XML_ECS_GET_USERS_NAMESPACE = L"//users/blobuser/namespace";
-const TCHAR * const XML_ECS_GET_USERS_ELEMENT = L"//users/blobuser";
+const WCHAR * const XML_ECS_GET_USERS_USERID = L"//users/blobuser/userid";
+const WCHAR * const XML_ECS_GET_USERS_NAMESPACE = L"//users/blobuser/namespace";
+const WCHAR * const XML_ECS_GET_USERS_ELEMENT = L"//users/blobuser";
 
-HRESULT XmlECSGetUsersCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlECSGetUsersCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5309,11 +5313,11 @@ HRESULT XmlECSGetUsersCB(const CString& sXmlPath, void *pContext, IXmlReader *pR
 	case XmlNodeType_Text:
 		if (sXmlPath.CompareNoCase(XML_ECS_GET_USERS_USERID) == 0)
 		{
-			pInfo->User.sUser = *psValue;
+			pInfo->User.sUser = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_GET_USERS_NAMESPACE) == 0)
 		{
-			pInfo->User.sNamespace = *psValue;
+			pInfo->User.sNamespace = FROM_UNICODE(*psValue);
 		}
 		break;
 	case XmlNodeType_EndElement:
@@ -5346,12 +5350,12 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetUserList(list<S3_ADMIN_USER_
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Headers.clear();
-	AddHeader(L"accept", L"*/*");
+	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
-	AddHeader(L"Date", sDate);
-	AddHeader(L"host", GetCurrentServerIP());
-	AddHeader(L"X-SDS-AUTH-TOKEN", State.sX_SDS_AUTH_TOKEN);
-	Error = SendRequest(L"GET", L"/object/users", NULL, 0, RetData, &Req);
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	Error = SendRequest(_T("GET"), _T("/object/users"), NULL, 0, RetData, &Req);
 	SetPort(wSavePort);
 	if (!Error.IfError())
 	{
@@ -5370,12 +5374,12 @@ struct XML_ECS_CREATE_USER_CONTEXT
 	CECSConnection::S3_ADMIN_USER_INFO User;
 };
 
-const TCHAR * const XML_ECS_CREATE_USER_SECRET = L"//user_secret_key/secret_key";
-const TCHAR * const XML_ECS_CREATE_USER_KEY_TS = L"//user_secret_key/key_timestamp";
-const TCHAR * const XML_ECS_CREATE_USER_KEY_EXPIRY_TS = L"//user_secret_key/key_expiry_timestamp";
-const TCHAR * const XML_ECS_CREATE_USER_LINK = L"//user_secret_key/link";
+const WCHAR * const XML_ECS_CREATE_USER_SECRET = L"//user_secret_key/secret_key";
+const WCHAR * const XML_ECS_CREATE_USER_KEY_TS = L"//user_secret_key/key_timestamp";
+const WCHAR * const XML_ECS_CREATE_USER_KEY_EXPIRY_TS = L"//user_secret_key/key_expiry_timestamp";
+const WCHAR * const XML_ECS_CREATE_USER_LINK = L"//user_secret_key/link";
 
-HRESULT XmlECSCreateUserCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlECSCreateUserCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5385,19 +5389,19 @@ HRESULT XmlECSCreateUserCB(const CString& sXmlPath, void *pContext, IXmlReader *
 	case XmlNodeType_Text:
 		if (sXmlPath.CompareNoCase(XML_ECS_CREATE_USER_SECRET) == 0)
 		{
-			pInfo->User.sSecret = *psValue;
+			pInfo->User.sSecret = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_CREATE_USER_KEY_TS) == 0)
 		{
-			(void)CECSConnection::ParseISO8601Date(*psValue, pInfo->User.ftKeyCreate);
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->User.ftKeyCreate);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_CREATE_USER_KEY_EXPIRY_TS) == 0)
 		{
-			(void)CECSConnection::ParseISO8601Date(*psValue, pInfo->User.ftKeyExpiry);
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->User.ftKeyExpiry);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_CREATE_USER_LINK) == 0)
 		{
-			pInfo->User.sLink = *psValue;
+			pInfo->User.sLink = FROM_UNICODE(*psValue);
 		}
 		break;
 
@@ -5421,12 +5425,12 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Headers.clear();
-	AddHeader(L"accept", L"*/*");
+	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
-	AddHeader(L"Date", sDate);
-	AddHeader(L"host", GetCurrentServerIP());
-	AddHeader(L"X-SDS-AUTH-TOKEN", State.sX_SDS_AUTH_TOKEN);
-	AddHeader(L"Content-Type", L"application/xml");
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("Content-Type"), _T("application/xml"));
 	try
 	{
 		// create XML request
@@ -5443,14 +5447,14 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 
 		if (FAILED(pWriter->WriteStartElement(NULL, L"user", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		if (FAILED(pWriter->WriteString(User.sUser)))
+		if (FAILED(pWriter->WriteString(TO_UNICODE(User.sUser))))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteFullEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
 		if (FAILED(pWriter->WriteStartElement(NULL, L"namespace", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		if (FAILED(pWriter->WriteString(User.sNamespace)))
+		if (FAILED(pWriter->WriteString(TO_UNICODE(User.sNamespace))))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteFullEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5458,7 +5462,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 		{
 			if (FAILED(pWriter->WriteStartElement(NULL, L"tags", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString(User.sTags)))
+			if (FAILED(pWriter->WriteString(TO_UNICODE(User.sTags))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5469,11 +5473,14 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(L"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + pBufStream->GetXml());
-		CAnsiString XmlUTF8;
-		XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
-		Error = SendRequest(L"POST", L"/object/users", XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
+		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+#ifdef _UNICODE
+		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+		CAnsiString XmlUTF8(sXmlOut);
+#endif
+		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		Error = SendRequest(_T("POST"), _T("/object/users"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
 		{
@@ -5498,15 +5505,15 @@ struct XML_ECS_GET_KEYS_FOR_USER_CONTEXT
 	CECSConnection::S3_ADMIN_USER_KEY_INFO Keys;
 };
 
-const TCHAR * const XML_ECS_GET_KEYS_FOR_USER_KEY1 = L"//user_secret_key/secret_key_1";
-const TCHAR * const XML_ECS_GET_KEYS_FOR_USER_TS1 = L"//user_secret_key/key_timestamp_1";
-const TCHAR * const XML_ECS_GET_KEYS_FOR_USER_EXPIRY_TS1 = L"//user_secret_key/key_expiry_timestamp_1";
-const TCHAR * const XML_ECS_GET_KEYS_FOR_USER_KEY2 = L"//user_secret_key/secret_key_2";
-const TCHAR * const XML_ECS_GET_KEYS_FOR_USER_TS2 = L"//user_secret_key/key_timestamp_2";
-const TCHAR * const XML_ECS_GET_KEYS_FOR_USER_EXPIRY_TS2 = L"//user_secret_key/key_expiry_timestamp_2";
-const TCHAR * const XML_ECS_GET_KEYS_FOR_USER = L"//user_secret_key/link";
+const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_KEY1 = L"//user_secret_key/secret_key_1";
+const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_TS1 = L"//user_secret_key/key_timestamp_1";
+const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_EXPIRY_TS1 = L"//user_secret_key/key_expiry_timestamp_1";
+const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_KEY2 = L"//user_secret_key/secret_key_2";
+const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_TS2 = L"//user_secret_key/key_timestamp_2";
+const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_EXPIRY_TS2 = L"//user_secret_key/key_expiry_timestamp_2";
+const WCHAR * const XML_ECS_GET_KEYS_FOR_USER = L"//user_secret_key/link";
 
-HRESULT XmlECSGetKeysForUserCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlECSGetKeysForUserCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5516,31 +5523,31 @@ HRESULT XmlECSGetKeysForUserCB(const CString& sXmlPath, void *pContext, IXmlRead
 	case XmlNodeType_Text:
 		if (sXmlPath.CompareNoCase(XML_ECS_GET_KEYS_FOR_USER_KEY1) == 0)
 		{
-			pInfo->Keys.sSecret1 = *psValue;
+			pInfo->Keys.sSecret1 = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_GET_KEYS_FOR_USER_KEY2) == 0)
 		{
-			pInfo->Keys.sSecret2 = *psValue;
+			pInfo->Keys.sSecret2 = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_GET_KEYS_FOR_USER_TS1) == 0)
 		{
-			(void)CECSConnection::ParseISO8601Date(*psValue, pInfo->Keys.ftKeyCreate1);
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Keys.ftKeyCreate1);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_GET_KEYS_FOR_USER_TS2) == 0)
 		{
-			(void)CECSConnection::ParseISO8601Date(*psValue, pInfo->Keys.ftKeyCreate2);
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Keys.ftKeyCreate2);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_GET_KEYS_FOR_USER_EXPIRY_TS1) == 0)
 		{
-			(void)CECSConnection::ParseISO8601Date(*psValue, pInfo->Keys.ftKeyExpiry1);
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Keys.ftKeyExpiry1);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_GET_KEYS_FOR_USER_EXPIRY_TS2) == 0)
 		{
-			(void)CECSConnection::ParseISO8601Date(*psValue, pInfo->Keys.ftKeyExpiry2);
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Keys.ftKeyExpiry2);
 		}
 		else if (sXmlPath.CompareNoCase(XML_ECS_CREATE_USER_LINK) == 0)
 		{
-			pInfo->Keys.sLink = *psValue;
+			pInfo->Keys.sLink = FROM_UNICODE(*psValue);
 		}
 		break;
 
@@ -5564,18 +5571,18 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetKeysForUser(LPCTSTR pszUser,
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Headers.clear();
-	AddHeader(L"accept", L"*/*");
+	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
-	AddHeader(L"Date", sDate);
-	AddHeader(L"host", GetCurrentServerIP());
-	AddHeader(L"X-SDS-AUTH-TOKEN", State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
 	try
 	{
-		CString sMethod(L"/object/user-secret-keys/");
+		CString sMethod(_T("/object/user-secret-keys/"));
 		sMethod += pszUser;
 		if ((pszNamespace != nullptr) && (*pszNamespace != NUL))
-			sMethod += CString(L"/") + pszNamespace;
-		Error = SendRequest(L"GET", UriEncode(sMethod), nullptr, 0, RetData, &Req);
+			sMethod += CString(_T("/")) + pszNamespace;
+		Error = SendRequest(_T("GET"), UriEncode(sMethod), nullptr, 0, RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
 		{
@@ -5609,12 +5616,12 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Headers.clear();
-	AddHeader(L"accept", L"*/*");
+	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
-	AddHeader(L"Date", sDate);
-	AddHeader(L"host", GetCurrentServerIP());
-	AddHeader(L"X-SDS-AUTH-TOKEN", State.sX_SDS_AUTH_TOKEN);
-	AddHeader(L"Content-Type", L"application/xml");
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("Content-Type"), _T("application/xml"));
 	try
 	{
 		// create XML request
@@ -5631,7 +5638,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 
 		if (FAILED(pWriter->WriteStartElement(NULL, L"existing_key_expiry_time_mins", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-//		if (FAILED(pWriter->WriteAttributeString(NULL, L"null", NULL, L"true")))
+//		if (FAILED(pWriter->WriteAttributeString(NULL, _T("null"), NULL, _T("true"))))
 //			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteString(L"2")))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5640,14 +5647,14 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 
 		if (FAILED(pWriter->WriteStartElement(NULL, L"namespace", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		if (FAILED(pWriter->WriteString(User.sNamespace)))
+		if (FAILED(pWriter->WriteString(TO_UNICODE(User.sNamespace))))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteFullEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
 		if (FAILED(pWriter->WriteStartElement(NULL, L"secretkey", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		if (FAILED(pWriter->WriteString(User.sSecret)))
+		if (FAILED(pWriter->WriteString(TO_UNICODE(User.sSecret))))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteFullEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5658,11 +5665,14 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(L"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + pBufStream->GetXml());
-		CAnsiString XmlUTF8;
-		XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
-		Error = SendRequest(L"POST", UriEncode(L"/object/user-secret-keys/" + User.sUser), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
+		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+#ifdef _UNICODE
+		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+		CAnsiString XmlUTF8(sXmlOut);
+#endif
+		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		Error = SendRequest(_T("POST"), UriEncode(_T("/object/user-secret-keys/") + User.sUser), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
 		{
@@ -5694,10 +5704,10 @@ struct XML_S3_ENDPOINT_INFO_CONTEXT
 	CString sLastDataNode;
 };
 
-const TCHAR * const XML_S3_ENDPOINT_INFO_DATA_NODE = L"//ListDataNode/DataNodes";
-const TCHAR * const XML_S3_ENDPOINT_INFO_VERSION = L"//ListDataNode/VersionInfo";
+const WCHAR * const XML_S3_ENDPOINT_INFO_DATA_NODE = L"//ListDataNode/DataNodes";
+const WCHAR * const XML_S3_ENDPOINT_INFO_VERSION = L"//ListDataNode/VersionInfo";
 
-HRESULT XmlS3EndpointInfoCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3EndpointInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5711,12 +5721,12 @@ HRESULT XmlS3EndpointInfoCB(const CString& sXmlPath, void *pContext, IXmlReader 
 		if (sXmlPath.CompareNoCase(XML_S3_ENDPOINT_INFO_DATA_NODE) == 0)
 		{
 			if ((psValue != NULL) && !psValue->IsEmpty())
-				pInfo->sLastDataNode = *psValue;
+				pInfo->sLastDataNode = FROM_UNICODE(*psValue);
 		}
 		else if (sXmlPath.CompareNoCase(XML_S3_ENDPOINT_INFO_VERSION) == 0)
 		{
 			if ((psValue != NULL) && !psValue->IsEmpty())
-				pInfo->pEndpointInfo->sVersion = *psValue;
+				pInfo->pEndpointInfo->sVersion = FROM_UNICODE(*psValue);
 		}
 		break;
 
@@ -5746,7 +5756,7 @@ CECSConnection::S3_ERROR CECSConnection::DataNodeEndpointS3(S3_ENDPOINT_INFO& En
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	Error = SendRequest(L"GET", L"/?endpoint", NULL, 0, RetData, &Req);
+	Error = SendRequest(_T("GET"), _T("/?endpoint"), NULL, 0, RetData, &Req);
 	if (Error.IfError())
 		return Error;
 	if (!RetData.IsEmpty())
@@ -5763,9 +5773,9 @@ CECSConnection::S3_ERROR CECSConnection::DataNodeEndpointS3(S3_ENDPOINT_INFO& En
 		// maybe there is a man-in-middle attack?
 		Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 		Error.S3Error = S3_ERROR_MalformedXML;
-		Error.sS3Code = L"MalformedXML";
-		Error.sS3RequestID = L"GET";
-		Error.sS3Resource = L"/";
+		Error.sS3Code = _T("MalformedXML");
+		Error.sS3RequestID = _T("GET");
+		Error.sS3Resource = _T("/");
 	}
 	return Error;
 }
@@ -5776,20 +5786,20 @@ struct XML_S3_LIFECYCLE_INFO_CONTEXT
 	CECSConnection::S3_LIFECYCLE_RULE LastRule;
 };
 
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE = L"//LifecycleConfiguration/Rule";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ID = L"//LifecycleConfiguration/Rule/ID";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_PREFIX = L"//LifecycleConfiguration/Rule/Prefix";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_STATUS = L"//LifecycleConfiguration/Rule/Status";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION = L"//LifecycleConfiguration/Rule/Expiration";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_DAYS = L"//LifecycleConfiguration/Rule/Expiration/Days";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_DATE = L"//LifecycleConfiguration/Rule/Expiration/Date";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_NONCURRENT_EXPIRATION = L"//LifecycleConfiguration/Rule/NoncurrentVersionExpiration";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_NONCURRENT_EXPIRATION_DAYS = L"//LifecycleConfiguration/Rule/NoncurrentVersionExpiration/NoncurrentDays";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ABORTUPLOAD = L"//LifecycleConfiguration/Rule/AbortIncompleteMultipartUpload";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ABORTUPLOAD_DAYS = L"//LifecycleConfiguration/Rule/AbortIncompleteMultipartUpload/DaysAfterInitiation";
-const TCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_EXPIRE_DELETE_MARKER = L"//LifecycleConfiguration/Rule/Expiration/ExpiredObjectDeleteMarker";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE = L"//LifecycleConfiguration/Rule";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ID = L"//LifecycleConfiguration/Rule/ID";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_PREFIX = L"//LifecycleConfiguration/Rule/Prefix";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_STATUS = L"//LifecycleConfiguration/Rule/Status";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION = L"//LifecycleConfiguration/Rule/Expiration";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_DAYS = L"//LifecycleConfiguration/Rule/Expiration/Days";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_DATE = L"//LifecycleConfiguration/Rule/Expiration/Date";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_NONCURRENT_EXPIRATION = L"//LifecycleConfiguration/Rule/NoncurrentVersionExpiration";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_NONCURRENT_EXPIRATION_DAYS = L"//LifecycleConfiguration/Rule/NoncurrentVersionExpiration/NoncurrentDays";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ABORTUPLOAD = L"//LifecycleConfiguration/Rule/AbortIncompleteMultipartUpload";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ABORTUPLOAD_DAYS = L"//LifecycleConfiguration/Rule/AbortIncompleteMultipartUpload/DaysAfterInitiation";
+const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_EXPIRE_DELETE_MARKER = L"//LifecycleConfiguration/Rule/Expiration/ExpiredObjectDeleteMarker";
 
-HRESULT XmlS3LifecycleInfoCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5803,24 +5813,24 @@ HRESULT XmlS3LifecycleInfoCB(const CString& sXmlPath, void *pContext, IXmlReader
 		if ((psValue != NULL) && !psValue->IsEmpty())
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_ID) == 0)
-				pInfo->LastRule.sRuleID = *psValue;
+				pInfo->LastRule.sRuleID = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_PREFIX) == 0)
-				pInfo->LastRule.sPath = *psValue;
+				pInfo->LastRule.sPath = FROM_UNICODE(*psValue);
 			else if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_STATUS) == 0)
 				pInfo->LastRule.bEnabled = psValue->CompareNoCase(L"enabled") == 0;
 			else if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_DAYS) == 0)
 			{
-				pInfo->LastRule.dwDays = _wtoi(*psValue);
+				pInfo->LastRule.dwDays = _ttoi(FROM_UNICODE(*psValue));
 				ZeroFT(pInfo->LastRule.ftDate);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_DATE) == 0)
 			{
 				pInfo->LastRule.dwDays = 0;
-				(void)CECSConnection::ParseISO8601Date(*psValue, pInfo->LastRule.ftDate);
+				(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->LastRule.ftDate);
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_NONCURRENT_EXPIRATION_DAYS) == 0)
 			{
-				pInfo->LastRule.dwNoncurrentDays = _wtoi(*psValue);
+				pInfo->LastRule.dwNoncurrentDays = _ttoi(FROM_UNICODE(*psValue));
 			}
 		}
 		break;
@@ -5855,8 +5865,8 @@ CECSConnection::S3_ERROR CECSConnection::S3GetLifecycle(LPCTSTR pszBucket, S3_LI
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	CString sResource(CString(L"/") + pszBucket + L"?lifecycle");
-	Error = SendRequest(L"GET", sResource, NULL, 0, RetData, &Req);
+	CString sResource(CString(_T("/")) + pszBucket + _T("?lifecycle"));
+	Error = SendRequest(_T("GET"), sResource, NULL, 0, RetData, &Req);
 	if (Error.IfError())
 		return Error;
 	if (!RetData.IsEmpty())
@@ -5873,9 +5883,9 @@ CECSConnection::S3_ERROR CECSConnection::S3GetLifecycle(LPCTSTR pszBucket, S3_LI
 		// maybe there is a man-in-middle attack?
 		Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 		Error.S3Error = S3_ERROR_MalformedXML;
-		Error.sS3Code = L"MalformedXML";
-		Error.sS3RequestID = L"GET";
-		Error.sS3Resource = L"/";
+		Error.sS3Code = _T("MalformedXML");
+		Error.sS3RequestID = _T("GET");
+		Error.sS3Resource = _T("/");
 	}
 	return Error;
 }
@@ -5886,8 +5896,8 @@ CECSConnection::S3_ERROR CECSConnection::S3DeleteLifecycle(LPCTSTR pszBucket)
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	CString sResource(CString(L"/") + pszBucket + L"?lifecycle");
-	Error = SendRequest(L"DELETE", sResource, NULL, 0, RetData, &Req);
+	CString sResource(CString(_T("/")) + pszBucket + _T("?lifecycle"));
+	Error = SendRequest(_T("DELETE"), sResource, NULL, 0, RetData, &Req);
 	if (Error.IfError())
 		return Error;
 	return Error;
@@ -5920,7 +5930,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 
 			if (FAILED(pWriter->WriteStartElement(NULL, L"ID", NULL)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteString(it->sRuleID)))
+			if (FAILED(pWriter->WriteString(TO_UNICODE(it->sRuleID))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5930,7 +5940,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 			CString sPath(it->sPath);
 			if (!sPath.IsEmpty() && (sPath[sPath.GetLength() - 1] != L'/'))
 				sPath += L'/';
-			if (FAILED(pWriter->WriteString(sPath)))							// path, if not empty, should always terminate with /
+			if (FAILED(pWriter->WriteString(TO_UNICODE(sPath))))							// path, if not empty, should always terminate with /
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5951,7 +5961,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 					// specify a date
 					if (FAILED(pWriter->WriteStartElement(NULL, L"Date", NULL)))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-					if (FAILED(pWriter->WriteString(CECSConnection::FormatISO8601Date(it->ftDate, false))))
+					if (FAILED(pWriter->WriteString(TO_UNICODE(CECSConnection::FormatISO8601Date(it->ftDate, false)))))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 					if (FAILED(pWriter->WriteFullEndElement()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5963,7 +5973,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 					if (FAILED(pWriter->WriteStartElement(NULL, L"Days", NULL)))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-					if (FAILED(pWriter->WriteString(FmtNum(it->dwDays))))
+					if (FAILED(pWriter->WriteString(TO_UNICODE(FmtNum(it->dwDays)))))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 					if (FAILED(pWriter->WriteFullEndElement()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5980,7 +5990,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 				// specify # of days
 				if (FAILED(pWriter->WriteStartElement(NULL, L"NoncurrentDays", NULL)))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-				if (FAILED(pWriter->WriteString(FmtNum(it->dwNoncurrentDays))))
+				if (FAILED(pWriter->WriteString(TO_UNICODE(FmtNum(it->dwNoncurrentDays)))))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 				if (FAILED(pWriter->WriteFullEndElement()))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -6000,17 +6010,20 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		CString sXmlOut(pBufStream->GetXml());
-		CAnsiString XmlUTF8;
-		XmlUTF8.Set(sXmlOut, -1, CP_UTF8);
-		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
+#ifdef _UNICODE
+		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+#else
+		CAnsiString XmlUTF8(sXmlOut);
+#endif
+		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
 		CCngAES_GCM HashObj;
 		HashObj.CreateHash(BCRYPT_MD5_ALGORITHM);
 		HashObj.AddHashData(XmlUTF8);
 		CBuffer MD5Hash;
 		HashObj.GetHashData(MD5Hash);
-		AddHeader(L"Content-MD5", MD5Hash.EncodeBase64());
-		CString sResource(CString(L"/") + pszBucket + L"/?lifecycle");
-		Error = SendRequest(L"PUT", sResource, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
+		AddHeader(_T("Content-MD5"), MD5Hash.EncodeBase64());
+		CString sResource(CString(_T("/")) + pszBucket + _T("/?lifecycle"));
+		Error = SendRequest(_T("PUT"), sResource, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 		if (Error.IfError())
 			return Error;
 	}

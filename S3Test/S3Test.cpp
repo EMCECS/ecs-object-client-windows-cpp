@@ -21,32 +21,34 @@ CWinApp theApp;
 
 
 const TCHAR * const USAGE =
-L"Usage:\n\n"
-L"   /http                               Don't use SSL\n"
-L"   /https                              Use SSL (default)\n"
-L"   /endpoint <IP or hostname>          S3/ECS Server\n"
-L"   /user <user ID>                     ECS object user\n"
-L"   /secret <secret>                    ECS object secret\n"
-L"   /list <path, starting with bucket>  Object listing\n"
-L"   /create <localfile> <ECSpath>       Create ECS object and initialize with file\n"
-L"   /delete <ECSpath>                   Delete ECS object\n"
-L"   /read <localfile> <ECSpath>         Read ECS object into file\n"
-L"   /readmeta <ECSpath>                 Read all metadata from object\n";
+_T("Usage:\n\n")
+_T("   /http                               Don't use SSL\n")
+_T("   /https                              Use SSL (default)\n")
+_T("   /endpoint <IP or hostname>          S3/ECS Server\n")
+_T("   /port <port number>                 Rest API Port\n")
+_T("   /user <user ID>                     ECS object user\n")
+_T("   /secret <secret>                    ECS object secret\n")
+_T("   /list <path, starting with bucket>  Object listing\n")
+_T("   /create <localfile> <ECSpath>       Create ECS object and initialize with file\n")
+_T("   /delete <ECSpath>                   Delete ECS object\n")
+_T("   /read <localfile> <ECSpath>         Read ECS object into file\n")
+_T("   /readmeta <ECSpath>                 Read all metadata from object\n");
 
 
-const TCHAR * const CMD_OPTION_ENDPOINT = L"/endpoint";
-const TCHAR * const CMD_OPTION_USER = L"/user";
-const TCHAR * const CMD_OPTION_SECRET = L"/secret";
-const TCHAR * const CMD_OPTION_HTTPS = L"/https";
-const TCHAR * const CMD_OPTION_HTTP = L"/http";
-const TCHAR * const CMD_OPTION_LIST = L"/list";
-const TCHAR * const CMD_OPTION_CREATE = L"/create";
-const TCHAR * const CMD_OPTION_DELETE = L"/delete";
-const TCHAR * const CMD_OPTION_READ = L"/read";
-const TCHAR * const CMD_OPTION_READMETA = L"/readmeta";
-const TCHAR * const CMD_OPTION_HELP1 = L"--help";
-const TCHAR * const CMD_OPTION_HELP2 = L"-h";
-const TCHAR * const CMD_OPTION_HELP3 = L"/?";
+const TCHAR * const CMD_OPTION_ENDPOINT = _T("/endpoint");
+const TCHAR * const CMD_OPTION_PORT = _T("/port");
+const TCHAR * const CMD_OPTION_USER = _T("/user");
+const TCHAR * const CMD_OPTION_SECRET = _T("/secret");
+const TCHAR * const CMD_OPTION_HTTPS = _T("/https");
+const TCHAR * const CMD_OPTION_HTTP = _T("/http");
+const TCHAR * const CMD_OPTION_LIST = _T("/list");
+const TCHAR * const CMD_OPTION_CREATE = _T("/create");
+const TCHAR * const CMD_OPTION_DELETE = _T("/delete");
+const TCHAR * const CMD_OPTION_READ = _T("/read");
+const TCHAR * const CMD_OPTION_READMETA = _T("/readmeta");
+const TCHAR * const CMD_OPTION_HELP1 = _T("--help");
+const TCHAR * const CMD_OPTION_HELP2 = _T("-h");
+const TCHAR * const CMD_OPTION_HELP3 = _T("/?");
 
 WSADATA WsaData;
 
@@ -61,7 +63,7 @@ CString sReadECSPath;
 CString sReadMetaECSPath;
 CString sDeleteECSPath;
 bool bHttps = true;
-
+INTERNET_PORT wPort = 9021;
 
 using namespace std;
 
@@ -92,6 +94,17 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 				return false;
 			}
 			sUser = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_PORT) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end()) 
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+
+			wPort = (INTERNET_PORT)_tcstoul(*itParam, NULL, 10);
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_SECRET) == 0)
 		{
@@ -178,7 +191,7 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 		else if (itParam->CompareNoCase(CMD_OPTION_HELP1) == 0 ||
 			itParam->CompareNoCase(CMD_OPTION_HELP2) == 0 ||
 			itParam->CompareNoCase(CMD_OPTION_HELP3) == 0 ||
-			itParam->CompareNoCase(L"/") == 0)
+			itParam->CompareNoCase(_T("/")) == 0)
 		{
 			sOutMessage = USAGE;
 			return false;
@@ -205,7 +218,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
         // initialize MFC and print and error on failure
         if (!AfxWinInit(hModule, nullptr, ::GetCommandLine(), 0))
         {
-            wprintf(L"Fatal Error: MFC initialization failed\n");
+            _tprintf(_T("Fatal Error: MFC initialization failed\n"));
             nRetCode = 1;
         }
         else
@@ -222,11 +235,14 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			if (!ParseArguments(CmdArgs, sOutMessage))
 				_tprintf(_T("%s\n"), (LPCTSTR)sOutMessage);
 			nRetCode = DoTest(sOutMessage);
+
+			_tprintf(_T("Press ENTER to continue..."));
+			cin.get();
 		}
     }
     else
     {
-        wprintf(L"Fatal Error: GetModuleHandle failed\n");
+        _tprintf(_T("Fatal Error: GetModuleHandle failed\n"));
         nRetCode = 1;
     }
 
@@ -239,17 +255,17 @@ static int DoTest(CString& sOutMessage)
 	CECSConnection::S3_ERROR Error;
 	if (sEndPoint.IsEmpty())
 	{
-		sOutMessage = L"Endpoint not defined";
+		sOutMessage = _T("Endpoint not defined");
 		return 1;
 	}
 	if (sUser.IsEmpty())
 	{
-		sOutMessage = L"User not defined";
+		sOutMessage = _T("User not defined");
 		return 1;
 	}
 	if (sSecret.IsEmpty())
 	{
-		sOutMessage = L"Secret not defined";
+		sOutMessage = _T("Secret not defined");
 		return 1;
 	}
 	deque<CString> IPList;
@@ -258,37 +274,38 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetS3KeyID(sUser);
 	Conn.SetSecret(sSecret);
 	Conn.SetSSL(bHttps);
-	Conn.SetHost(L"ECS Test Drive");
+	Conn.SetPort(wPort);
+	Conn.SetHost(_T("ECS Test Drive"));
 
 	// get the list of buckets
 	CECSConnection::S3_SERVICE_INFO ServiceInfo;
 	Error = Conn.S3ServiceInformation(ServiceInfo);
 	if (Error.IfError())
 	{
-		_tprintf(L"S3ServiceInformation error: %s\n", (LPCTSTR)Error.Format());
+		_tprintf(_T("S3ServiceInformation error: %s\n"), (LPCTSTR)Error.Format());
 		return 1;
 	}
 	// dump service info
-	_tprintf(L"OwnerID: %s, Name: %s\n", (LPCTSTR)ServiceInfo.sOwnerID, (LPCTSTR)ServiceInfo.sOwnerDisplayName);
+	_tprintf(_T("OwnerID: %s, Name: %s\n"), (LPCTSTR)ServiceInfo.sOwnerID, (LPCTSTR)ServiceInfo.sOwnerDisplayName);
 	for (list<CECSConnection::S3_BUCKET_INFO>::const_iterator itList = ServiceInfo.BucketList.begin();
 		itList != ServiceInfo.BucketList.end(); ++itList)
 	{
-		_tprintf(L"  Bucket: %s: %s\n", (LPCTSTR)itList->sName, (LPCTSTR)DateTimeStr(&itList->ftCreationDate, true, true, true, false, true));
+		_tprintf(_T("  Bucket: %s: %s\n"), (LPCTSTR)itList->sName, (LPCTSTR)DateTimeStr(&itList->ftCreationDate, true, true, true, false, true));
 	}
 	// get the endpoint list
 	CECSConnection::S3_ENDPOINT_INFO Endpoint;
 	Error = Conn.DataNodeEndpointS3(Endpoint);
 	if (Error.IfError())
 	{
-		_tprintf(L"DataNodeEndpointS3 error: %s\n", (LPCTSTR)Error.Format());
+		_tprintf(_T("DataNodeEndpointS3 error: %s\n"), (LPCTSTR)Error.Format());
 		return 1;
 	}
 	// dump endpoint info
-	_tprintf(L"Version: %s\n", (LPCTSTR)Endpoint.sVersion);
+	_tprintf(_T("Version: %s\n"), (LPCTSTR)Endpoint.sVersion);
 	for (list<CString>::const_iterator itList = Endpoint.EndpointList.begin();
 		itList != Endpoint.EndpointList.end(); ++itList)
 	{
-		_tprintf(L"  Endpoint: %s\n", (LPCTSTR)*itList);
+		_tprintf(_T("  Endpoint: %s\n"), (LPCTSTR)*itList);
 	}
 
 	if (!sCreateECSPath.IsEmpty() && !sCreateLocalPath.IsEmpty())
@@ -296,13 +313,13 @@ static int DoTest(CString& sOutMessage)
 		CHandle hFile(CreateFile(sCreateLocalPath, FILE_GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
 		if (hFile.m_h == INVALID_HANDLE_VALUE)
 		{
-			_tprintf(L"Open error for %s: %s\n", (LPCTSTR)sCreateLocalPath, (LPCTSTR)GetNTLastErrorText());
+			_tprintf(_T("Open error for %s: %s\n"), (LPCTSTR)sCreateLocalPath, (LPCTSTR)GetNTLastErrorText());
 			return 1;
 		}
 		LARGE_INTEGER FileSize;
 		if (!GetFileSizeEx(hFile, &FileSize))
 		{
-			_tprintf(L"Get size error for %s: %s\n", (LPCTSTR)sCreateLocalPath, (LPCTSTR)GetNTLastErrorText());
+			_tprintf(_T("Get size error for %s: %s\n"), (LPCTSTR)sCreateLocalPath, (LPCTSTR)GetNTLastErrorText());
 			return 1;
 		}
 		CBuffer Buf;
@@ -310,13 +327,13 @@ static int DoTest(CString& sOutMessage)
 		Buf.SetBufSize((DWORD)FileSize.QuadPart);
 		if (!ReadFile(hFile, Buf.GetData(), Buf.GetBufSize(), &dwNumRead, nullptr))
 		{
-			_tprintf(L"read error for %s: %s\n", (LPCTSTR)sCreateLocalPath, (LPCTSTR)GetNTLastErrorText());
+			_tprintf(_T("read error for %s: %s\n"), (LPCTSTR)sCreateLocalPath, (LPCTSTR)GetNTLastErrorText());
 			return 1;
 		}
 		CECSConnection::S3_ERROR Error = Conn.Create(sCreateECSPath, Buf.GetData(), Buf.GetBufSize());
 		if (Error.IfError())
 		{
-			_tprintf(L"Create error: %s\n", (LPCTSTR)Error.Format());
+			_tprintf(_T("Create error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
 	}
@@ -325,7 +342,7 @@ static int DoTest(CString& sOutMessage)
 		CECSConnection::S3_ERROR Error = S3Read(Conn, sReadLocalPath, sReadECSPath);
 		if (Error.IfError())
 		{
-			_tprintf(L"Error from S3Read: %s\n", (LPCTSTR)Error.Format());
+			_tprintf(_T("Error from S3Read: %s\n"), (LPCTSTR)Error.Format());
 		}
 	}
 	if (!sDeleteECSPath.IsEmpty())
@@ -333,7 +350,7 @@ static int DoTest(CString& sOutMessage)
 		CECSConnection::S3_ERROR Error = Conn.DeleteS3(sDeleteECSPath);
 		if (Error.IfError())
 		{
-			_tprintf(L"Delete error: %s\n", (LPCTSTR)Error.Format());
+			_tprintf(_T("Delete error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
 	}
@@ -343,12 +360,12 @@ static int DoTest(CString& sOutMessage)
 		CECSConnection::S3_ERROR Error = Conn.DirListing(sDirPath, DirList);
 		if (Error.IfError())
 		{
-			_tprintf(L"listing error: %s\n", (LPCTSTR)Error.Format());
+			_tprintf(_T("listing error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
 		for (CECSConnection::DirEntryList_t::const_iterator itList = DirList.begin(); itList != DirList.end(); ++itList)
 		{
-			_tprintf(L"%-28s %-24s %I64d\n", (LPCTSTR)(itList->sName + (itList->bDir ? L"/ " : L"")),
+			_tprintf(_T("%-28s %-24s %I64d\n"), (LPCTSTR)(itList->sName + (itList->bDir ? _T("/ ") : _T(""))),
 				(LPCTSTR)DateTimeStr(&itList->Properties.ftLastMod, true, true, true, false, true),
 				itList->Properties.llSize);
 		}
@@ -359,13 +376,13 @@ static int DoTest(CString& sOutMessage)
 		CECSConnection::S3_ERROR Error = Conn.ReadMetadataBulk(sReadMetaECSPath, MDList, nullptr);
 		if (!Error.IfError())
 		{
-			_tprintf(L"Metadata for %s:\n", (LPCTSTR)sReadMetaECSPath);
+			_tprintf(_T("Metadata for %s:\n"), (LPCTSTR)sReadMetaECSPath);
 			for (list<CECSConnection::S3_METADATA_ENTRY>::const_iterator it = MDList.begin(); it != MDList.end(); ++it)
-				_tprintf(L"  %s : %s\n", (LPCTSTR)it->sTag, (LPCTSTR)it->sData);
+				_tprintf(_T("  %s : %s\n"), (LPCTSTR)it->sTag, (LPCTSTR)it->sData);
 		}
 		else
 		{
-			_tprintf(L"read metadata error: %s\n", (LPCTSTR)Error.Format());
+			_tprintf(_T("read metadata error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
 	}

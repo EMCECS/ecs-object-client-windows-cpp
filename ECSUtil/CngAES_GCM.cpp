@@ -3,7 +3,7 @@
 #include "CngAES_GCM.h"
 #pragma comment(lib, "Bcrypt.lib")
 
-map<CString, shared_ptr<CCngAES_GCM::ALG_HANDLE>> CCngAES_GCM::ProviderCache;
+map<CStringW, shared_ptr<CCngAES_GCM::ALG_HANDLE>> CCngAES_GCM::ProviderCache;
 CSimpleRWLock CCngAES_GCM::rwlProviderCache;									// lock used for provider cache
 
 CCngAES_GCM::CCngAES_GCM()
@@ -77,7 +77,7 @@ void CCngAES_GCM::CreateHash(LPCWSTR HashType, PUCHAR pbSecret, ULONG cbSecret)
 		throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 }
 
-CString CCngAES_GCM::GetHashAlgorithm(void)
+CStringW CCngAES_GCM::GetHashAlgorithm(void)
 {
 	return this->sHashAlgorithm;
 }
@@ -243,7 +243,7 @@ void CCngAES_GCM::SetKey( const BYTE* key, int ksize )
 
 	ASSERT( ksize == KEYSIZE_128 || ksize == KEYSIZE_192 || ksize == KEYSIZE_256 );
 	if( !(ksize == KEYSIZE_128 || ksize == KEYSIZE_192 || ksize == KEYSIZE_256) )
-		throw CErrorInfo(_T(__FILE__), __LINE__, NTE_BAD_LEN, L"SetKey: Key size is not valid");
+		throw CErrorInfo(_T(__FILE__), __LINE__, NTE_BAD_LEN, _T("SetKey: Key size is not valid"));
 
 	// Generate the key from supplied input key bytes.
 	if (!NT_SUCCESS(Status = BCryptGenerateSymmetricKey(hAesAlg, &hKey, KeyObject.GetData(), KeyObject.GetBufSize(), (PBYTE)key, ksize, 0)))
@@ -260,19 +260,19 @@ void CCngAES_GCM::SetIv(const BYTE* iv, int vsize )
 
     ASSERT( NULL != hKey );
     if( NULL == hKey )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
-	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_NO_KEY, L"SetIv: key is not valid");
+	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_NO_KEY, _T("SetIv: key is not valid"));
 
     ASSERT( NULL != iv );
     if( NULL == iv )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
-	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_NO_KEY, L"SetIv: IV buffer is NULL");
+	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_NO_KEY, _T("SetIv: IV buffer is NULL"));
 
     ASSERT( IV_SIZE == vsize );
     if( IV_SIZE != vsize )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
-	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_BAD_LEN, L"SetIv: IV block size is not valid");
+	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_BAD_LEN, _T("SetIv: IV block size is not valid"));
 
 	ASSERT( IVBuf.GetBufSize() >= (IV_SIZE + sizeof(DWORD)));
     if (IVBuf.GetBufSize() < (IV_SIZE + sizeof(DWORD)))
-	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_BAD_LEN, L"SetIv: IV block size is not valid");
+	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_BAD_LEN, _T("SetIv: IV block size is not valid"));
 
 	memcpy(IVBuf.GetData(), iv, vsize);
 }
@@ -367,12 +367,12 @@ void CCngAES_GCM::Encrypt( const BYTE* plaintext, /*In*/DWORD psize, /*InOut*/BY
 	// sanity check
 	ASSERT( plaintext != NULL || ( plaintext == NULL && 0 == psize ) );
 	if( !(plaintext != NULL || ( plaintext == NULL && 0 == psize )) )			//lint !e774 (Info -- Boolean within 'left side of && within right side of || within argument of ! within if' always evaluates to True
-		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, L"Encrypt(2): Plain text buffer is not valid");
+		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, _T("Encrypt(2): Plain text buffer is not valid"));
 
 	// sanity check
 	ASSERT( NULL != ciphertext );
 	if( NULL == ciphertext )				//lint !e774 (Info -- Boolean within 'if' always evaluates to False
-		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, L"Encrypt(2): Cipher text buffer is not valid");
+		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, _T("Encrypt(2): Cipher text buffer is not valid"));
 
 	if (!bUseECB)
 	{
@@ -421,7 +421,7 @@ void CCngAES_GCM::Decrypt( const BYTE* ciphertext, /*In*/DWORD csize, /*InOut*/B
     ASSERT( NULL != ciphertext );
     ASSERT( NULL != plaintext );
     if( NULL == ciphertext || NULL == plaintext )		//lint !e845 !e774
-	    throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, L"Decrypt(2): Buffer is NULL");
+	    throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, _T("Decrypt(2): Buffer is NULL"));
 	if (!bUseECB)
 	{
 		AuthInfoDecrypt.pbNonce = bUseOldAesGcm ? IVBufCopy.GetData() : IVBuf.GetData();
@@ -495,16 +495,16 @@ bool CCngAES_GCM::IfFIPSMode(void)
 	return true;
 }
 
-NTSTATUS CCngAES_GCM::OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCTSTR pszAlgName, bool bHMAC)
+NTSTATUS CCngAES_GCM::OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCWSTR pszAlgName, bool bHMAC)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
-	CString sAlgName(pszAlgName);
+	CStringW sAlgName(pszAlgName);
 	if (bHMAC)
-		sAlgName += L"!";
+		sAlgName += _T("!");
 
 	{
 		CSimpleRWLockAcquire lock(&rwlProviderCache);			// read lock
-		map<CString, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
+		map<CStringW, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
 		if (itMap != ProviderCache.end())
 		{
 			*phAlg = itMap->second->hAlg;
@@ -514,7 +514,7 @@ NTSTATUS CCngAES_GCM::OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCT
 	{
 		CSimpleRWLockAcquire lock(&rwlProviderCache, true);			// write lock
 		// gotta try the search again because we dropped the lock for an instant and another thread may have created one
-		map<CString, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
+		map<CStringW, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
 		if (itMap != ProviderCache.end())
 		{
 			*phAlg = itMap->second->hAlg;
@@ -525,7 +525,7 @@ NTSTATUS CCngAES_GCM::OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCT
 			return Status;
 		// now cache this result
 		shared_ptr<ALG_HANDLE> Alg = make_shared<ALG_HANDLE>(*phAlg);
-		pair<map<CString, shared_ptr<ALG_HANDLE>>::iterator, bool> Ret = ProviderCache.insert(make_pair(sAlgName, Alg));
+		pair<map<CStringW, shared_ptr<ALG_HANDLE>>::iterator, bool> Ret = ProviderCache.insert(make_pair(sAlgName, Alg));
 		ASSERT(Ret.second);				// Ret.second == true means the insertion was made. there was no conflict
 	}
 	return STATUS_SUCCESS;
@@ -534,7 +534,7 @@ NTSTATUS CCngAES_GCM::OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCT
 void CCngAES_GCM::CloseCachedAlgorithmProvider(BCRYPT_ALG_HANDLE hAlg)
 {
 	CSimpleRWLockAcquire lock(&rwlProviderCache, true);			// write lock
-	for (map<CString, shared_ptr<ALG_HANDLE>>::iterator itMap = ProviderCache.begin(); itMap != ProviderCache.end(); )
+	for (map<CStringW, shared_ptr<ALG_HANDLE>>::iterator itMap = ProviderCache.begin(); itMap != ProviderCache.end(); )
 	{
 		if (itMap->second->hAlg == hAlg)
 			itMap = ProviderCache.erase(itMap);

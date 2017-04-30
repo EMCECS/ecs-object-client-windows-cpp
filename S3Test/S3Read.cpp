@@ -61,7 +61,7 @@ CECSConnection::S3_ERROR S3Read(
 	CHandle hFile(CreateFile(pszFilePath, FILE_GENERIC_READ | FILE_GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
 	if (hFile.m_h == INVALID_HANDLE_VALUE)
 	{
-		_tprintf(L"Open error for %s: %s\n", pszFilePath, (LPCTSTR)GetNTLastErrorText());
+		_tprintf(_T("Open error for %s: %s\n"), pszFilePath, (LPCTSTR)GetNTLastErrorText());
 		return 1;
 	}
 	
@@ -105,7 +105,7 @@ CECSConnection::S3_ERROR S3Read(
 				{
 					if (!WriteFile(hFile, StreamData.Data.GetData(), StreamData.Data.GetBufSize(), &dwNumWritten, nullptr))
 						return GetLastError();
-					_tprintf(L"Offset: %-20I64d\r", StreamData.ullOffset + StreamData.Data.GetBufSize());
+					_tprintf(_T("Offset: %-20I64d\r"), StreamData.ullOffset + StreamData.Data.GetBufSize());
 				}
 				if (StreamData.bLast)
 				{
@@ -115,7 +115,7 @@ CECSConnection::S3_ERROR S3Read(
 			}
 		}
 	}
-	_tprintf(L"\n");		// leave offset line on the screen
+	_tprintf(_T("\n"));		// leave offset line on the screen
 	// now wait for the worker thread to terminate to get its error code
 	ReadThread.KillThreadWait();
 	return ReadThread.Error;

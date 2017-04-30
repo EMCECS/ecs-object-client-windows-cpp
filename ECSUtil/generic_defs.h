@@ -72,7 +72,7 @@ inline FILETIME ULargetoFT(const ULARGE_INTEGER& ulFileTime)
 }
 
 // add an int to a FILETIME
-inline FILETIME operator +(const FILETIME& ftTime, LONGLONG llAddend)
+inline FILETIME operator +(const FILETIME& ftTime, const LONGLONG& llAddend)
 {
 	LARGE_INTEGER liTime = FTtoLarge(ftTime);
 	liTime.QuadPart += llAddend;
@@ -80,7 +80,7 @@ inline FILETIME operator +(const FILETIME& ftTime, LONGLONG llAddend)
 }
 
 // subtract an int to a FILETIME
-inline FILETIME operator -(const FILETIME& ftTime, LONGLONG llSubtrahend)
+inline FILETIME operator -(const FILETIME& ftTime, const LONGLONG& llSubtrahend)
 {
 	LARGE_INTEGER liTime = FTtoLarge(ftTime);
 	liTime.QuadPart -= llSubtrahend;

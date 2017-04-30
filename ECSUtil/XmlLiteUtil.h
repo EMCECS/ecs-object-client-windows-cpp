@@ -16,11 +16,11 @@ using namespace std;
 
 struct XML_LITE_ATTRIB
 {
-	CString sAttrName;
-	CString sValue;
+	CStringW sAttrName;
+	CStringW sValue;
 };
 
-typedef HRESULT (*XMLLITE_READER_CB)(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue);
+typedef HRESULT (*XMLLITE_READER_CB)(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue);
 
 class ECSUTIL_EXT_CLASS CBufferStream : public IStream
 {
@@ -226,15 +226,13 @@ public:
 
 	CString GetXml()
 	{
-		CWideString WideBuf;
-		WideBuf.Set((LPCSTR)_pBuf->GetData(), -1, CP_UTF8);
-		return (LPCTSTR)WideBuf;
+		return FROM_ANSI((LPCSTR)_pBuf->GetData());
 	}
 
 	CString Format()
 	{
 		CString sMsg;
-		sMsg.Format(L"CBufferStream: Position: %I64u, Ref: %d, Readonly: %d", _liPosition.QuadPart, _refcount, (int)bReadOnly);
+		sMsg.Format(_T("CBufferStream: Position: %I64u, Ref: %d, Readonly: %d"), _liPosition.QuadPart, _refcount, (int)bReadOnly);
 		return sMsg;
 	}
 
@@ -284,9 +282,9 @@ class FileStream : public IStream
 	}
 
 public:
-	static HRESULT OpenFile(LPCWSTR pName, IStream ** ppStream, bool fWrite)
+	static HRESULT OpenFile(LPCTSTR pName, IStream ** ppStream, bool fWrite)
 	{
-		HANDLE hFile = ::CreateFileW(pName, fWrite ? GENERIC_WRITE : GENERIC_READ, FILE_SHARE_READ,
+		HANDLE hFile = ::CreateFile(pName, fWrite ? GENERIC_WRITE : GENERIC_READ, FILE_SHARE_READ,
 			NULL, fWrite ? CREATE_ALWAYS : OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
 		if (hFile == INVALID_HANDLE_VALUE)

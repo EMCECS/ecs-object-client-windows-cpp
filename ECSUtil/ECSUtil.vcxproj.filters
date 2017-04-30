@@ -92,9 +92,6 @@
     <ClInclude Include="CSharedQueue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="CQueueEvent.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="SimpleWorkerThread.h">
       <Filter>Header Files</Filter>
     </ClInclude>

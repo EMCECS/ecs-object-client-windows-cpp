@@ -53,7 +53,7 @@ public:
 	// BCRYPT_SHA1_ALGORITHM, BCRYPT_SHA256_ALGORITHM, etc.
 	void CreateHash(LPCWSTR HashType, PUCHAR pbSecret = NULL, ULONG cbSecret = 0);
 	void CreateHash(LPCWSTR HashType, const CBuffer& KeyBuf);
-	CString GetHashAlgorithm(void);
+	CStringW GetHashAlgorithm(void);
 
 	// add data to the hash
 	// this can be called any number of times to add more data to the hash
@@ -98,7 +98,7 @@ public:
 private:
 	void CleanUpHash();
 	void InitAES();
-	NTSTATUS OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCTSTR pszAlgName, bool bHMAC);
+	NTSTATUS OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCWSTR pszAlgName, bool bHMAC);
 	void CloseCachedAlgorithmProvider(BCRYPT_ALG_HANDLE hAlg);
 
 private:
@@ -117,7 +117,7 @@ private:
 	CBuffer HashObject;
 	BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO AuthInfoEncrypt;
 	BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO AuthInfoDecrypt;
-	CString sHashAlgorithm;				// saved hash algorithm
+	CStringW sHashAlgorithm;				// saved hash algorithm
 	// cache algorithm providers
 	// key is provider name. If HMAC specified, append "!" to name
 	// ALG_HANDLE will close all handles during its destructor
@@ -127,7 +127,7 @@ private:
 		ALG_HANDLE(BCRYPT_ALG_HANDLE hAlgParam = nullptr);
 		~ALG_HANDLE();
 	};
-	static map<CString, shared_ptr<ALG_HANDLE>> ProviderCache;
+	static map<CStringW, shared_ptr<ALG_HANDLE>> ProviderCache;
 	static CSimpleRWLock rwlProviderCache;									// lock used for provider cache
 };
 

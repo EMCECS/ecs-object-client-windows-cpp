@@ -82,7 +82,7 @@ public:
 						&& (dwError != ERROR_INVALID_HANDLE)
 #endif
 						)
-					LogMessage(TEXT(__FILE__), __LINE__, L"WinHttpCloseHandle error", dwError);
+					LogMessage(TEXT(__FILE__), __LINE__, _T("WinHttpCloseHandle error"), dwError);
 			}
 			hInternet = nullptr;
 		}
@@ -439,16 +439,16 @@ public:
 		{
 			switch (Acl)
 			{
-			case AAV_NONE: return L"NONE";
-			case AAV_READ: return L"READ";
-			case AAV_WRITE: return L"WRITE";
-			case AAV_FULL_CONTROL: return L"FULL_CONTROL";
-			case AAV_READ_ACP: return L"READ_ACP";
-			case AAV_WRITE_ACP: return L"WRITE_ACP";
+			case AAV_NONE: return _T("NONE");
+			case AAV_READ: return _T("READ");
+			case AAV_WRITE: return _T("WRITE");
+			case AAV_FULL_CONTROL: return _T("FULL_CONTROL");
+			case AAV_READ_ACP: return _T("READ_ACP");
+			case AAV_WRITE_ACP: return _T("WRITE_ACP");
 			default:
 				break;
 			}
-			return L"INVALID";
+			return _T("INVALID");
 		}
 
 		void Clear(void)
@@ -464,16 +464,16 @@ public:
 	{
 		switch (Acl)
 		{
-		case AAV_NONE: return L"";
-		case AAV_READ: return L"x-amz-grant-read";
-		case AAV_WRITE: return L"x-amz-grant-write";
-		case AAV_FULL_CONTROL: return L"x-amz-grant-full-control";
-		case AAV_READ_ACP: return L"x-amz-grant-read-acp";
-		case AAV_WRITE_ACP: return L"x-amz-grant-write-acp";
+		case AAV_NONE: return _T("");
+		case AAV_READ: return _T("x-amz-grant-read");
+		case AAV_WRITE: return _T("x-amz-grant-write");
+		case AAV_FULL_CONTROL: return _T("x-amz-grant-full-control");
+		case AAV_READ_ACP: return _T("x-amz-grant-read-acp");
+		case AAV_WRITE_ACP: return _T("x-amz-grant-write-acp");
 		default:
 			break;
 		}
-		return L"";
+		return _T("");
 	}
 
 	typedef list<ACL_ENTRY> UIDList_t;
@@ -563,7 +563,7 @@ public:
 				TmpAtError.dwError = dwError;
 			CString sMsg(TmpAtError.Format());
 			if (!sAdditionalInfo.IsEmpty())
-				sMsg += L"\r\n" + sAdditionalInfo;
+				sMsg += _T("\r\n") + sAdditionalInfo;
 			return sMsg;
 		}
 	};
@@ -882,7 +882,7 @@ private:
 		}
 		CString Format(void) const
 		{
-			return L"Session: " + sHostEntry + L", " + sIP + L", " + FmtNum(lKey);
+			return _T("Session: ") + sHostEntry + _T(", ") + sIP + _T(", ") + FmtNum(lKey);
 		}
 	};
 
@@ -914,10 +914,10 @@ private:
 		}
 		CString Format(void) const
 		{
-			return CString(bInUse ? L"InUse, " : L"free, ")
-				+ (bKillWhenDone ? L"Kill, " : L"NoKill, ")
-				+ L"hSession:" + FmtNum((HINTERNET)hSession, 0, false, true) + L", "
-				+ L"hConnect:" + FmtNum((HINTERNET)hConnect, 0, false, true);
+			return CString(bInUse ? _T("InUse, ") : _T("free, "))
+				+ (bKillWhenDone ? _T("Kill, ") : _T("NoKill, "))
+				+ _T("hSession:") + FmtNum((HINTERNET)hSession, 0, false, true) + _T(", ")
+				+ _T("hConnect:") + FmtNum((HINTERNET)hConnect, 0, false, true);
 		}
 	};
 
@@ -1213,7 +1213,7 @@ private:
 	static map<CString,UINT> LoadBalMap;					// global IP selector for all entries
 
 	CECSConnectionState& GetStateBuf(DWORD dwThreadID = 0);
-	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCWSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
+	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCTSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
 	CString GetCanonicalTime() const;
 	static FILETIME ParseCanonicalTime(LPCTSTR pszCanonTime);
 	void sign(const CString& secretStr, const CString& hashStr, CString& encodedStr);

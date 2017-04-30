@@ -21,9 +21,9 @@ CCriticalSection *CBufferStream::pcsGlobalCBufferStreamSet;
 std::set<CBufferStream *> *CBufferStream::pGlobalCBufferStreamSet;
 #endif
 
-	struct XML_REC
+struct XML_REC
 {
-	CString sName;
+	CStringW sName;
 };
 
 // CheckIfInterested
@@ -37,9 +37,9 @@ static HRESULT CheckIfInterested(
 	IXmlReader *pReader,
 	XmlNodeType NodeType,
 	const list<XML_LITE_ATTRIB> *pAttrList,
-	const CString *psValue)
+	const CStringW *psValue)
 {
-	CString sPath(L"/");
+	CStringW sPath(L"/");
 	for (deque<XML_REC>::const_iterator itStack = XmlStack.begin(); itStack != XmlStack.end(); ++itStack)
 		sPath += L"/" + itStack->sName;
 	return ReaderCB(sPath, pContext, pReader, NodeType, pAttrList, psValue);
@@ -100,7 +100,7 @@ HRESULT ScanXmlStream(
 				if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, NULL)))
 					return hr;
 				if (cwchPrefix > 0)
-					Rec.sName = CString(pwszPrefix) + L":" + pwszLocalName;
+					Rec.sName = CStringW(pwszPrefix) + L":" + pwszLocalName;
 				else
 					Rec.sName = pwszLocalName;
 				XmlStack.push_back(Rec);
@@ -128,7 +128,7 @@ HRESULT ScanXmlStream(
 						if (FAILED(hr = pReader->GetValue(&pwszValue, NULL)))
 							return hr;
 						if (cwchPrefix > 0)
-							AttrRec.sAttrName = CString(pwszPrefix) + L":" + pwszLocalName;
+							AttrRec.sAttrName = CStringW(pwszPrefix) + L":" + pwszLocalName;
 						else
 							AttrRec.sAttrName = pwszLocalName;
 						AttrRec.sValue = pwszValue;
@@ -163,13 +163,13 @@ HRESULT ScanXmlStream(
 				XML_REC Rec = XmlStack.back();
 				XmlStack.pop_back();
 #ifdef DEBUG
-				CString sName;
+				CStringW sName;
 				if (FAILED(hr = pReader->GetPrefix(&pwszPrefix, &cwchPrefix)))
 					return hr;
 				if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, NULL)))
 					return hr;
 				if (cwchPrefix > 0)
-					sName = CString(pwszPrefix) + L":" + pwszLocalName;
+					sName = CStringW(pwszPrefix) + L":" + pwszLocalName;
 				else
 					sName = pwszLocalName;
 				ASSERT(sName == Rec.sName);
@@ -185,7 +185,7 @@ HRESULT ScanXmlStream(
 			{
 				if (FAILED(hr = pReader->GetValue(&pwszValue, NULL)))
 					return hr;
-				CString sValue(pwszValue);
+				CStringW sValue(pwszValue);
 				hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, NULL, &sValue);
 				if (FAILED(hr))
 					return hr;

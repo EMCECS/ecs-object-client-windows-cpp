@@ -159,7 +159,7 @@ public:
 		{
 			int nSize = inputlen;
 			if (nSize < 0)
-				nSize = (int)lstrlen(s);
+				nSize = (int)wcslen(s);
 			nSize *= sizeof(WCHAR);		// number of bytes for the original string
 			nSize *= 2;					// leave plenty of room for UTF-16 to UTF-8 conversion
 			for (;;)
@@ -191,4 +191,39 @@ public:
 	}
 };
 
+inline CStringW ConvertToUnicode(LPCSTR pszStr)
+{
+	CWideString Str(pszStr);
+	return CStringW((LPCWSTR)Str.GetData());
+}
+
+inline CStringA ConvertToAnsi(LPCWSTR pszStr)
+{
+	CAnsiString Str(pszStr, CP_UTF8);
+	return CStringA((LPCSTR)Str.GetData());
+}
+
+#ifdef _UNICODE
+#define TO_UNICODE(pszStr) (pszStr)
+#else
+#define TO_UNICODE(pszStr) ConvertToUnicode(pszStr)
+#endif
+
+#ifdef _UNICODE
+#define TO_ANSI(pszStr) ConvertToAnsi(pszStr)
+#else
+#define TO_ANSI(pszStr) (pszStr)
+#endif
+
+#ifdef _UNICODE
+#define FROM_UNICODE(pszStr) (pszStr)
+#else
+#define FROM_UNICODE(pszStr) ConvertToAnsi(pszStr)
+#endif
+
+#ifdef _UNICODE
+#define FROM_ANSI(pszStr) ConvertToUnicode(pszStr)
+#else
+#define FROM_ANSI(pszStr) (pszStr)
+#endif
 

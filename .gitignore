@@ -9,3 +9,4 @@ objRelease
 Release
 lint
 /ECSUtil/*.user
+/S3Test/*.aps

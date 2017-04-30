@@ -63,5 +63,5 @@ void CThreadPoolBase::DumpPools(CString *pDumpMsg)
 
 	set<CThreadPoolBase *>::iterator itSet;
 	for (itSet = pGlobalCThreadPool->begin(); itSet != pGlobalCThreadPool->end(); ++itSet)
-		*pDumpMsg += (*itSet)->FormatEntry() + L"\r\n";
+		*pDumpMsg += (*itSet)->FormatEntry() + _T("\r\n");
 }

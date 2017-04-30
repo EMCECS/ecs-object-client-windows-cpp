@@ -24,7 +24,7 @@ void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS d
 	va_end(marker);              /* Reset variable arguments.      */
 	if (pLogMessageCB == nullptr)
 	{
-		OutputDebugString(sErrorMsg + ((dwError == ERROR_SUCCESS) ? L"" : L" - " + GetNTErrorText(dwError)));
+		OutputDebugString(sErrorMsg + ((dwError == ERROR_SUCCESS) ? _T("") : _T(" - ") + GetNTErrorText(dwError)));
 	}
 	else
 	{

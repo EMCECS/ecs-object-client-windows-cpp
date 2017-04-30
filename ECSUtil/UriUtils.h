@@ -7,7 +7,7 @@
 #include "exportdef.h"
 
 
-ECSUTIL_EXT_API extern CString UriEncode(LPCWSTR pszInput, bool bEncodeAll = false);
-ECSUTIL_EXT_API extern CString UriDecode(LPCWSTR pszInput);
+ECSUTIL_EXT_API extern CString UriEncode(LPCTSTR pszInput, bool bEncodeAll = false);
+ECSUTIL_EXT_API extern CString UriDecode(LPCTSTR pszInput);
 ECSUTIL_EXT_API extern CString EncodeSpecialChars(const CString& sSource);
 ECSUTIL_EXT_API extern CString UriEncodeS3(const CString& sSource, bool bEncodeSlash);

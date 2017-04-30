@@ -1007,8 +1007,8 @@ template <class MsgT>
 CString CThreadPool<MsgT>::FormatEntry(void)
 {
 	CString sLine;
-	sLine.Format(L"Thread Pool: %s, Queue:%u, Queue Max:%u, Threads:%u, WorkItems:%u, MinThreads:%u, MaxThreads:%u",
-		(LPCTSTR)CWideString(typeid(*this).name()), MsgQueue.GetCount(), *pdwPerfQueueMax, *pdwPerfNumThreads, *pdwPerfWorkItems, dwMinNumThreads, dwMaxNumThreads);
+	sLine.Format(_T("Thread Pool: %s, Queue:%u, Queue Max:%u, Threads:%u, WorkItems:%u, MinThreads:%u, MaxThreads:%u"),
+		(LPCTSTR)FROM_ANSI(typeid(*this).name()), MsgQueue.GetCount(), *pdwPerfQueueMax, *pdwPerfNumThreads, *pdwPerfWorkItems, dwMinNumThreads, dwMaxNumThreads);
 	return sLine;
 }
 

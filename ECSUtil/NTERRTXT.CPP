@@ -18,12 +18,12 @@
 
 
 LPCTSTR MsgDllListInit[] = {
-	L"NTDLL.DLL",
-	L"WinHttp.dll",
-	L"vsstrace.dll",
-	L"activeds.dll",
-	L"msxml6r.dll",
-	L"wininet.dll"
+	_T("NTDLL.DLL"),
+	_T("WinHttp.dll"),
+	_T("vsstrace.dll"),
+	_T("activeds.dll"),
+	_T("msxml6r.dll"),
+	_T("wininet.dll")
 };
 
 bool FormatMessageLang(DWORD dwMsgID, HMODULE hLib, CString& sMsgText)
@@ -81,7 +81,7 @@ CString GetNTLastErrorText(void)
 
 CString GetUnixErrorText(errno_t err)
 {
-	WCHAR ErrorText[1024];
-	(void)_wcserror_s(ErrorText, err);
+	TCHAR ErrorText[1024];
+	(void)_tcserror_s(ErrorText, err);
 	return ErrorText;
 }
