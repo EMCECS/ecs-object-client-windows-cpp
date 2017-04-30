@@ -315,8 +315,8 @@ void CBuffer::LoadBase64(LPCTSTR pszBase64Input)
 {
 	CAnsiString AnsiData;
 	int iDataLen = Base64DecodeGetRequiredLength(lstrlen(pszBase64Input));
-#ifdef _UNICODE
 	SetBufSize(iDataLen);
+#ifdef _UNICODE
 	AnsiData.Set(pszBase64Input);
 #else
 	AnsiData.Load(pszBase64Input, lstrlen(pszBase64Input) + 1);
