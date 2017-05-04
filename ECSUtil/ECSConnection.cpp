@@ -3226,7 +3226,10 @@ void CECSConnection::SetThrottle(
 	{
 		(void)ThrottleMap.erase(pszHost);		// erase any entry for the specified host
 		if (ThrottleMap.empty())
+		{
+			lock.Unlock();
 			TimerThread.KillThreadWait();
+		}
 	}
 	else
 	{
@@ -3240,10 +3243,8 @@ void CECSConnection::SetThrottle(
 			ret.first->second.Download.iBytesCurInterval = ret.first->second.Download.iBytesSec = iDownloadThrottleRate;
 		}
 		if (!TimerThread.IfActive())
-		{
 			(void)TimerThread.CreateThread();
-			TimerThread.StartWork();
-		}
+		TimerThread.StartWork();
 	}
 }
 
