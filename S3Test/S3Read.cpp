@@ -57,7 +57,6 @@ CECSConnection::S3_ERROR S3Read(
 
 	ReadThread.pConn = &Conn;
 	ReadThread.sECSPath = pszECSPath;
-	// TODO: set ReadThread.ReadContext.UpdateProgressCB,pContext if you want callbacks on read progress
 	CHandle hFile(CreateFile(pszFilePath, FILE_GENERIC_READ | FILE_GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
 	if (hFile.m_h == INVALID_HANDLE_VALUE)
 	{

@@ -14,3 +14,10 @@ extern CECSConnection::S3_ERROR S3Read(
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszFilePath,							// path to write file
 	LPCTSTR pszECSPath);							// path to object in format: /bucket/dir1/dir2/object
+
+extern CECSConnection::S3_ERROR S3Write(
+	CECSConnection& Conn,							// established connection to ECS
+	LPCTSTR pszFilePath,							// path to write file
+	LPCTSTR pszECSPath);							// path to object in format: /bucket/dir1/dir2/object
+
+extern bool TestShutdown(void *pContext);

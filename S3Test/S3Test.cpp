@@ -32,6 +32,7 @@ _T("   /list <path, starting with bucket>  Object listing\n")
 _T("   /create <localfile> <ECSpath>       Create ECS object and initialize with file\n")
 _T("   /delete <ECSpath>                   Delete ECS object\n")
 _T("   /read <localfile> <ECSpath>         Read ECS object into file\n")
+_T("   /write <localfile> <ECSpath>        Write ECS object from file\n")
 _T("   /readmeta <ECSpath>                 Read all metadata from object\n");
 
 
@@ -45,6 +46,7 @@ const TCHAR * const CMD_OPTION_LIST = _T("/list");
 const TCHAR * const CMD_OPTION_CREATE = _T("/create");
 const TCHAR * const CMD_OPTION_DELETE = _T("/delete");
 const TCHAR * const CMD_OPTION_READ = _T("/read");
+const TCHAR * const CMD_OPTION_WRITE = _T("/write");
 const TCHAR * const CMD_OPTION_READMETA = _T("/readmeta");
 const TCHAR * const CMD_OPTION_HELP1 = _T("--help");
 const TCHAR * const CMD_OPTION_HELP2 = _T("-h");
@@ -60,6 +62,8 @@ CString sCreateLocalPath;
 CString sCreateECSPath;
 CString sReadLocalPath;
 CString sReadECSPath;
+CString sWriteLocalPath;
+CString sWriteECSPath;
 CString sReadMetaECSPath;
 CString sDeleteECSPath;
 bool bHttps = true;
@@ -167,6 +171,23 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 				return false;
 			}
 			sReadECSPath = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_WRITE) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sWriteLocalPath = *itParam;
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sWriteECSPath = *itParam;
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_READMETA) == 0)
 		{
@@ -343,6 +364,14 @@ static int DoTest(CString& sOutMessage)
 		if (Error.IfError())
 		{
 			_tprintf(_T("Error from S3Read: %s\n"), (LPCTSTR)Error.Format());
+		}
+	}
+	if (!sWriteECSPath.IsEmpty() && !sWriteLocalPath.IsEmpty())
+	{
+		CECSConnection::S3_ERROR Error = S3Write(Conn, sWriteLocalPath, sWriteECSPath);
+		if (Error.IfError())
+		{
+			_tprintf(_T("Error from S3Write: %s\n"), (LPCTSTR)Error.Format());
 		}
 	}
 	if (!sDeleteECSPath.IsEmpty())

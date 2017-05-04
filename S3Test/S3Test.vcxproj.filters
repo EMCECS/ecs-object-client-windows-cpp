@@ -38,6 +38,9 @@
     <ClCompile Include="S3Read.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="S3Write.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="S3Test.rc">

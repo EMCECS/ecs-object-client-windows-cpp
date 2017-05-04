@@ -178,6 +178,7 @@
   <ItemGroup>
     <ClCompile Include="S3Read.cpp" />
     <ClCompile Include="S3Test.cpp" />
+    <ClCompile Include="S3Write.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
