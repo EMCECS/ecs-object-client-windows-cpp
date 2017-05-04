@@ -12,17 +12,11 @@
 // Remove each event in the EventList from each queue to which it has been linked.
 CSharedQueueEventBase::~CSharedQueueEventBase()
 {
-	try
+	CRWLockAcquire lockQueue(&rwlQueue, true);
+	for (std::set<CSharedQueueEvent *>::iterator itEvent = EventList.begin(); itEvent != EventList.end(); ++itEvent)
 	{
-		CRWLockAcquire lockQueue(&rwlQueue, true);
-		for (std::set<CSharedQueueEvent *>::iterator itEvent = EventList.begin(); itEvent != EventList.end(); ++itEvent)
-		{
-			if (*itEvent != NULL)
-				(*itEvent)->Unlink();
-		}
-	}
-	catch (...)
-	{
+		if (*itEvent != NULL)
+			(*itEvent)->Unlink();
 	}
 }
 

@@ -22,37 +22,31 @@ CCngAES_GCM::CCngAES_GCM()
 
 CCngAES_GCM::~CCngAES_GCM()
 {
-	try
+	// clean up hash variables
+	CleanUpHash();
+	hHashAlg = NULL;
+	hHash = NULL;
+	// clean up encrypt/decrypt variables
+	if (hAesAlg != NULL)
 	{
-		// clean up hash variables
-		CleanUpHash();
-		hHashAlg = NULL;
-		hHash = NULL;
-		// clean up encrypt/decrypt variables
-		if (hAesAlg != NULL)
-		{
-			hAesAlg = NULL;				// all alg providers are cached. don't close them here!
-		}
-		if (hKey != NULL)
-		{
-			(void)BCryptDestroyKey(hKey);
-			hKey = NULL;
-		}
-		if (!KeyObject.IsEmpty())
-			(void)SecureZeroMemory(KeyObject.GetData(), KeyObject.GetBufSize());
-		if (!IVBuf.IsEmpty())
-			(void)SecureZeroMemory(IVBuf.GetData(), IVBuf.GetBufSize());
-		if (!TagBuffer.IsEmpty())
-			(void)SecureZeroMemory(TagBuffer.GetData(), TagBuffer.GetBufSize());
-		if (!MacBuffer.IsEmpty())
-			(void)SecureZeroMemory(MacBuffer.GetData(), MacBuffer.GetBufSize());
-		hAesAlg = NULL;
+		hAesAlg = NULL;				// all alg providers are cached. don't close them here!
+	}
+	if (hKey != NULL)
+	{
+		(void)BCryptDestroyKey(hKey);
 		hKey = NULL;
-		bInitialized = false;
 	}
-	catch (...)
-	{
-	}
+	if (!KeyObject.IsEmpty())
+		(void)SecureZeroMemory(KeyObject.GetData(), KeyObject.GetBufSize());
+	if (!IVBuf.IsEmpty())
+		(void)SecureZeroMemory(IVBuf.GetData(), IVBuf.GetBufSize());
+	if (!TagBuffer.IsEmpty())
+		(void)SecureZeroMemory(TagBuffer.GetData(), TagBuffer.GetBufSize());
+	if (!MacBuffer.IsEmpty())
+		(void)SecureZeroMemory(MacBuffer.GetData(), MacBuffer.GetBufSize());
+	hAesAlg = NULL;
+	hKey = NULL;
+	bInitialized = false;
 }
 
 // use any non-keyed hash, such as:

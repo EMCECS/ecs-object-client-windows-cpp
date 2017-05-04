@@ -245,14 +245,8 @@ CThreadWork<MsgT>::CThreadWork()
 template <class MsgT>
 CThreadWork<MsgT>::~CThreadWork()
 {
-	try
-	{
-		KillThreadWait();
-		pThreadPool = NULL;
-	}
-	catch (...)
-	{
-	}
+	KillThreadWait();
+	pThreadPool = NULL;
 };
 
 template <class MsgT>

@@ -19,24 +19,18 @@ CRWLock::CRWLock()
 
 CRWLock::~CRWLock()
 {
-	try
+	// make sure there are no outstanding locks
+	// if so, assert, but then unlock the locks
+	CSimpleRWLockAcquire lockList(&rwlListLock, true);
+	if (!Instances.empty())
 	{
-		// make sure there are no outstanding locks
-		// if so, assert, but then unlock the locks
-		CSimpleRWLockAcquire lockList(&rwlListLock, true);
-		if (!Instances.empty())
+		// there are outstanding locks!
+		ASSERT(false);
+		for (vector<CRWLockAcquire *>::const_iterator it=Instances.begin() ; it!=Instances.end() ; ++it)	//lint !e827: (Info -- Loop not reachable)
 		{
-			// there are outstanding locks!
-			ASSERT(false);
-			for (vector<CRWLockAcquire *>::const_iterator it=Instances.begin() ; it!=Instances.end() ; ++it)	//lint !e827: (Info -- Loop not reachable)
-			{
-				(*it)->bLocked = false;
-				(*it)->pLock = NULL;
-			}
+			(*it)->bLocked = false;
+			(*it)->pLock = NULL;
 		}
-	}
-	catch (...)
-	{
 	}
 }
 
@@ -97,34 +91,28 @@ CRWLockAcquire::CRWLockAcquire(CRWLock *pLockParam, bool bWriteParam, bool bGetL
 
 CRWLockAcquire::~CRWLockAcquire()
 {
-	try
+	Unlock();
+	if (pLock != NULL)
 	{
-		Unlock();
-		if (pLock != NULL)
-		{
-			// hook this instance into the vector for this lock
-			CSimpleRWLockAcquire lockList(&pLock->rwlListLock, true);
-			vector<CRWLockAcquire *>::const_iterator it;
+		// hook this instance into the vector for this lock
+		CSimpleRWLockAcquire lockList(&pLock->rwlListLock, true);
+		vector<CRWLockAcquire *>::const_iterator it;
 #ifdef DEBUG
-			bool bErased = false;
+		bool bErased = false;
 #endif
-			for (it=pLock->Instances.begin() ; it!=pLock->Instances.end() ; ++it)
-				if (*it == this)
-				{
-					(void)pLock->Instances.erase(it);
+		for (it=pLock->Instances.begin() ; it!=pLock->Instances.end() ; ++it)
+			if (*it == this)
+			{
+				(void)pLock->Instances.erase(it);
 #ifdef DEBUG
-					bErased = true;
+				bErased = true;
 #endif
-					break;
-				}
+				break;
+			}
 #ifdef DEBUG
-			ASSERT(bErased);
+		ASSERT(bErased);
 #endif
-			pLock = NULL;
-		}
-	}
-	catch (...)
-	{
+		pLock = NULL;
 	}
 }
 
