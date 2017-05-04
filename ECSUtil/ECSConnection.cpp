@@ -1663,12 +1663,14 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 							{
 								CSingleLock lock(&csThrottleMap, true);
 								itThrottle = ThrottleMap.find(sHost);
-								if ((itThrottle != ThrottleMap.end()) && (itThrottle->second.Upload.iBytesSec != 0))
+								if ((itThrottle == ThrottleMap.end()) || (itThrottle->second.Upload.iBytesSec == 0))
 								{
-									// okay, we need to throttle
-									if (itThrottle->second.Upload.iBytesCurInterval >= 0)
-										break;
+									// the throttle disappeared! The user must have turned throttle off
+									break;					// just go full speed
 								}
+								// okay, we need to throttle
+								if (itThrottle->second.Upload.iBytesCurInterval >= 0)
+									break;
 							}
 							// wait for the next time slot where hopefully we can receive more bytes
 							dwError = WaitForSingleObject(State.evThrottle.m_hObject, SECONDS(2));
@@ -1928,11 +1930,14 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					{
 						CSingleLock lock(&csThrottleMap, true);
 						itThrottle = ThrottleMap.find(sHost);
-						if ((itThrottle != ThrottleMap.end()) && (itThrottle->second.Download.iBytesSec != 0))
+						if ((itThrottle == ThrottleMap.end()) || (itThrottle->second.Download.iBytesSec == 0))
 						{
-							if (itThrottle->second.Download.iBytesCurInterval >= 0)
-								break;
+							// throttle has been canceled during this download
+							// go full speed
+							break;
 						}
+						if (itThrottle->second.Download.iBytesCurInterval >= 0)
+							break;
 					}
 					// wait for the next time slot where hopefully we can receive more bytes
 					dwError = WaitForSingleObject(State.evThrottle.m_hObject, SECONDS(2));
