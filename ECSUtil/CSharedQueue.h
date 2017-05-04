@@ -166,6 +166,30 @@ public:
 		return list<T>::empty();
 	};
 
+	reference front()
+	{	// return first element of mutable sequence
+		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), true);			// write lock
+		return list<T>::front();
+	}
+
+	const_reference front() const
+	{	// return first element of nonmutable sequence
+		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), false);			// read lock
+		return list<T>::front();
+	}
+
+	reference back()
+	{	// return last element of mutable sequence
+		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), true);			// write lock
+		return list<T>::back();
+	}
+
+	const_reference back() const
+	{	// return last element of nonmutable sequence
+		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), false);			// read lock
+		return list<T>::back();
+	}
+
 	void clear()
 	{
 		CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock

@@ -396,22 +396,16 @@ void CECSConnection::SetHttpsProtocol(DWORD dwHttpsProtocolParam)
 
 CECSConnection::~CECSConnection()
 {
-	try
-	{
-		CloseAll();
-		CSingleLock lock(&csThrottleMap, true);
+	CloseAll();
+	CSingleLock lock(&csThrottleMap, true);
 #ifdef DEBUG
-		list<CECSConnection *>::size_type SizeBefore = ECSConnectionList.size();
+	list<CECSConnection *>::size_type SizeBefore = ECSConnectionList.size();
 #endif
-		ECSConnectionList.remove(this);
+	ECSConnectionList.remove(this);
 #ifdef DEBUG
-		list<CECSConnection *>::size_type SizeAfter = ECSConnectionList.size();
-		ASSERT(SizeBefore == (SizeAfter + 1));
+	list<CECSConnection *>::size_type SizeAfter = ECSConnectionList.size();
+	ASSERT(SizeBefore == (SizeAfter + 1));
 #endif
-	}
-	catch (...)
-	{
-	}
 }
 
 CECSConnection::CECSConnection(const CECSConnection& Rec)
@@ -1407,6 +1401,8 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 {
 	CECSConnectionState& State(GetStateBuf());
 	S3_ERROR Error;
+	// use const version of pStreamSend to use "read" locks instead of "write" locks when only reading is being done
+	const STREAM_CONTEXT *pConstStreamSend = (const STREAM_CONTEXT *)pStreamSend;
 	try
 	{
 		// fixup the host header line (if it exists)
@@ -1418,10 +1414,10 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 		State.dwSecureError = 0;
 		if (pbGotServerResponse != NULL)
 			*pbGotServerResponse = false;
-		if (pStreamSend != NULL)
+		if (pConstStreamSend != NULL)
 		{
 			AddHeader(_T("content-length"), FmtNum(ullTotalLen));
-			if (!pStreamSend->bMultiPart)
+			if (!pConstStreamSend->bMultiPart)
 				AddHeader(_T("content-type"), _T("application/octet-stream"), false);
 		}
 		else if (dwDataLen != 0)
@@ -1509,13 +1505,13 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				ULONGLONG ullCurDataSent = 0ULL;
 				if ((dwMaxWriteRequest > 0) && (dwDataPartLen > dwMaxWriteRequest))
 					dwDataPartLen = dwMaxWriteRequest;
-				if (bUploadThrottle && (pStreamSend == NULL))
+				if (bUploadThrottle && (pConstStreamSend == NULL))
 					dwDataPartLen = 0;							// just start the request but send the data below where it is controlled by the throttle
 				for (;;)
 				{
 					PrepareCmd();
 					bool bSendReturn;
-					if (pStreamSend == NULL)
+					if (pConstStreamSend == NULL)
 						bSendReturn = WinHttpSendRequest(State.hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), const_cast<void *>(pData), dwDataPartLen, dwDataLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
 					else
 						bSendReturn = WinHttpSendRequest(State.hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), WINHTTP_NO_REQUEST_DATA, 0, (ullTotalLen > ULONG_MAX) ? WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH : (DWORD)ullTotalLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
@@ -1535,14 +1531,14 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					}
 					break;
 				}
-				if (pStreamSend != NULL)
+				if (pConstStreamSend != NULL)
 				{
 					dwDataPartLen = 0;							// didn't send any data yet
 					ullCurDataSent = 0ULL;
 				}
 				ullCurDataSent += (ULONGLONG)dwDataPartLen;
 				CSharedQueueEvent MsgEvent;		// event that a new message arrived on pStreamSend
-				if (pStreamSend != NULL)
+				if (pConstStreamSend != NULL)
 				{
 					MsgEvent.Link(&pStreamSend->StreamData);					// link the queue to the event
 					MsgEvent.DisableAllTriggerEvents();
@@ -1550,8 +1546,8 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					MsgEvent.SetAllEvents();
 					MsgEvent.Enable();
 				}
-//				if (pStreamSend != NULL)
-//					DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("SendRequestInternal: %s, before WriteData, %d"), pszResource, pStreamSend->StreamData.IsEmpty() ? 0 : pStreamSend->StreamData.GetAt(0)->Data.GetBufSize());
+//				if (pConstStreamSend != NULL)
+//					DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("SendRequestInternal: %s, before WriteData, %d"), pszResource, pConstStreamSend->StreamData.IsEmpty() ? 0 : pConstStreamSend->StreamData.GetAt(0)->Data.GetBufSize());
 				// stream data available
 				bool bStreamBufAvailable = false;
 				for (;;)
@@ -1559,7 +1555,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					bool bWriteDataSuccess;
 					bool bDoWriteData = true;
 					State.CallbackContext.dwBytesWritten = 0;
-					if (pStreamSend == NULL)
+					if (pConstStreamSend == NULL)
 					{
 						if (ullCurDataSent >= (ULONGLONG)dwDataLen)
 							break;
@@ -1574,31 +1570,31 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 						if (!bStreamBufAvailable)
 						{
 							// need more data
-//							DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("StreamSend: %s, %d"), pszResource, pStreamSend->StreamData.GetCount());
+//							DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("StreamSend: %s, %d"), pszResource, pConstStreamSend->StreamData.GetCount());
 							// if queue is empty, wait for something to happen
-							if (pStreamSend->StreamData.empty())
+							if (pConstStreamSend->StreamData.empty())
 								if (!WaitStreamSend(pStreamSend, MsgEvent))
 									throw CS3ErrorInfo(_T(__FILE__), __LINE__, WAIT_TIMEOUT);
-							if (pStreamSend->StreamData.empty())
+							if (pConstStreamSend->StreamData.empty())
 								throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_NO_DATA_DETECTED);
 							dwDataPartLen = 0;
 							ullCurDataSent = 0ULL;
 							bStreamBufAvailable = true;
 						}
-						if (!pStreamSend->StreamData.front().Data.IsEmpty())
+						if (!pConstStreamSend->StreamData.front().Data.IsEmpty())
 						{
-							if (ullCurDataSent >= (ULONGLONG)pStreamSend->StreamData.front().Data.GetBufSize())
+							if (ullCurDataSent >= (ULONGLONG)pConstStreamSend->StreamData.front().Data.GetBufSize())
 							{
 								bWriteDataSuccess = true;				// empty data, don't write it but say it was successful
 								bDoWriteData = false;
 							}
 							else
 							{
-								dwDataPartLen = pStreamSend->StreamData.front().Data.GetBufSize() - (DWORD)ullCurDataSent;
+								dwDataPartLen = pConstStreamSend->StreamData.front().Data.GetBufSize() - (DWORD)ullCurDataSent;
 								if ((dwMaxWriteRequest > 0) && (dwDataPartLen > dwMaxWriteRequest))
 									dwDataPartLen = dwMaxWriteRequest;
 								PrepareCmd();
-								bWriteDataSuccess = WinHttpWriteData(State.hRequest, pStreamSend->StreamData.front().Data.GetData() + ullCurDataSent, dwDataPartLen, NULL) != FALSE;
+								bWriteDataSuccess = WinHttpWriteData(State.hRequest, pConstStreamSend->StreamData.front().Data.GetData() + ullCurDataSent, dwDataPartLen, NULL) != FALSE;
 							}
 						}
 						else
@@ -1622,19 +1618,19 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 						ullCurDataSent += (ULONGLONG)State.CallbackContext.dwBytesWritten;
 					}
 					bool bLast = false;
-					if (pStreamSend == NULL)
+					if (pConstStreamSend == NULL)
 						ASSERT(State.CallbackContext.dwBytesWritten == dwDataPartLen);
 					else
 					{
-						if (pStreamSend->UpdateProgressCB != NULL)
+						if (pConstStreamSend->UpdateProgressCB != NULL)
 						{
 							pStreamSend->iAccProgress += (int)State.CallbackContext.dwBytesWritten;
-							pStreamSend->UpdateProgressCB((int)State.CallbackContext.dwBytesWritten, pStreamSend->pContext);
+							pConstStreamSend->UpdateProgressCB((int)State.CallbackContext.dwBytesWritten, pConstStreamSend->pContext);
 						}
-						if (ullCurDataSent >= (ULONGLONG)pStreamSend->StreamData.front().Data.GetBufSize())
+						if (ullCurDataSent >= (ULONGLONG)pConstStreamSend->StreamData.front().Data.GetBufSize())
 						{
-							CRWLockAcquire lockQueue(&pStreamSend->StreamData.GetLock(), true);			// write lock
-							bLast = pStreamSend->StreamData.front().bLast;
+							CRWLockAcquire lockQueue(&pConstStreamSend->StreamData.GetLock(), true);			// write lock
+							bLast = pConstStreamSend->StreamData.front().bLast;
 							pStreamSend->StreamData.pop_front();
 							bStreamBufAvailable = false;
 						}
@@ -1976,9 +1972,9 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 	catch (const CS3ErrorInfo& E)
 	{
 		// if the progress has been incremented, cancel it out
-		if ((pStreamSend != NULL) && (pStreamSend->UpdateProgressCB != NULL) && (pStreamSend->iAccProgress != 0))
+		if ((pConstStreamSend != NULL) && (pConstStreamSend->UpdateProgressCB != NULL) && (pConstStreamSend->iAccProgress != 0))
 		{
-			pStreamSend->UpdateProgressCB(-pStreamSend->iAccProgress, pStreamSend->pContext);
+			pConstStreamSend->UpdateProgressCB(-pConstStreamSend->iAccProgress, pConstStreamSend->pContext);
 			pStreamSend->iAccProgress = 0;
 		}
 		State.CloseRequest((E.Error.dwError == ERROR_WINHTTP_SECURE_FAILURE) && TST_BIT(State.dwSecureError, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA));
@@ -2146,7 +2142,8 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 	LPCTSTR pszNewPath,
 	LPCTSTR pszVersionId,		// nonNULL: version ID to copy
 	bool bCopy,
-	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList)
+	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,
+	const list<CString> *pDeleteTagParam)
 {
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
@@ -2188,9 +2185,41 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 				if ((it->sLabel.Find(sAmzMetaPrefix) == 0) && !it->ContentList.empty())
 				{
 					CString sTag(it->sLabel.Mid(sAmzMetaPrefix.GetLength()));				// strip off x-amz-meta-
-					Error = WriteMetadataEntry(MDList, sTag, it->ContentList.front());
-					if (Error.IfError())
-						return Error;
+																							// if this tag is already in the MDList, don't transfer it over from the old file
+					bool bFound = false;
+					for (list<S3_METADATA_ENTRY>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
+					{
+						if (sTag == itMD->sTag)
+						{
+							bFound = true;
+							break;
+						}
+					}
+					if (!bFound)
+					{
+						Error = WriteMetadataEntry(MDList, sTag, it->ContentList.front());
+						if (Error.IfError())
+							return Error;
+					}
+				}
+			}
+			if (!MDList.empty() && pDeleteTagParam != nullptr && !pDeleteTagParam->empty())
+			{
+				for (list<S3_METADATA_ENTRY>::const_iterator itList = MDList.begin(); itList != MDList.end(); )
+				{
+					bool bDeleted = false;
+					for (list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
+					{
+						if (*itDel == itList->sTag)
+						{
+							bDeleted = true;
+							break;
+						}
+					}
+					if (bDeleted)
+						itList = MDList.erase(itList);
+					else
+						++itList;
 				}
 			}
 			bCopyMD = false;

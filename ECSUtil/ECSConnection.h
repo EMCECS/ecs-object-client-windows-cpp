@@ -1322,7 +1322,7 @@ public:
 	S3_ERROR DeleteS3Bucket(LPCTSTR pszBucketName);
 	S3_ERROR S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning);
 	S3_ERROR S3PutBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING Versioning);
-	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const list<CECSConnection::S3_METADATA_ENTRY> *pMDList);
+	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const list<CECSConnection::S3_METADATA_ENTRY> *pMDList, const list<CString> *pDeleteTagParam = nullptr);
 	S3_ERROR DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint);
 	S3_ERROR S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO& Lifecycle);
 	S3_ERROR S3PutLifecycle(LPCTSTR pszBucket, const S3_LIFECYCLE_INFO& Lifecycle);
