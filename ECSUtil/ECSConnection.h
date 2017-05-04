@@ -634,15 +634,6 @@ public:
 		{
 			return !operator==(rec);
 		}
-
-		// IsFileChanged
-		// returns true if one of the timestamps or size indicate that the file has been updated
-		bool IsFileChanged(const S3_SYSTEM_METADATA& rec) const
-		{
-			return (ftLastMod != rec.ftLastMod)
-				|| (llSize != rec.llSize)
-				|| (sETag != rec.sETag);
-		}
 	};
 
 	struct ECSUTIL_EXT_CLASS DIR_ENTRY

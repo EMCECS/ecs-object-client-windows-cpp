@@ -4356,7 +4356,9 @@ CString CECSConnection::signS3ShareableURL(const CString& sResource, const CStri
 	return sSignature;
 }
 
-CString CECSConnection::GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExpire)
+CString CECSConnection::GenerateShareableURL(
+	LPCTSTR pszPath,									// translated path to object
+	SYSTEMTIME *pstExpire)								// must be LOCAL time
 {
 	CString sPath(pszPath), sURL;
 	try
@@ -4379,7 +4381,7 @@ CString CECSConnection::GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExp
 		if ((bSSL && (Port != INTERNET_DEFAULT_HTTPS_PORT))
 				|| (!bSSL && (Port != INTERNET_DEFAULT_HTTP_PORT)))
 			sPort = _T(":") + FmtNum(Port);
-		sSignature = UriEncodeS3(signS3ShareableURL(sPath, sExpire), true);
+		sSignature = UriEncodeS3(signS3ShareableURL(UriEncode(sPath), sExpire), true);
 		sURL += _T("//") + sIP + sPort + sPath + _T("?AWSAccessKeyId=") + sS3KeyID + _T("&Expires=") + sExpire + _T("&Signature");
 		sURL = EncodeSpecialChars(UriEncode(sURL)) + _T("=") + sSignature;
 	}
