@@ -59,13 +59,8 @@ CSimpleWorkerThread::~CSimpleWorkerThread()
 	}
 	if (pcsGlobalThreadSet && pGlobalThreadSet)
 	{
-		try
-		{
-			CSingleLock csGlobalList(pcsGlobalThreadSet, true);
-			(void)pGlobalThreadSet->erase(this);
-		}
-		catch (...)
-		{}
+		CSingleLock csGlobalList(pcsGlobalThreadSet, true);
+		(void)pGlobalThreadSet->erase(this);
 	}
 	hThread = NULL;
 	pThread = NULL;
@@ -179,7 +174,7 @@ void CSimpleWorkerThread::KillThread() throw()
 		(void)Events.m_pWorkEvent->SetEvent();
 }
 
-void CSimpleWorkerThread::KillThreadWait() throw()
+void CSimpleWorkerThread::KillThreadWait(bool bDontKillWaitOnly) throw()
 {
 	if ((pThread == NULL) || (dwThreadID == 0))
 		return;
@@ -190,7 +185,8 @@ void CSimpleWorkerThread::KillThreadWait() throw()
 	{
 		DEBUGF(_T("CSimpleWorkerThread::KillThreadWait ThreadEvent error: cur:%d kill:%d Error:%d"), GetCurrentThreadId(), dwThreadID, dwEventError);
 	}
-	KillThread();
+	if (!bDontKillWaitOnly)
+		KillThread();
 	CSingleLock lockKillThread(&Events.csKillThread, true);
 	if (Events.m_pWorkEvent == NULL)
 		return;

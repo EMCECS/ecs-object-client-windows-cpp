@@ -187,7 +187,7 @@ public:
 	virtual bool InitInstance(void);
 	virtual void ExitInstance(void);
 	void KillThread() throw();
-	void KillThreadWait() throw();
+	void KillThreadWait(bool bDontKillWaitOnly = false) throw();
 	DWORD GetCurrentThreadID(void) const;
 	void SetAlertable(bool bAlertableParam = true);
 	bool GetExitFlag(void) const;
