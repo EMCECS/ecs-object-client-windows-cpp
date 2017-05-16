@@ -9,6 +9,7 @@
 #include "ECSUtil.h"
 #include "ECSConnection.h"
 #include "NTERRTXT.H"
+#include "FileSupport.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -69,9 +70,62 @@ CString sDeleteECSPath;
 bool bHttps = true;
 INTERNET_PORT wPort = 9021;
 
+bool bShuttingDown = false;
+
 using namespace std;
 
 static int DoTest(CString& sOutMessage);
+
+//
+// ConsoleShutdownHandler
+// intercepts shutdown and logoff events
+// allows the process to cleanly terminate
+// used ONLY for win95 and if "not_service" is specified in NT
+//
+BOOL WINAPI	ConsoleShutdownHandler(
+	DWORD dwCtrlType)			// control signal type
+{
+	switch (dwCtrlType)
+	{
+	case CTRL_LOGOFF_EVENT:
+	case CTRL_SHUTDOWN_EVENT:
+	case CTRL_C_EVENT:
+	case CTRL_BREAK_EVENT:
+	case CTRL_CLOSE_EVENT:
+		// cause the process to terminate
+		bShuttingDown = true;
+		break;
+	default:
+		break;
+	}
+	return TRUE;
+}
+
+struct PROGRESS
+{
+	FILETIME ftTime;
+	int iProgress;
+	PROGRESS()
+	{
+		ZeroFT(ftTime);
+		iProgress = 0;
+	}
+};
+list<PROGRESS> ProgressList;
+
+void ProgressCallback(int iProgress, void *pContext)
+{
+	static CCriticalSection csProgress;
+	static LONGLONG llOffset = 0LL;
+	list<PROGRESS> *pList = (list<PROGRESS> *)pContext;
+	PROGRESS Rec;
+	CSingleLock lock(&csProgress, true);
+	GetSystemTimeAsFileTime(&Rec.ftTime);
+	Rec.iProgress = iProgress;
+	ProgressList.push_back(Rec);
+	llOffset += iProgress;
+	_tprintf(_T("MPU Offset: %-20I64d\r"), llOffset);
+}
 
 static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 {
@@ -270,9 +324,29 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
     return nRetCode;
 }
 
+struct PROGRESS_CONTEXT
+{
+	CString sTitle;
+	ULONGLONG ullOffset;
+	PROGRESS_CONTEXT()
+		: ullOffset(0ULL)
+	{}
+};
+
+static void ProgressCallBack(int iProgress, void *pContext)
+{
+	PROGRESS_CONTEXT *pProg = (PROGRESS_CONTEXT *)pContext;
+	pProg->ullOffset += iProgress;
+	_tprintf(L"%s: %-20I64d\r", (LPCTSTR)pProg->sTitle, pProg->ullOffset);
+}
+
 static int DoTest(CString& sOutMessage)
 {
+	(void)SetConsoleCtrlHandler(ConsoleShutdownHandler, TRUE);
+
 	CECSConnection Conn;
+	// register an "abort pointer" if bShuttingDown gets set to true, the current request will be aborted
+	Conn.RegisterAbortPtr(&bShuttingDown);
 	CECSConnection::S3_ERROR Error;
 	if (sEndPoint.IsEmpty())
 	{
@@ -297,6 +371,7 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetSSL(bHttps);
 	Conn.SetPort(wPort);
 	Conn.SetHost(_T("ECS Test Drive"));
+	Conn.SetUserAgent(_T("TestApp/1.0"));
 
 	// get the list of buckets
 	CECSConnection::S3_SERVICE_INFO ServiceInfo;
@@ -360,19 +435,70 @@ static int DoTest(CString& sOutMessage)
 	}
 	if (!sReadECSPath.IsEmpty() && !sReadLocalPath.IsEmpty())
 	{
-		CECSConnection::S3_ERROR Error = S3Read(Conn, sReadLocalPath, sReadECSPath);
+		PROGRESS_CONTEXT Context;
+		Context.sTitle = L"Read";
+		CHandle hFile(CreateFile(sReadLocalPath, FILE_GENERIC_READ | FILE_GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+		if (hFile.m_h == INVALID_HANDLE_VALUE)
+		{
+			_tprintf(_T("Open error for %s: %s\n"), (LPCTSTR)sWriteLocalPath, (LPCTSTR)GetNTLastErrorText());
+			return 1;
+		}
+		CECSConnection::S3_ERROR Error = S3Read(Conn, sReadECSPath, hFile, ProgressCallBack, &Context);
 		if (Error.IfError())
 		{
 			_tprintf(_T("Error from S3Read: %s\n"), (LPCTSTR)Error.Format());
 		}
+		_tprintf(L"\r\n");
 	}
 	if (!sWriteECSPath.IsEmpty() && !sWriteLocalPath.IsEmpty())
 	{
-		CECSConnection::S3_ERROR Error = S3Write(Conn, sWriteLocalPath, sWriteECSPath);
+		PROGRESS_CONTEXT Context;
+		Context.sTitle = L"Write";
+		CHandle hFile(CreateFile(sWriteLocalPath, FILE_GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+		if (hFile.m_h == INVALID_HANDLE_VALUE)
+		{
+			_tprintf(_T("Open error for %s: %s\n"), (LPCTSTR)sWriteLocalPath, (LPCTSTR)GetNTLastErrorText());
+			return 1;
+		}
+#ifdef unused
+		CECSConnection::S3_ERROR Error = S3Write(Conn, sWriteECSPath, hFile, MEGABYTES(1), true, 20, ProgressCallBack, &Context);
 		if (Error.IfError())
 		{
 			_tprintf(_T("Error from S3Write: %s\n"), (LPCTSTR)Error.Format());
 		}
+		_tprintf(L"\r\n");
+#else
+		LARGE_INTEGER liFileSize;
+		if (!GetFileSizeEx(hFile, &liFileSize))
+		{
+			_tprintf(_T("Error getting file size for %s: %s\n"), (LPCTSTR)sWriteLocalPath, (LPCTSTR)GetNTLastErrorText());
+			return 1;
+		}
+		list<CECSConnection::S3_METADATA_ENTRY> MDList;
+		CECSConnection::S3_METADATA_ENTRY MD_Rec;
+		MD_Rec.sTag = _T("NewTag");
+		MD_Rec.sData = _T("NewTagValue");
+		MDList.push_back(MD_Rec);
+		CECSConnection::S3_ERROR Error;
+		_tprintf(L"\nMPU Upload:\n");
+		bool bMPUUpload = DoS3MultiPartUpload(
+			Conn,							// established connection to ECS
+			sWriteLocalPath,							// path to write file
+			sWriteECSPath,								// path to object in format: /bucket/dir1/dir2/object
+			hFile,						// open handle to file
+			liFileSize.QuadPart,					// size of the file
+			MEGABYTES(1),							// size of buffer to use
+			10,							// part size (in MB)
+			3,						// maxiumum number of threads to spawn
+			true,									// if set, include content-MD5 header
+			&MDList,	// optional metadata to send to object
+			4,								// how big the queue can grow that feeds the upload thread
+			5,									// how many times to retry a part before giving up
+			ProgressCallBack,	// optional progress callback
+			&Context,											// context for ShutdownParamCB and UpdateProgressCB
+			Error);						// returned error
+		_tprintf(L"\nMPU Upload: %s, %s\n", bMPUUpload ? L"success" : L"fail", (LPCTSTR)Error.Format(true));
+#endif
 	}
 	if (!sDeleteECSPath.IsEmpty())
 	{

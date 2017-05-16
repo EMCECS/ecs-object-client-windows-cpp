@@ -27,6 +27,9 @@
 #define TOG_BIT(x,b) ((x) ^=  (b))
 #define SET_CLR_BIT(x,b,f) { if ((f)) SET_BIT(x,b); else CLR_BIT(x,b); }
 
+// ALIGN_ANY
+// align supplied 'size' to the next highest alignment boundary defined by 'alignvalue'
+#define ALIGN_ANY(size, alignvalue) ((((size) + (alignvalue)-1)/(alignvalue)) * (alignvalue))
 
 inline bool IfFTZero(const FILETIME& ftTime)
 {

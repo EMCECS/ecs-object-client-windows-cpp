@@ -1,5 +1,5 @@
 //
-// Copyright (C) 1994 - 2011 EMC Corporation
+// Copyright (C) 1994 - 2017 EMC Corporation
 // All rights reserved.
 //
 
@@ -682,7 +682,7 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_SECURE_FAILURE"));
 		{
 			ASSERT((dwStatusInformationLength == 4) && (lpvStatusInformation != NULL));
-			if ((dwStatusInformationLength == 4) && (lpvStatusInformation != NULL))				//lint !e774 (Info -- Boolean within 'if' always evaluates to True [Reference: file C:\blds\GeoDriveCreate\SRC\atemc_gen\lib\AtmosUtil.cpp: lines 434, 435])
+			if ((dwStatusInformationLength == 4) && (lpvStatusInformation != NULL))
 			{
 				DWORD dwStatus = *((DWORD *)lpvStatusInformation);
 				pContext->dwSecureError |= dwStatus;
@@ -806,7 +806,10 @@ DWORD CECSConnection::InitSession()
 	DWORD dwError = ERROR_SUCCESS;
 	// Use WinHttpOpen to obtain a session handle.
 	CString sVer;
-	sVer = _T("Test/1.0");
+	if (sUserAgent.IsEmpty())
+		sVer = _T("Test/1.0");
+	else
+		sVer = sUserAgent;
 	DEBUGF(TEXT("WinHttpOpen: version string:\r\n%s\r\n"), (LPCTSTR)sVer);
 	if (!State.Session.pValue->hSession.IfOpen() || !State.Session.pValue->hConnect.IfOpen())
 	{
@@ -2064,6 +2067,11 @@ CString CECSConnection::GetS3KeyID()
 	return sS3KeyID;
 }
 
+void CECSConnection::SetUserAgent(LPCTSTR pszUserAgent)
+{
+	sUserAgent = pszUserAgent;
+}
+
 void CECSConnection::SetPort(INTERNET_PORT PortParam)
 {
 	if (Port != PortParam)
@@ -2100,7 +2108,6 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 	const void *pData,
 	DWORD dwLen,
 	const list<S3_METADATA_ENTRY> *pMDList,
-	LPCTSTR pszChecksumAlg,
 	const CBuffer *pChecksum,
 	STREAM_CONTEXT *pStreamSend,
 	ULONGLONG ullTotalLen,								// only used if stream send
@@ -2399,6 +2406,8 @@ void CECSConnection::DeleteS3Send()
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 	if (FAILED(pWriter->SetOutput(pOutFileStream)))
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+	if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 	if (FAILED(pWriter->WriteStartElement(NULL, L"Delete", NULL)))
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
@@ -2459,13 +2468,13 @@ void CECSConnection::DeleteS3Send()
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 	if (FAILED(pWriter->Flush()))
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-	CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+	CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
 	CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
 #else
 	CAnsiString XmlUTF8(sXmlOut);
 #endif
-	XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+	XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 	{
 		CBuffer RetData;
 		InitHeader();
@@ -4078,6 +4087,8 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->SetOutput(pOutFileStream)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+		if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"AccessControlPolicy", L"http://s3.amazonaws.com/doc/2006-03-01/")))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"Owner", NULL)))
@@ -4143,13 +4154,13 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+		CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
 		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
 #else
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
-		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 		CString sResource(UriEncode(CString(pszPath) + _T("?acl")));
 		CString sVersion(pszVersion);
 		if (!sVersion.IsEmpty())
@@ -4684,6 +4695,8 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->SetOutput(pOutFileStream)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+			if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteStartElement(NULL, L"CreateBucketConfiguration", L"http://s3.amazonaws.com/doc/2006-03-01/")))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
@@ -4700,13 +4713,13 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->Flush()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+			CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
 			CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
 #else
 			CAnsiString XmlUTF8(sXmlOut);
 #endif
-			XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+			XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 		}
 
 		Error = SendRequest(_T("PUT"), CString(_T("/")) + pszBucketName + _T("/"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
@@ -4802,7 +4815,6 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 			AddHeader(sAmzMetaPrefix + itList->sTag, itList->sData);
 	}
 	AddHeader(_T("content-type"), _T("application/octet-stream"));
-	// try deleting the dir (this won't work if the dir has anything in it)
 	Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploads"), NULL, 0, RetData);
 	if (Error.IfError())
 		return Error;
@@ -4881,6 +4893,8 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->SetOutput(pOutFileStream)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+		if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"CompleteMultipartUpload", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
@@ -4912,13 +4926,13 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+		CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
 		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
 #else
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
-		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 
 		InitHeader();
 		Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploadId=") + MultiPartInfo.sUploadId, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
@@ -5264,6 +5278,8 @@ CECSConnection::S3_ERROR CECSConnection::S3PutBucketVersioning(LPCTSTR pszBucket
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->SetOutput(pOutFileStream)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+		if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"VersioningConfiguration", L"http://s3.amazonaws.com/doc/2006-03-01/")))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
@@ -5285,13 +5301,13 @@ CECSConnection::S3_ERROR CECSConnection::S3PutBucketVersioning(LPCTSTR pszBucket
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+		CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
 		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
 #else
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
-		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 		AddHeader(_T("Content-Type"), _T("application/xml"));
 		Error = SendRequest(_T("PUT"), CString(_T("/")) + pszBucket + _T("?versioning"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 	}
@@ -5516,6 +5532,8 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->SetOutput(pOutFileStream)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+		if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"user_create_param", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
@@ -5547,13 +5565,13 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+		CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
 		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
 #else
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
-		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 		Error = SendRequest(_T("POST"), _T("/object/users"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
@@ -5707,6 +5725,8 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->SetOutput(pOutFileStream)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+		if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"user_secret_key_create", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
@@ -5739,13 +5759,13 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->Flush()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		CString sXmlOut(_T("<?xml version=\")1.0\" encoding=\"UTF-8\"?>\n") + pBufStream->GetXml());
+		CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
 		CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
 #else
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
-		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 		Error = SendRequest(_T("POST"), UriEncode(_T("/object/user-secret-keys/") + User.sUser), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
@@ -5994,6 +6014,8 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->SetOutput(pOutFileStream)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+		if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
+			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 		if (FAILED(pWriter->WriteStartElement(NULL, L"LifecycleConfiguration", NULL)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
@@ -6089,7 +6111,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 #else
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
-		XmlUTF8.SetBufSize(sXmlOut.GetLength() * sizeof(TCHAR));
+		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 		CCngAES_GCM HashObj;
 		HashObj.CreateHash(BCRYPT_MD5_ALGORITHM);
 		HashObj.AddHashData(XmlUTF8);
@@ -6106,21 +6128,4 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 		Error = E.Error;
 	}
 	return Error;
-}
-
-CAtmosUtilPool Pool;
-
-bool CAtmosUtilPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<CAtmosUtilPoolMsg>& Msg)
-{
-	return false;
-}
-
-bool CAtmosUtilPool::SearchEntry(const shared_ptr<CAtmosUtilPoolMsg>& Msg1, const shared_ptr<CAtmosUtilPoolMsg>& Msg2) const
-{
-	return false;
-}
-
-bool CAtmosUtilPool::CheckShutdown(void * pContext)
-{
-	return false;
 }

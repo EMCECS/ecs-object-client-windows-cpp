@@ -1,5 +1,5 @@
 //
-// Copyright (C) 1994 - 2011 EMC Corporation
+// Copyright (C) 1994 - 2017 EMC Corporation
 // All rights reserved.
 //
 
@@ -1046,6 +1046,7 @@ private:
 	CString sSecret;
 	CString sUser;
 	CString sHost;
+	CString sUserAgent;
 	deque<CString> IPListHost;				// list of IP addresses/DNS host names to access this server. protected by rwlIPListHost
 	mutable CSimpleRWLock rwlIPListHost;	// lock for IPListHost
 	INTERNET_PORT Port;
@@ -1232,7 +1233,6 @@ private:
 	// internal version of DirListing allowing it to search for a single file/dir and not return the whole list
 	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention);
 	CString signS3ShareableURL(const CString& sResource, const CString& sExpire);
-	CString CreateChecksumHeader(LPCTSTR pszChecksumAlg, ULONGLONG lwOffset, const CBuffer *pChecksum);
 	void KillHostSessions(void);
 	S3_ERROR ReadMetadataBulkInternalS3(LPCTSTR pszPath, const list<CString>& TagRequestList, list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszVersionId);
 	S3_ERROR UpdateMetadataS3(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDList, const list<CString> *pDeleteTagParam = nullptr);
@@ -1262,6 +1262,7 @@ public:
 	static DWORD ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftTime, bool bLocal = false);
 	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal);
 
+	void SetUserAgent(LPCTSTR pszUserAgent);					// typically app name/version. put in 'user agent' field in HTTP protocol
 	void SetPort(INTERNET_PORT PortParam);
 	void SetProxy(bool bUseDefaultProxyParam, LPCTSTR pszProxy, DWORD dwPort, LPCTSTR pszProxyUser, LPCTSTR pszProxyPassword);
 	void SetTest(bool bTestParam);
@@ -1297,7 +1298,7 @@ public:
 	static bool ValidateS3BucketName(LPCTSTR pszBucketName);
 	void SetHTTPSecurityFlags(DWORD dwHTTPSecurityFlagsParam);
 
-	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, LPCTSTR pszChecksumAlg = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr);
+	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr);
 	S3_ERROR DeleteS3(LPCTSTR pszPath);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr);
@@ -1389,29 +1390,3 @@ public:
 	}
 };
 
-
-struct CAtmosUtilPoolMsg
-{
-	CString sPath;						// file to read
-	CString sTempName;					// optional temporary name
-	ULONGLONG lwReadLength;				// (read) max number of bytes to read
-	DWORD dwBufOffset;					// (read) offset into buffer to start reading
-	ULONGLONG lwOffset;					// offset of cloud file
-	ULONGLONG lwWriteComplete;			// how many bytes have been written
-	CBuffer Buf;						// (read,write) buffer to read into or write from
-
-	CAtmosUtilPoolMsg()
-		: lwReadLength(0)
-		, dwBufOffset(0)
-		, lwOffset(0ULL)
-		, lwWriteComplete(0ULL)
-	{
-	}
-};
-class ECSUTIL_EXT_CLASS CAtmosUtilPool : public CThreadPool<shared_ptr<CAtmosUtilPoolMsg>>
-{
-public:
-	bool DoProcess(const CSimpleWorkerThread *pThread, const shared_ptr<CAtmosUtilPoolMsg>& Msg);
-	bool SearchEntry(const shared_ptr<CAtmosUtilPoolMsg>& Msg1, const shared_ptr<CAtmosUtilPoolMsg>& Msg2) const;
-	static bool CheckShutdown(void *pContext);
-};
