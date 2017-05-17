@@ -343,7 +343,6 @@ struct CMPUPoolMsg
 										// S3 multipart upload
 	shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY> pUploadPartEntry;		// if non-empty, multipart upload
 	shared_ptr<CECSConnection::S3_UPLOAD_PART_INFO> MultiPartInfo;			// if non-empty, multipart upload
-	shared_ptr<CHandle> hPart;			// if multipart receive, the regular handle for the part file
 	UINT uMultiPartNum;					// multipart receive
 
 	CMPUPoolMsg()
