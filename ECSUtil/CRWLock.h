@@ -51,6 +51,7 @@ public:
 
 class CRWLockAcquire;
 
+//lint -save -esym(1539, CRWLock::rwlListLock)
 class ECSUTIL_EXT_CLASS CRWLock
 {
 	friend class CRWLockAcquire;
@@ -67,8 +68,9 @@ public:
 
 public:
 	CRWLock();
-	~CRWLock();
+	~CRWLock() throw();
 };
+//lint -restore
 
 class ECSUTIL_EXT_CLASS CRWLockAcquire
 {
@@ -86,7 +88,7 @@ private:
 
 public:
 	CRWLockAcquire(CRWLock *pLockParam, bool bWriteParam = false, bool bGetLock = true);
-	~CRWLockAcquire();
+	~CRWLockAcquire() throw();
 	void Unlock(void) throw();
 	void Lock(bool bWriteParam = false) throw();
 	bool IsLocked(void) const;

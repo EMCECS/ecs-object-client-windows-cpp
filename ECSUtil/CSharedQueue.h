@@ -63,11 +63,12 @@ struct CSharedQueueEventEvent
 		(void)src;
 	};
 
-	const CSharedQueueEventEvent& operator =(const CSharedQueueEventEvent& src)
+	const CSharedQueueEventEvent& operator =(const CSharedQueueEventEvent& src)		//lint !e1539	// members not assigned by assignment operator
 	{
-		(void)src;
+		if (&src == this)
+			return *this;
 		return *this;
-	};		//lint !e1539	// members not assigned by assignment operator
+	};
 };
 
 class ECSUTIL_EXT_CLASS CSharedQueueEvent

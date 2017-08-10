@@ -207,7 +207,7 @@ CBuffer &CBuffer::operator =(
 	{
 		Empty();							// deallocate anything that might be allocated
 		(void)InterlockedIncrement(&pSrcInfo->m_nRefs);
-		m_pData = b.m_pData;				//lint !e1555: (Warning -- Direct pointer copy of member 'CBuffer::m_pData' within copy assignment operator: 'CBuffer::operator=(const CBuffer &)')
+		m_pData = b.m_pData;
 	}
 	return *this;
 };
@@ -243,11 +243,13 @@ CBuffer::CBuffer(
 	if (pSrcInfo->m_nRefs == -1)	// check if locked
 	{
 		Grow(pSrcInfo->m_nSize);		// copy the data
+		if (m_pData == nullptr)
+			return;
 		memcpy(m_pData, b.m_pData, pSrcInfo->m_nSize);
 		return;
 	}
 	(void)InterlockedIncrement(&pSrcInfo->m_nRefs);
-	m_pData = b.m_pData;					//lint !e1554: (Warning -- Direct pointer copy of member 'CBuffer::m_pData' within copy constructor: 'CBuffer::CBuffer(const CBuffer &)')
+	m_pData = b.m_pData;
 }
 
 //

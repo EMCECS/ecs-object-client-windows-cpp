@@ -72,6 +72,7 @@ public:
 	virtual ~CBufferStream()
 	{
 		ASSERT(_refcount == 0);
+		_pBuf = nullptr;
 #ifdef DEBUG_DUMP_QUEUES
 		if (pcsGlobalCBufferStreamSet && pGlobalCBufferStreamSet)
 		{
@@ -279,6 +280,7 @@ class FileStream : public IStream
 		{
 			::CloseHandle(_hFile);
 		}
+		_hFile = nullptr;
 	}
 
 public:
@@ -406,6 +408,7 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE Stat(STATSTG* pStatstg, DWORD grfStatFlag)
 	{
+		(void)grfStatFlag;
 		if (GetFileSizeEx(_hFile, (PLARGE_INTEGER)&pStatstg->cbSize) == 0)
 			return HRESULT_FROM_WIN32(GetLastError());
 		return S_OK;

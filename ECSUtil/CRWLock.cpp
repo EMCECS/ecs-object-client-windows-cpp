@@ -17,7 +17,7 @@ CRWLock::CRWLock()
 	Instances.reserve(20);					// allocate the first batch in one shot
 }
 
-CRWLock::~CRWLock()
+CRWLock::~CRWLock() throw()
 {
 	// make sure there are no outstanding locks
 	// if so, assert, but then unlock the locks
@@ -26,7 +26,7 @@ CRWLock::~CRWLock()
 	{
 		// there are outstanding locks!
 		ASSERT(false);
-		for (vector<CRWLockAcquire *>::const_iterator it=Instances.begin() ; it!=Instances.end() ; ++it)	//lint !e827: (Info -- Loop not reachable)
+		for (vector<CRWLockAcquire *>::const_iterator it=Instances.begin() ; it!=Instances.end() ; ++it)
 		{
 			(*it)->bLocked = false;
 			(*it)->pLock = NULL;
@@ -39,7 +39,7 @@ CRWLock& CRWLock::operator = (const CRWLock& Src)
 	if (&Src == this)
 		return *this;
 	return *this;
-}						//lint !e1539: (Warning -- member 'CRWLock::rwlListLock' (line 63, file C:\blds\GD\SRC\atemc_gen\inc\CRWLock.h) not assigned by assignment operator)
+}
 
 CRWLock::CRWLock(const CRWLock& Src)
 {
@@ -59,7 +59,7 @@ bool CRWLock::IsWriteLocked(void) const
 	CSimpleRWLockAcquire lockList(&rwlListLock, false);
 	if (!Instances.empty())
 	{
-		for (vector<CRWLockAcquire *>::const_iterator it = Instances.begin(); it != Instances.end(); ++it)	//lint !e827: (Info -- Loop not reachable)
+		for (vector<CRWLockAcquire *>::const_iterator it = Instances.begin(); it != Instances.end(); ++it)
 		{
 			if ((*it)->bWrite)
 				bWriteLocked = true;
@@ -89,7 +89,7 @@ CRWLockAcquire::CRWLockAcquire(CRWLock *pLockParam, bool bWriteParam, bool bGetL
 	}
 }
 
-CRWLockAcquire::~CRWLockAcquire()
+CRWLockAcquire::~CRWLockAcquire() throw()
 {
 	Unlock();
 	if (pLock != NULL)

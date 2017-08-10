@@ -3085,7 +3085,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, hr);
 					if (!Context.sPrefix.IsEmpty() && !Context.bIsTruncated && Context.pDirList->empty() && !Context.bGotKey)
 					{
-						CECSConnection::S3_ERROR Error;
+						Error = CECSConnection::S3_ERROR();
 						Error.dwHttpError = HTTP_STATUS_NOT_FOUND;
 						Error.S3Error = S3_ERROR_NoSuchKey;
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
@@ -4715,11 +4715,12 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			CString sXmlOut(pBufStream->GetXml());
 #ifdef _UNICODE
-			CAnsiString XmlUTF8(sXmlOut, CP_UTF8);
+			CAnsiString XmlUTF8_east(sXmlOut, CP_UTF8);
 #else
-			CAnsiString XmlUTF8(sXmlOut);
+			CAnsiString XmlUTF8_east(sXmlOut);
 #endif
-			XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
+			XmlUTF8_east.SetBufSize((DWORD)strlen(XmlUTF8_east));
+			XmlUTF8 = XmlUTF8_east;
 		}
 
 		Error = SendRequest(_T("PUT"), CString(_T("/")) + pszBucketName + _T("/"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);

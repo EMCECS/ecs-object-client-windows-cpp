@@ -96,7 +96,7 @@ public:
 					}
 				}
 				pOutput[ret] = 0;
-				SetBufSize(sizeof(WCHAR) * (ret + 1));
+				SetBufSize((DWORD)(sizeof(WCHAR) * (ret + 1)));
 				break;
 			}
 		}
