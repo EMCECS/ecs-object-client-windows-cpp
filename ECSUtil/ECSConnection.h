@@ -37,7 +37,6 @@ class CInternetHandle
 {
 private:
 	HINTERNET hInternet;
-	NTSTATUS dwMSG_INTERNET_CLOSE_ERROR;
 
 public:
 	CInternetHandle(HINTERNET hInit = nullptr)
@@ -53,7 +52,6 @@ public:
 
 	CInternetHandle &operator =(HINTERNET hParam)
 	{
-		ASSERT(hInternet == nullptr);
 		if (hInternet != nullptr)
 			(void)CloseHandle();
 		hInternet = hParam;
@@ -87,11 +85,7 @@ public:
 			if (!WinHttpCloseHandle(hInternet))
 			{
 				dwError = GetLastError();
-				if (true
-#ifndef DEBUG
-						&& (dwError != ERROR_INVALID_HANDLE)
-#endif
-						)
+				if (dwError != ERROR_INVALID_HANDLE)
 					LogMessage(TEXT(__FILE__), __LINE__, _T("WinHttpCloseHandle error"), dwError);
 			}
 			hInternet = nullptr;
@@ -333,7 +327,8 @@ public:
 
 		const S3_UPLOAD_PART_ENTRY_EVENT& operator =(const S3_UPLOAD_PART_ENTRY_EVENT& src)
 		{
-			(void)src;
+			if (&src == this)
+				return *this;
 			return *this;
 		};		//lint !e1539	// members not assigned by assignment operator
 	};
@@ -723,7 +718,6 @@ public:
 		CString sS3NextVersionIdMarker;		// passed to version-id-marker in next request
 
 		XML_DIR_LISTING_CONTEXT()
-
 			: bNeedMetadata(false)
 			, bDontTranslateLongname(false)
 			, bGotSysMetadata(false)
@@ -732,6 +726,7 @@ public:
 			, bGotRootElement(false)
 			, bSingle(false)
 			, bS3Versions(false)
+			, bGotKey(false)
 			, pDirList(nullptr)
 			, pszSearchName(nullptr)
 			, psRetSearchName(nullptr)
@@ -792,7 +787,8 @@ private:
 
 		const HTTP_CALLBACK_EVENT& operator =(const HTTP_CALLBACK_EVENT& src)
 		{
-			(void)src;
+			if (&src == this)
+				return *this;
 			return *this;
 		};		//lint !e1539	// members not assigned by assignment operator
 	};
@@ -997,6 +993,7 @@ private:
 		{
 			// Close any open handles.
 			CloseRequest();
+			pECSConnection = nullptr;
 		}
 
 		// copy constructor
@@ -1025,7 +1022,8 @@ private:
 
 		const CECSConnectionState& operator =(const CECSConnectionState& src)
 		{
-			(void)src;
+			if (&src == this)
+				return *this;
 			return *this;
 		};		//lint !e1539	// members not assigned by assignment operator
 		void CloseRequest(bool bSaveCert = false) throw();
@@ -1048,7 +1046,8 @@ private:
 
 		const CECSConnectionStateCS& operator =(const CECSConnectionStateCS& src)
 		{
-			(void)src;
+			if (&src == this)
+				return *this;
 			return *this;
 		};		//lint !e1539	// members not assigned by assignment operator
 	};

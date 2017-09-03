@@ -523,6 +523,7 @@ static int DoTest(CString& sOutMessage)
 			_tprintf(_T("Delete error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
+		_tprintf(_T("Deleted: %s\n"), (LPCTSTR)sDeleteECSPath);
 	}
 	if (!sDirPath.IsEmpty())
 	{

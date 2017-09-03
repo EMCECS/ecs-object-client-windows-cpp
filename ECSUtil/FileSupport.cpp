@@ -57,6 +57,8 @@ struct CS3ReadThread : public CSimpleWorkerThread
 	{}
 	~CS3ReadThread()
 	{
+		pConn = nullptr;
+		pMsgEvent = nullptr;
 		KillThreadWait();
 	}
 	void DoWork();
@@ -170,6 +172,7 @@ struct CS3WriteThread : public CSimpleWorkerThread
 	}
 	~CS3WriteThread()
 	{
+		pConn = nullptr;
 		KillThreadWait();
 	}
 	void DoWork();
@@ -242,7 +245,6 @@ CECSConnection::S3_ERROR S3Write(
 	void *pContext)											// context for UpdateProgressCB
 {
 	CS3WriteThread WriteThread;						// thread object
-	CSharedQueueEvent MsgEvent;						// event that new data was pushed on the read queue
 	CECSConnection::STREAM_DATA_ENTRY WriteRec;
 	CBuffer WriteBuf;
 	DWORD dwBytesRead;
@@ -298,7 +300,6 @@ CECSConnection::S3_ERROR S3Write(
 
 void CS3WriteThread::DoWork()
 {
-	CBuffer RetData;
 	CBuffer HashData;
 	if (bGotHash)
 		Hash.GetHashData(HashData);
@@ -329,11 +330,15 @@ struct CMPUPoolMsgEvents
 	CMPUPoolMsgEvents(const CMPUPoolMsgEvents& src)
 	{
 		(void)src;
+		pMsgList = nullptr;
+		pevMsg = nullptr;
+		bComplete = false;
 	};
 
 	const CMPUPoolMsgEvents& operator =(const CMPUPoolMsgEvents& src)
 	{
-		(void)src;
+		if (&src == this)
+			return *this;
 		return *this;
 	};
 };
@@ -353,14 +358,13 @@ struct CMPUPoolMsg
 										// S3 multipart upload
 	shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY> pUploadPartEntry;		// if non-empty, multipart upload
 	shared_ptr<CECSConnection::S3_UPLOAD_PART_INFO> MultiPartInfo;			// if non-empty, multipart upload
-	UINT uMultiPartNum;					// multipart receive
 
 	CMPUPoolMsg()
 		: lwOffset(0ULL)
 		, lwWriteComplete(0ULL)
+		, pStreamQueue(nullptr)
 		, ullTotalLen(0ULL)
 		, dwThreadId(GetCurrentThreadId())
-		, uMultiPartNum(0)
 	{}
 
 	CMPUPoolMsg(
@@ -379,7 +383,6 @@ struct CMPUPoolMsg
 		, pStreamQueue(pStreamQueueParam)
 		, ullTotalLen(ullTotalLenParam)
 		, dwThreadId(GetCurrentThreadId())
-		, uMultiPartNum(0)
 	{
 		Events.pMsgList = pMsgListParam;
 		Events.pevMsg = pevMsgParam;
@@ -513,7 +516,7 @@ bool DoS3MultiPartUpload(
 		if (dwMaxThreads == 0)
 			throw CECSConnection::CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_PARAMETER);
 		MPUPool.SetMaxThreads(dwMaxThreads);
-		MPUPool.SetPoolInitialized();
+		CThreadPoolBase::SetPoolInitialized();
 		MultiPartInfo.reset(new CECSConnection::S3_UPLOAD_PART_INFO);
 		// start up a multipart upload
 		Error = Conn.S3MultiPartInitiate(pszECSPath, *MultiPartInfo, ((pMDList != nullptr) && (!pMDList->empty())) ? pMDList : NULL);
@@ -803,6 +806,8 @@ bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<C
 
 bool CMPUPool::SearchEntry(const shared_ptr<CMPUPoolMsg>& Msg1, const shared_ptr<CMPUPoolMsg>& Msg2) const
 {
+	(void)Msg1;
+	(void)Msg2;
 	return false;
 }
 

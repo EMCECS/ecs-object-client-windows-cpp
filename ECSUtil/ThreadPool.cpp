@@ -33,7 +33,7 @@ void CThreadPoolBase::RegisterCThreadPool()
 {
 	if (pcsGlobalCThreadPool == NULL)
 	{
-		CCriticalSection *pcsGlobalCThreadPoolTemp = new CCriticalSection;			//lint !e1732 !e1733: (Info -- new in constructor for class 'CSimpleWorkerThread' which has no assignment operator)
+		CCriticalSection *pcsGlobalCThreadPoolTemp = new CCriticalSection;
 		if (InterlockedCompareExchangePointer((void **)&pcsGlobalCThreadPool, pcsGlobalCThreadPoolTemp, NULL) != NULL)
 			delete pcsGlobalCThreadPoolTemp;
 	}

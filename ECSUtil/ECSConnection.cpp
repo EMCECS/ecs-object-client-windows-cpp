@@ -72,7 +72,7 @@ public:
 		if (SignQuerySet.empty())
 		{
 			for (UINT i = 0; InitArray[i][0] != NUL; i++)
-				SignQuerySet.insert(InitArray[i]);
+				SignQuerySet.emplace(InitArray[i]);
 		}
 	}
 	bool IfQuery(const CString& sQuery)
@@ -704,9 +704,9 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 						sMsg += _T("SSL certificate is invalid.\r\n");
 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_REVOKED))
 						sMsg += _T("SSL certificate was revoked.\r\n");
- 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA))
+					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA))
 						sMsg += _T("The function is unfamiliar with the Certificate Authority that generated the server's certificate.\r\n");
- 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_CN_INVALID))
+					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_CN_INVALID))
 						sMsg += _T("SSL certificate common name (host name field) is incorrect, for example, if you entered www.microsoft.com and the common name on the certificate says www.msn.com.\r\n");
 					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_DATE_INVALID))
 						sMsg += _T("SSL certificate date that was received from the server is bad. The certificate is expired.\r\n");
@@ -1826,7 +1826,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 							LogMessage(_T(__FILE__), __LINE__, _T("WinHttpQueryHeadersBuffer error: %1"), dwError, (LPCTSTR)(itReq->sLabel + _T(" #") + FmtNum(dwIndex)));
 							break;
 						}
-						itReq->ContentList.push_back(FROM_UNICODE((LPCWSTR)RetBuf.GetData()));
+						itReq->ContentList.emplace_back(FROM_UNICODE((LPCWSTR)RetBuf.GetData()));
 					}
 				}
 			}
@@ -2178,7 +2178,6 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 
 		// object - copy to new path and then delete the old object
 		InitHeader();
-		bool bCopyMD = true;
 		list<CECSConnection::S3_METADATA_ENTRY> MDList;
 		if (pMDList != nullptr)
 			MDList = *pMDList;
@@ -2238,9 +2237,8 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 						++itList;
 				}
 			}
-			bCopyMD = false;
 		}
-		Error = CopyS3(sOldPathS3, sNewPathS3, pszVersionId, bCopyMD, nullptr, &MDList);
+		Error = CopyS3(sOldPathS3, sNewPathS3, pszVersionId, false, nullptr, &MDList);
 		if (Error.IfError())
 			return Error;
 		if (!AclAtError.IfError())
@@ -2308,7 +2306,7 @@ void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY
 				DeleteS3Internal(PathListAdd);
 			}
 		}
-		State.S3DeletePathList.push_back(S3_DELETE_ENTRY(itPath->sKey, itPath->sVersionId));
+		State.S3DeletePathList.emplace_back(S3_DELETE_ENTRY(itPath->sKey, itPath->sVersionId));
 		if (State.S3DeletePathList.size() > MaxS3DeleteObjects)
 			DeleteS3Send();
 	}
@@ -3404,7 +3402,8 @@ CECSConnection::S3_ERROR CECSConnection::S3ServiceInformation(S3_SERVICE_INFO& S
 	ServiceInfo.BucketList.clear();
 	ServiceInfo.sOwnerDisplayName.Empty();
 	ServiceInfo.sOwnerID.Empty();
-	if ((RetData.GetBufSize() > 5) && (strncmp((LPCSTR)RetData.GetData(), "<?xml", 5) == 0))
+	LPCSTR pXML = (LPCSTR)RetData.GetData();
+	if ((RetData.GetBufSize() > 5) && (pXML != nullptr) && (strncmp(pXML, "<?xml", 5) == 0))
 	{
 		XML_S3_SERVICE_INFO_CONTEXT Context;
 		Context.pServiceInfo = &ServiceInfo;
@@ -3525,7 +3524,7 @@ CECSConnection::S3_ERROR CECSConnection::GetObjectSizeS3(
 		Error.S3Error = S3_ERROR_UNKNOWN;
 		return Error;
 	}
-	if (strncmp((LPCSTR)RetData.GetData(), "<?xml", 5) != 0)
+	if ((RetData.GetData() != nullptr) && (strncmp((LPCSTR)RetData.GetData(), "<?xml", 5) != 0))
 	{
 		// XML doesn't look valid. maybe we are connected to the wrong server?
 		// maybe there is a man-in-middle attack?
@@ -3749,7 +3748,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadMetadata(LPCTSTR pszPath, LPCTSTR p
 
 	list<CString> TagRequestList;
 	list<S3_METADATA_ENTRY> MDList;
-	TagRequestList.push_back(pszTag);
+	TagRequestList.emplace_back(pszTag);
 	Error = ReadMetadataBulkInternalS3(pszPath, TagRequestList, MDList, pszVersionId);
 	if (Error.IfError())
 		return Error;
@@ -3915,7 +3914,7 @@ CECSConnection::S3_ERROR CECSConnection::DeleteMetadata(LPCTSTR pszPath, LPCTSTR
 	{
 		list<S3_METADATA_ENTRY> MDList;
 		list<CString> DeleteList;
-		DeleteList.push_back(pszTag);
+		DeleteList.emplace_back(pszTag);
 		return UpdateMetadataS3(pszPath, MDList, &DeleteList);
 	}
 	catch (const CS3ErrorInfo& E)
@@ -5247,7 +5246,7 @@ CECSConnection::S3_ERROR CECSConnection::S3GetBucketVersioning(LPCTSTR pszBucket
 	Error = SendRequest(_T("GET"), CString(_T("/")) + pszBucket + _T("?versioning"), NULL, 0, RetData, &Req);
 	if (Error.IfError())
 		return Error;
-	if ((RetData.GetBufSize() > 5) && (strncmp((LPCSTR)RetData.GetData(), "<?xml", 5) == 0))
+	if ((RetData.GetBufSize() > 5) && (RetData.GetData() != nullptr) && (strncmp((LPCSTR)RetData.GetData(), "<?xml", 5) == 0))
 	{
 		XML_S3_VERSIONING_CONTEXT Context;
 		HRESULT hr;

@@ -260,7 +260,7 @@ public:
 			sHandleMsg += (*itSet)->Format();
 		}
 #else
-		(void)sHandleMsg;
+		sHandleMsg.Empty();
 #endif
 	}
 

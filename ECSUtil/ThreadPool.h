@@ -314,7 +314,7 @@ bool CThreadWork<MsgT>::InitInstance()
 {
 	if (!CSimpleWorkerThread::InitInstance())
 		return false;
-	while (!GetExitFlag() && ((pThreadPool == NULL) || !pThreadPool->GetPoolInitialized()))
+	while (!GetExitFlag() && ((pThreadPool == NULL) || !CThreadPoolBase::GetPoolInitialized()))
 		Sleep(500);
 	(void)CoInitialize(NULL);
 	SetCycleTime(SECONDS(5));
@@ -333,13 +333,13 @@ void CThreadWork<MsgT>::DoWork()
 	case WAIT_TIMEOUT:
 		while (!GetExitFlag() && !pThreadPool->bDisable)
 		{
-			CThreadPool<MsgT>::CMsgEntry *pMsg = NULL;			// message currently being worked on
+			typename CThreadPool<MsgT>::CMsgEntry *pMsg = NULL;			// message currently being worked on
 			{
 				CRWLockAcquire lock(&pThreadPool->Pool.GetLock(), true);	// write lock
 				{
 					CRWLockAcquire lockMsg(&pThreadPool->MsgQueue.GetLock(), true);	// write lock
 					// find the latest that is not being processed
-					CSharedQueue<CThreadPool<MsgT>::CMsgEntry>::iterator itMsg;
+					typename CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itMsg;
 					for (itMsg = pThreadPool->MsgQueue.begin(); itMsg != pThreadPool->MsgQueue.end(); ++itMsg)
 						if (!itMsg->Control.bProcessing)
 							break;
@@ -375,14 +375,12 @@ void CThreadWork<MsgT>::DoWork()
 					CRWLockAcquire lockMsg(&pThreadPool->MsgQueue.GetLock(), true);		// write lock
 					if (bProcessed)
 					{
-						bool bFound = false;
-						CSharedQueue<CThreadPool<MsgT>::CMsgEntry>::iterator itMsg;
+						typename CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itMsg;
 						for (itMsg = pThreadPool->MsgQueue.begin(); itMsg != pThreadPool->MsgQueue.end(); ++itMsg)
 							if (&(*itMsg) == pMsg)
 							{
 								pThreadPool->MsgQueue.erase(itMsg);
 								pThreadPool->MsgQueue.TriggerEvent(pThreadPool->MsgQueue.GetCount(), TRIGGEREVENTS_DELETE);
-								bFound = true;
 								if (pThreadPool->MsgQueue.empty())
 									VERIFY(pThreadPool->Events.evEmptyEvent.SetEvent());
 								break;
@@ -662,7 +660,7 @@ DWORD CThreadPool<MsgT>::GetMsgQueueCount() const
 template <class MsgT>
 DWORD CThreadPool<MsgT>::StartNewThread(void)
 {
-	CSharedQueue<CThreadWork<MsgT>>::iterator itWork;
+	typename CSharedQueue<CThreadWork<MsgT>>::iterator itWork;
 	{
 		CRWLockAcquire lock(&Pool.GetLock(), true);	// write lock
 		for (itWork = Pool.begin(); itWork != Pool.end(); ++itWork)
@@ -1067,14 +1065,14 @@ void CThreadPool<MsgT>::TransferFutureQueue(bool bFlush)		// if bFlush == true, 
 {
 	FILETIME ftNow;
 	GetSystemTimeAsFileTime(&ftNow);
-	CThreadPool<MsgT>::CMsgEntry DueMsg;
+	typename CThreadPool<MsgT>::CMsgEntry DueMsg;
 	bool bFoundDueMsg;
 	for (;;)
 	{
 		{
 			CRWLockAcquire lock(&MsgQueue.GetLock(), false);		// read lock
 			bFoundDueMsg = false;
-			for (CSharedQueue<CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
+			for (CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
 			{
 				if (bFlush || (ftNow >= itFuture->Control.ftDueTime))
 				{
@@ -1089,7 +1087,7 @@ void CThreadPool<MsgT>::TransferFutureQueue(bool bFlush)		// if bFlush == true, 
 		// now remove it from the FutureMsgQueue
 		{
 			CRWLockAcquire lock(&MsgQueue.GetLock(), true);		// write lock
-			for (CSharedQueue<CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
+			for (CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
 			{
 				if (DueMsg.Control.ullUniqueID == itFuture->Control.ullUniqueID)
 				{

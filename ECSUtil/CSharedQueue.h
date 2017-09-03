@@ -55,7 +55,7 @@ protected:
 	set<CSharedQueueEvent *> EventList;	// Used by a CMTQueue to list the events it triggers.
 
 public:
-	~CSharedQueueEventBase();
+	virtual ~CSharedQueueEventBase();
 	void TriggerEvent(DWORD dwCurCount, INT TriggeringEvent = TRIGGEREVENTS_ALL);
 };
 
