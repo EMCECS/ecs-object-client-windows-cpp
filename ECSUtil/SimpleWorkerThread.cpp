@@ -29,6 +29,17 @@ CCriticalSection *CSimpleWorkerThread::pcsGlobalThreadSet;
 set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSetActive;
 set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSet;
 
+void CSimpleWorkerThread::SignalTermination(void)
+{
+	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
+	for (list<CEvent *>::const_iterator itTerm = TermEventList.begin(); itTerm != TermEventList.end(); ++itTerm)
+	{
+		(void)(*itTerm)->SetEvent();
+	}
+	// now remove the events
+	TermEventList.clear();
+}
+
 CSimpleWorkerThread::CSimpleWorkerThread()
 	: pThread(NULL)
 	, dwThreadID(0)
@@ -169,6 +180,7 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 			pSimpleThread->dwThreadID = 0;
 		}
 		pSimpleThread->bRunning = false;
+		pSimpleThread->SignalTermination();
 	}
 	return 0;
 }
@@ -334,6 +346,33 @@ void CSimpleWorkerThread::GetTerminateTime(FILETIME *pftEndThreadTime) const
 {
 	ASSERT(pftEndThreadTime != NULL);
 	*pftEndThreadTime = ftEndThreadTime;
+}
+
+bool CSimpleWorkerThread::AddTermEvent(CEvent * pEvent)
+{
+	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
+	if (!IfActive())
+		return false;
+	TermEventList.push_back(pEvent);
+	return true;
+}
+
+void CSimpleWorkerThread::RemoveTermEvent(CEvent * pEvent)
+{
+	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
+	for (list<CEvent *>::const_iterator itTerm = TermEventList.begin(); itTerm != TermEventList.end(); )
+	{
+		if (*itTerm == pEvent)
+			itTerm = TermEventList.erase(itTerm);
+		else
+			++itTerm;
+	}
+}
+
+void CSimpleWorkerThread::RemoveAllTermEvent(void)
+{
+	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
+	TermEventList.clear();
 }
 
 CSimpleWorkerThread *CSimpleWorkerThread::CurrentThread(void)

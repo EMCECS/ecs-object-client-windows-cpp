@@ -173,6 +173,7 @@ private:
 	bool bRunning;
 	bool bTerminate;
 	bool bAlertable;
+	list<CEvent *> TermEventList;	// events to signal during process termination
 	static UINT ThreadProc(LPVOID pParam);
 
 	static CCriticalSection *pcsGlobalThreadSet;
@@ -182,6 +183,7 @@ private:
 protected:
 	deque<CSyncObject *> EventList;
 	DWORD dwEventRet;					// wait on event return
+	void SignalTermination(void);
 
 public:
 	CSimpleWorkerThread();
@@ -206,6 +208,9 @@ public:
 	CString Format(void) const;
 	CString GetThreadType(void) const;
 	void GetTerminateTime(FILETIME *pftEndThreadTime) const;
+	bool AddTermEvent(CEvent *pEvent);							// if return true, then event was queued, otherwise thread is dead and event not queued
+	void RemoveTermEvent(CEvent *pEvent);
+	void RemoveAllTermEvent(void);
 
 	static void DumpHandles(CString& sHandleMsg);
 	static CSimpleWorkerThread *CurrentThread(void);
@@ -214,6 +219,15 @@ public:
 
 template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& rwlThreadList, bool bDontKillThis = false)
 {
+	struct THREAD_EVENT
+	{
+		CEvent Event;
+		CSimpleWorkerThread *pThread;
+		THREAD_EVENT(CSimpleWorkerThread *pThreadParam = nullptr)
+			: pThread(pThreadParam)
+		{}
+	};
+
 	const UINT WaitLoopMax = 1000;
 	DWORD dwThisThreadID = GetCurrentThreadId();
 	UINT iWaitLoop;
@@ -224,14 +238,18 @@ template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& r
 		{
 			CRWLockAcquire lock(&rwlThreadList, true);
 
-			for (list<T>::iterator itCfg = ThreadList.begin(); itCfg != ThreadList.end(); ++itCfg)
-				if (!bDontKillThis || (dwThisThreadID != itCfg->GetCurrentThreadID()))
-					itCfg->KillThread();
+			for (list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
+				if (!bDontKillThis || (dwThisThreadID != it->GetCurrentThreadID()))
+					it->KillThread();
 		}
 		// next wait for them all to die
 		iWaitLoop = 0;
 		for (;;)
 		{
+			// set up event list to wait on
+			HANDLE Events[60];								// wait on at most the first 60 entries in the list
+			DWORD dwEvents = 0;
+			list<THREAD_EVENT> InitEventList;					// initialized event list
 			bAllStopped = false;
 			iWaitLoop++;
 			if (iWaitLoop > WaitLoopMax)
@@ -240,17 +258,44 @@ template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& r
 			{
 				CRWLockAcquire lock(&rwlThreadList, true);
 
-				for (list<T>::iterator itCfg = ThreadList.begin(); itCfg != ThreadList.end(); ++itCfg)
-					if (!bDontKillThis || (dwThisThreadID != itCfg->GetCurrentThreadID()))
-						if (itCfg->IfActive())
+				for (list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
+				{
+					if (!bDontKillThis || (dwThisThreadID != it->GetCurrentThreadID()))
+					{
+						if (it->IfActive())
 						{
 							bAllStopped = false;
-							break;
+							InitEventList.emplace_front(&(*it));
+							if (it->AddTermEvent(&InitEventList.front().Event))
+							{
+								Events[dwEvents++] = InitEventList.front().Event.m_hObject;
+								if (dwEvents >= _countof(Events))
+									break;
+							}
+							else
+								(void)InitEventList.erase(InitEventList.begin());				// thread died before queuing the event
 						}
+					}
+				}
 			}
 			if (bAllStopped)
+			{
+				// remove the events from the thread objects
+				for (list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
+					it->pThread->RemoveAllTermEvent();
 				break;
-			Sleep(10);					// give it a tiny bit of time
+			}
+			if (dwEvents > 0)
+			{
+				// wait on ALL events
+				// since this is testing at most 60 there is a chance that even if all threads die, there may be additional ones
+				DWORD dwResult = ::WaitForMultipleObjects(dwEvents, Events, TRUE, SECONDS(1));
+				// now remove the events
+				for (list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
+					it->pThread->RemoveAllTermEvent();
+				if (dwResult == WAIT_FAILED)
+					break;									// something is seriously wrong
+			}
 		}
 		if (bAllStopped)
 			break;
