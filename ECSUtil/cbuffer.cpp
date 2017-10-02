@@ -26,7 +26,7 @@ static char THIS_FILE[] = __FILE__;
 #endif
 
 
-HANDLE CBuffer::hBufferHeap = NULL;
+HANDLE CBuffer::hBufferHeap = nullptr;
 
 //
 // CreateBuffer
@@ -36,10 +36,10 @@ BYTE *CBuffer::CreateBuffer(
 	DWORD nNewSize)			// new size
 {
 #ifdef SEPARATE_HEAPS
-	if (hBufferHeap == NULL)
+	if (hBufferHeap == nullptr)
 		hBufferHeap = HeapCreate(0, 0, 0);
 #endif
-	if (hBufferHeap == NULL)
+	if (hBufferHeap == nullptr)
 		hBufferHeap = GetProcessHeap();
 	BYTE *pNewData = (BYTE *)HeapAlloc(hBufferHeap, HEAP_ZERO_MEMORY, nNewSize + sizeof(CBufferData));
 	if (pNewData == nullptr)
@@ -70,7 +70,7 @@ void CBuffer::Grow(
 		AfxThrowInvalidArgException();
 	CBufferData *pInfo = GetInternalData();
 	// if there is another reference to the buffer, allocate its own and copy the data into it
-	if (pInfo != NULL)
+	if (pInfo != nullptr)
 	{
 		if (pInfo->m_nRefs > 1)
 		{
@@ -81,7 +81,7 @@ void CBuffer::Grow(
 				memcpy(pNewData, m_pData, __min(pInfo->m_nSize, nNewSize));
 			}
 			else
-				pNewData = NULL;
+				pNewData = nullptr;
 			if (InterlockedDecrement(&pInfo->m_nRefs) <= 0)
 			{
 				// count has gone to zero, deallocate the buffer
@@ -94,23 +94,23 @@ void CBuffer::Grow(
 	// if it gets here, the reference count must be 0
 	if (bEmpty)
 	{
-		if (m_pData != NULL)
+		if (m_pData != nullptr)
 		{
 			VERIFY(HeapFree(hBufferHeap, 0, pInfo));
-			m_pData = NULL;
+			m_pData = nullptr;
 		}
 		return;
 	}
 
-	ASSERT((pInfo == NULL) || (!bForce || (nNewSize >= pInfo->m_nSize)));
-	if (m_pData == NULL)
+	ASSERT((pInfo == nullptr) || (!bForce || (nNewSize >= pInfo->m_nSize)));
+	if (m_pData == nullptr)
 	{
 		if (nNewSize == 0)
 			return;
 		m_pData = CreateBuffer(nNewSize);
 		return;
 	}
-	ASSERT(pInfo != NULL);
+	ASSERT(pInfo != nullptr);
 	// if the buffer is too big, don't bother to reallocate
 	if (!bForce && (nNewSize <= pInfo->m_nAllocSize))
 	{
@@ -123,12 +123,12 @@ void CBuffer::Grow(
 	else
 	{
 #if defined(DEBUG) && !defined(BETA_BUILD)
-		if (HeapValidate(hBufferHeap, 0, NULL) == 0)
+		if (HeapValidate(hBufferHeap, 0, nullptr) == 0)
 			DebugBreak();
 #endif
 		SIZE_T AllocLen = nNewSize + sizeof(CBufferData) + ALLOC_INCR_DEFAULT;
 		pInfo = (CBufferData *)HeapReAlloc(hBufferHeap, HEAP_ZERO_MEMORY, pInfo, AllocLen);
-		if (pInfo == NULL)
+		if (pInfo == nullptr)
 			AfxThrowMemoryException();
 		pInfo->m_nSize = nNewSize;
 		pInfo->m_nAllocSize = nNewSize + ALLOC_INCR_DEFAULT;
@@ -142,7 +142,7 @@ void CBuffer::Grow(
 // cannot lock an empty buffer
 void CBuffer::Lock(void)
 {
-	if (m_pData != NULL)
+	if (m_pData != nullptr)
 	{
 		Grow(GetInternalData()->m_nSize);		// make sure the reference count is 1
 		ASSERT(GetInternalData()->m_nRefs == 1);
@@ -152,7 +152,7 @@ void CBuffer::Lock(void)
 
 void CBuffer::Unlock(void)
 {
-	if (m_pData != NULL)
+	if (m_pData != nullptr)
 	{
 		if (GetInternalData()->m_nRefs == -1)
 			GetInternalData()->m_nRefs = 1;
@@ -163,7 +163,7 @@ void CBuffer::Unlock(void)
 DWORD CBuffer::GetAllocSize() const
 {
 	CBufferData *pInfo = GetInternalData();
-	if (pInfo == NULL)
+	if (pInfo == nullptr)
 		return 0;
 	return(pInfo->m_nAllocSize);
 }
@@ -183,9 +183,9 @@ void CBuffer::Empty()
 void CBuffer::SetAt(DWORD nIndex, BYTE newElement)
 {
 	CBufferData *pInfo = GetInternalData();
-	DWORD nSize = pInfo == NULL ? 0 : pInfo->m_nSize;
+	DWORD nSize = pInfo == nullptr ? 0 : pInfo->m_nSize;
 	Grow(nIndex >= nSize ? nIndex + 1 : nSize);
-	ASSERT(m_pData != NULL);
+	ASSERT(m_pData != nullptr);
 	m_pData[nIndex] = newElement;
 }
 
@@ -198,14 +198,14 @@ CBuffer &CBuffer::operator =(
 {
 	if (&b == this)
 		return(*this);
-	if ((b.m_pData == NULL) || b.IsEmpty())
+	if ((b.m_pData == nullptr) || b.IsEmpty())
 	{
 		Empty();
 		return(*this);
 	}
 	CBufferData *pSrcInfo = b.GetInternalData();
 	CBufferData *pInfo = GetInternalData();
-	if ((pSrcInfo->m_nRefs == -1) || ((pInfo != NULL) && (pInfo->m_nRefs == -1)))	// check if locked
+	if ((pSrcInfo->m_nRefs == -1) || ((pInfo != nullptr) && (pInfo->m_nRefs == -1)))	// check if locked
 	{
 		Grow(pSrcInfo->m_nSize);		// copy the data
 		memcpy(m_pData, b.m_pData, pSrcInfo->m_nSize);
@@ -231,7 +231,7 @@ CBuffer &CBuffer::operator +=(
 	{
 		DWORD OldSize = GetBufSize();
 		Grow(GetBufSize() + b.GetBufSize());
-		ASSERT(m_pData != NULL);
+		ASSERT(m_pData != nullptr);
 		memcpy(&m_pData[OldSize], b.m_pData, b.GetBufSize());
 	}
 	return(*this);
@@ -244,8 +244,8 @@ CBuffer &CBuffer::operator +=(
 CBuffer::CBuffer(
 	const CBuffer &b)            // duplicate a CBuffer object
 {
-	m_pData = NULL;
-	if ((b.m_pData == NULL) || b.IsEmpty())
+	m_pData = nullptr;
+	if ((b.m_pData == nullptr) || b.IsEmpty())
 		return;
 	CBufferData *pSrcInfo = b.GetInternalData();
 	if (pSrcInfo->m_nRefs == -1)	// check if locked
@@ -280,7 +280,7 @@ void CBuffer::Load(
 	Grow(nLen);
 	if (nLen > 0)
 	{
-		ASSERT(m_pData != NULL);
+		ASSERT(m_pData != nullptr);
 		memcpy(m_pData, pSrc, nLen);
 	}
 }
@@ -297,7 +297,7 @@ void CBuffer::Append(
 	Grow(nLen + nOrigSize);
 	if (GetBufSize() > 0)
 	{
-		ASSERT(m_pData != NULL);
+		ASSERT(m_pData != nullptr);
 		memcpy(m_pData + nOrigSize, pSrc, nLen);
 	}
 }
@@ -315,7 +315,7 @@ int CBuffer::Compare(const CBuffer& Buf) const
 	int iDiff = nSize - Buf.GetBufSize();
 	if ((iDiff == 0) && (nSize != 0))
 	{
-		ASSERT(m_pData != NULL);
+		ASSERT(m_pData != nullptr);
 		iDiff = memcmp(m_pData, Buf.m_pData, nSize);
 	}
 	return iDiff;

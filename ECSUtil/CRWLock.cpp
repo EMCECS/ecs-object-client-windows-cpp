@@ -38,7 +38,7 @@ CRWLock::~CRWLock() throw()
 		for (vector<CRWLockAcquire *>::const_iterator it=Instances.begin() ; it!=Instances.end() ; ++it)
 		{
 			(*it)->bLocked = false;
-			(*it)->pLock = NULL;
+			(*it)->pLock = nullptr;
 		}
 	}
 }
@@ -84,8 +84,8 @@ CRWLockAcquire::CRWLockAcquire(CRWLock *pLockParam, bool bWriteParam, bool bGetL
 	, bWrite(bWriteParam)
 	, bWaiting(false)
 {
-	ASSERT(pLockParam != NULL);
-	if (pLock != NULL)						//lint !e774
+	ASSERT(pLockParam != nullptr);
+	if (pLock != nullptr)						//lint !e774
 	{
 		// now put this entry on the vector with the lock
 		// hook this instance into the vector for this lock
@@ -101,7 +101,7 @@ CRWLockAcquire::CRWLockAcquire(CRWLock *pLockParam, bool bWriteParam, bool bGetL
 CRWLockAcquire::~CRWLockAcquire() throw()
 {
 	Unlock();
-	if (pLock != NULL)
+	if (pLock != nullptr)
 	{
 		// hook this instance into the vector for this lock
 		CSimpleRWLockAcquire lockList(&pLock->rwlListLock, true);
@@ -121,14 +121,14 @@ CRWLockAcquire::~CRWLockAcquire() throw()
 #ifdef DEBUG
 		ASSERT(bErased);
 #endif
-		pLock = NULL;
+		pLock = nullptr;
 	}
 }
 
 void CRWLockAcquire::Unlock(void) throw()
 {
-	ASSERT(pLock != NULL);
-	if (pLock == NULL)						//lint !e774
+	ASSERT(pLock != nullptr);
+	if (pLock == nullptr)						//lint !e774
 		return;
 	if (bLocked)
 	{
@@ -155,8 +155,8 @@ void CRWLockAcquire::Unlock(void) throw()
 
 void CRWLockAcquire::Lock(bool bWriteParam) throw()
 {
-	ASSERT(pLock != NULL);
-	if (pLock == NULL)						//lint !e774
+	ASSERT(pLock != nullptr);
+	if (pLock == nullptr)						//lint !e774
 		return;
 	Unlock();
 	bWrite = bWriteParam;
@@ -235,7 +235,7 @@ CSimpleRWLock::CSimpleRWLock(const CSimpleRWLock& Src)
 
 CSimpleRWLockAcquire::CSimpleRWLockAcquire(CSimpleRWLock *pLockParam, bool bWriteParam, bool bGetLock)
 {
-	ASSERT(pLockParam != NULL);
+	ASSERT(pLockParam != nullptr);
 	pLock = pLockParam;
 	bLocked = false;
 	bWrite = bWriteParam;
@@ -247,14 +247,14 @@ CSimpleRWLockAcquire::CSimpleRWLockAcquire(CSimpleRWLock *pLockParam, bool bWrit
 CSimpleRWLockAcquire::~CSimpleRWLockAcquire()
 {
 	Unlock();
-	if (pLock != NULL)
-		pLock = NULL;
+	if (pLock != nullptr)
+		pLock = nullptr;
 }
 
 void CSimpleRWLockAcquire::Unlock(void) throw()
 {
-	ASSERT(pLock != NULL);
-	if (pLock == NULL)						//lint !e774
+	ASSERT(pLock != nullptr);
+	if (pLock == nullptr)						//lint !e774
 		return;
 	if (bLocked)
 	{
@@ -268,8 +268,8 @@ void CSimpleRWLockAcquire::Unlock(void) throw()
 
 void CSimpleRWLockAcquire::Lock(bool bWriteParam) throw()
 {
-	ASSERT(pLock != NULL);
-	if (pLock == NULL)						//lint !e774
+	ASSERT(pLock != nullptr);
+	if (pLock == nullptr)						//lint !e774
 		return;
 	Unlock();
 	bWrite = bWriteParam;

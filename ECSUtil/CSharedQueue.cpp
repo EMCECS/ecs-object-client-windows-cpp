@@ -23,7 +23,7 @@ CSharedQueueEventBase::~CSharedQueueEventBase()
 	CRWLockAcquire lockQueue(&rwlQueue, true);
 	for (std::set<CSharedQueueEvent *>::iterator itEvent = EventList.begin(); itEvent != EventList.end(); ++itEvent)
 	{
-		if (*itEvent != NULL)
+		if (*itEvent != nullptr)
 			(*itEvent)->Unlink();
 	}
 }
@@ -103,8 +103,8 @@ bool CSharedQueueEvent::IsTriggerEventEnabled(INT flag)
 // queue to this event's QueueList.
 void CSharedQueueEvent::Link(CSharedQueueEventBase *pQueue) throw()
 {
-	ASSERT(pQueue != NULL);
-	if (pQueue == NULL)				//lint !e774	// (Info -- Boolean within 'if' always evaluates to False
+	ASSERT(pQueue != nullptr);
+	if (pQueue == nullptr)				//lint !e774	// (Info -- Boolean within 'if' always evaluates to False
 		return;
 	{
 		CRWLockAcquire lockQueue(&pQueue->rwlQueue, true);
@@ -125,7 +125,7 @@ void CSharedQueueEvent::Link(CSharedQueueEventBase *pQueue) throw()
 // If a queue is supplied, unlink only from that queue.
 void CSharedQueueEvent::Unlink(CSharedQueueEventBase *pQueue) throw()
 {
-	if (pQueue == NULL)
+	if (pQueue == nullptr)
 	{
 		CSimpleRWLockAcquire lockQueueEvent(&rwlQueueEvent, true);
 		for (std::set<CSharedQueueEventBase *>::iterator itQueue = QueueList.begin(); itQueue != QueueList.end(); ++itQueue)

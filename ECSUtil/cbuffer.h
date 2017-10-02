@@ -58,12 +58,12 @@ private:
 	//
 	// GetInternalData
 	// get the CBufferData struct associated with the buffer
-	// returns NULL if none was allocated
+	// returns nullptr if none was allocated
 	//
 	CBufferData* GetInternalData() const
 	{
-		if (m_pData == NULL)
-			return NULL;
+		if (m_pData == nullptr)
+			return nullptr;
 		return ((CBufferData*)m_pData)-1;
 	}
 
@@ -90,13 +90,13 @@ public:
 // Construction
 	CBuffer()
 	{
-		m_pData = NULL;
+		m_pData = nullptr;
 	}
 	CBuffer(
 		const void *pSrc,			// pointer to data to copy into the buffer
 		DWORD nLen)					// number of bytes to copy
 	{
-		m_pData = NULL;
+		m_pData = nullptr;
 		Load(pSrc, nLen);
 	}
 
@@ -115,7 +115,7 @@ public:
 	DWORD GetBufSize() const
 	{
 		CBufferData *pInfo = GetInternalData();
-		if (pInfo == NULL)
+		if (pInfo == nullptr)
 			return 0;
 		return(pInfo->m_nSize);
 	}
@@ -124,7 +124,7 @@ public:
 	bool IsEmpty() const
 	{
 		CBufferData *pInfo = GetInternalData();
-		if (pInfo == NULL)
+		if (pInfo == nullptr)
 			return true;
 		return pInfo->m_nSize == 0;
 	}
@@ -135,12 +135,12 @@ public:
 	BYTE GetAt(DWORD nIndex) const
 	{
 		ASSERT(nIndex < GetBufSize());
-		ASSERT(m_pData != NULL);
+		ASSERT(m_pData != nullptr);
 		return(m_pData[nIndex]);
 	}
 	void SetAt(DWORD nIndex, BYTE newElement);
 
-	// Direct Access to the element data (may return NULL)
+	// Direct Access to the element data (may return nullptr)
 	const BYTE* GetData() const
 	{
 		return (const BYTE*)m_pData;
@@ -148,8 +148,8 @@ public:
 
 	BYTE* GetData()
 	{
-		if (m_pData == NULL)
-			return NULL;
+		if (m_pData == nullptr)
+			return nullptr;
 		Grow(GetInternalData()->m_nSize);
 		return m_pData;
 	}
@@ -191,7 +191,7 @@ public:
 
 	bool inline operator>=(const CBuffer& Buf) const
 		{return Compare(Buf) >= 0; }
-	static void DumpBuffers(CString *pDumpMsg = NULL);
+	static void DumpBuffers(CString *pDumpMsg = nullptr);
 	void LoadBase64(LPCTSTR pszBase64Input);
 	CString EncodeBase64(void) const;
 };

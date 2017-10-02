@@ -157,7 +157,7 @@ public:
 		dwError = ERROR_SUCCESS;
 	}
 
-	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, DWORD dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = NULL)
+	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, DWORD dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = nullptr)
 	{
 		sFile = pszFile;
 		dwLine = dwLineParam;
@@ -165,7 +165,7 @@ public:
 		sAdditionalInfo = pszAdditionalInfo;
 	}
 
-	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, NTSTATUS dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = NULL)
+	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, NTSTATUS dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = nullptr)
 	{
 		sFile = pszFile;
 		dwLine = dwLineParam;
@@ -182,7 +182,7 @@ class CStringSortNoCase
 private:
 	CString sStr;
 public:
-	CStringSortNoCase(LPCTSTR pszInit = NULL)
+	CStringSortNoCase(LPCTSTR pszInit = nullptr)
 		: sStr(pszInit)
 	{}
 	CStringSortNoCase(const CString& sInit)
@@ -231,36 +231,36 @@ private:
 
 public:
 	// if boolptr is supplied, automatically set the referenced flag
-	CBoolSet(bool *pBoolPtr = NULL)
+	CBoolSet(bool *pBoolPtr = nullptr)
 	{
-		pbFlag = NULL;
+		pbFlag = nullptr;
 		Set(true, pBoolPtr);
 	}
 
 	~CBoolSet()
 	{
-		if (pbFlag != NULL)
+		if (pbFlag != nullptr)
 			*pbFlag = false;
-		pbFlag = NULL;
+		pbFlag = nullptr;
 	}
 
-	void Set(bool bState, bool *pBoolPtr = NULL)
+	void Set(bool bState, bool *pBoolPtr = nullptr)
 	{
-		if (pBoolPtr != NULL)
+		if (pBoolPtr != nullptr)
 		{
-			if (pbFlag != NULL)
+			if (pbFlag != nullptr)
 				*pbFlag = false;
 			pbFlag = pBoolPtr;
 		}
-		if (pbFlag != NULL)
+		if (pbFlag != nullptr)
 			*pbFlag = bState;
 	}
 
 	void Reset()
 	{
-		if (pbFlag != NULL)
+		if (pbFlag != nullptr)
 			*pbFlag = false;
-		pbFlag = NULL;
+		pbFlag = nullptr;
 	}
 };
 

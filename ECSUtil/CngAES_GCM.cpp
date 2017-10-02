@@ -26,10 +26,10 @@ CCngAES_GCM::CCngAES_GCM()
 	, bInitialized(false)
 	, bUseOldAesGcm(false)
 	, bUseECB(false)
-	, hAesAlg(NULL)
-	, hKey(NULL)
-	, hHashAlg(NULL)
-	, hHash(NULL)
+	, hAesAlg(nullptr)
+	, hKey(nullptr)
+	, hHashAlg(nullptr)
+	, hHash(nullptr)
 {
 	BCRYPT_INIT_AUTH_MODE_INFO(AuthInfoDecrypt);
 	BCRYPT_INIT_AUTH_MODE_INFO(AuthInfoEncrypt);
@@ -39,17 +39,17 @@ CCngAES_GCM::~CCngAES_GCM()
 {
 	// clean up hash variables
 	CleanUpHash();
-	hHashAlg = NULL;
-	hHash = NULL;
+	hHashAlg = nullptr;
+	hHash = nullptr;
 	// clean up encrypt/decrypt variables
-	if (hAesAlg != NULL)
+	if (hAesAlg != nullptr)
 	{
-		hAesAlg = NULL;				// all alg providers are cached. don't close them here!
+		hAesAlg = nullptr;				// all alg providers are cached. don't close them here!
 	}
-	if (hKey != NULL)
+	if (hKey != nullptr)
 	{
 		(void)BCryptDestroyKey(hKey);
-		hKey = NULL;
+		hKey = nullptr;
 	}
 	if (!KeyObject.IsEmpty())
 		(void)SecureZeroMemory(KeyObject.GetData(), KeyObject.GetBufSize());
@@ -59,8 +59,8 @@ CCngAES_GCM::~CCngAES_GCM()
 		(void)SecureZeroMemory(TagBuffer.GetData(), TagBuffer.GetBufSize());
 	if (!MacBuffer.IsEmpty())
 		(void)SecureZeroMemory(MacBuffer.GetData(), MacBuffer.GetBufSize());
-	hAesAlg = NULL;
-	hKey = NULL;
+	hAesAlg = nullptr;
+	hKey = nullptr;
 	bInitialized = false;
 }
 
@@ -74,7 +74,7 @@ void CCngAES_GCM::CreateHash(LPCWSTR HashType, PUCHAR pbSecret, ULONG cbSecret)
 
 	// kill any previous hash in progress
 	CleanUpHash();
-	bool bHMAC = (pbSecret != NULL) && (cbSecret != 0);
+	bool bHMAC = (pbSecret != nullptr) && (cbSecret != 0);
 	if (!NT_SUCCESS(Status = OpenCachedAlgorithmProvider(&hHashAlg, HashType, bHMAC)))
 		throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 	sHashAlgorithm = HashType;
@@ -161,14 +161,14 @@ void CCngAES_GCM::GetHashData(CBuffer& Hash, bool bFinish)
 void CCngAES_GCM::CleanUpHash()
 {
 	// destroy hash parameters
-	if (hHash != NULL)
+	if (hHash != nullptr)
 	{
 		(void)BCryptDestroyHash(hHash);
-		hHash = NULL;
+		hHash = nullptr;
 	}
-	if (hHashAlg != NULL)
+	if (hHashAlg != nullptr)
 	{
-		hHashAlg = NULL;				// all alg providers are cached. don't close them here!
+		hHashAlg = nullptr;				// all alg providers are cached. don't close them here!
 		sHashAlgorithm.Empty();
 	}
 }
@@ -207,7 +207,7 @@ bool CCngAES_GCM::Generate256BitKey(const BYTE *pPassword, UINT uPasswordLen, co
 bool CCngAES_GCM::GenerateRandom(BYTE* buffer, int size)
 {
 	NTSTATUS Status;
-	BCRYPT_ALG_HANDLE hRngAlg = NULL;
+	BCRYPT_ALG_HANDLE hRngAlg = nullptr;
 
 	try
 	{
@@ -225,8 +225,8 @@ bool CCngAES_GCM::GenerateRandom(BYTE* buffer, int size)
 		}
 		Status = E.dwError;
 	}
-	if (hRngAlg != NULL)
-		hRngAlg = NULL;				// all alg providers are cached. don't close them here!
+	if (hRngAlg != nullptr)
+		hRngAlg = nullptr;				// all alg providers are cached. don't close them here!
 	SetLastError(Status);
 	return NT_SUCCESS(Status);
 }
@@ -243,11 +243,11 @@ void CCngAES_GCM::SetKey( const BYTE* key, int ksize )
 	InitAES();
 
 	// Is someone is re-keying, we need to release the old key here...
-	if (hKey != NULL)
+	if (hKey != nullptr)
 	{
 		if (!NT_SUCCESS(Status = BCryptDestroyKey(hKey)))
 			throw CErrorInfo(_T(__FILE__), __LINE__, Status);
-		hKey  = NULL;
+		hKey  = nullptr;
 	}
 
 	ASSERT( ksize == KEYSIZE_128 || ksize == KEYSIZE_192 || ksize == KEYSIZE_256 );
@@ -267,13 +267,13 @@ void CCngAES_GCM::SetIv(const BYTE* iv, int vsize )
     ASSERT( FALSE == IsBadReadPtr( iv, vsize ) );
 #endif
 
-    ASSERT( NULL != hKey );
-    if( NULL == hKey )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
+    ASSERT( nullptr != hKey );
+    if( nullptr == hKey )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
 	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_NO_KEY, _T("SetIv: key is not valid"));
 
-    ASSERT( NULL != iv );
-    if( NULL == iv )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
-	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_NO_KEY, _T("SetIv: IV buffer is NULL"));
+    ASSERT( nullptr != iv );
+    if( nullptr == iv )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
+	    throw CErrorInfo(_T(__FILE__), __LINE__, NTE_NO_KEY, _T("SetIv: IV buffer is nullptr"));
 
     ASSERT( IV_SIZE == vsize );
     if( IV_SIZE != vsize )						//lint !e774 (Info -- Boolean within 'if' always evaluates to False
@@ -374,20 +374,20 @@ void CCngAES_GCM::Encrypt( const BYTE* plaintext, /*In*/DWORD psize, /*InOut*/BY
 #endif
 
 	// sanity check
-	ASSERT( plaintext != NULL || ( plaintext == NULL && 0 == psize ) );
-	if( !(plaintext != NULL || ( plaintext == NULL && 0 == psize )) )			//lint !e774 (Info -- Boolean within 'left side of && within right side of || within argument of ! within if' always evaluates to True
+	ASSERT( plaintext != nullptr || ( plaintext == nullptr && 0 == psize ) );
+	if( !(plaintext != nullptr || ( plaintext == nullptr && 0 == psize )) )			//lint !e774 (Info -- Boolean within 'left side of && within right side of || within argument of ! within if' always evaluates to True
 		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, _T("Encrypt(2): Plain text buffer is not valid"));
 
 	// sanity check
-	ASSERT( NULL != ciphertext );
-	if( NULL == ciphertext )				//lint !e774 (Info -- Boolean within 'if' always evaluates to False
+	ASSERT( nullptr != ciphertext );
+	if( nullptr == ciphertext )				//lint !e774 (Info -- Boolean within 'if' always evaluates to False
 		throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, _T("Encrypt(2): Cipher text buffer is not valid"));
 
 	if (!bUseECB)
 	{
 		AuthInfoEncrypt.pbNonce = bUseOldAesGcm ? IVBufCopy.GetData() : IVBuf.GetData();
 		AuthInfoEncrypt.cbNonce = IV_SIZE;
-		AuthInfoEncrypt.pbAuthData = NULL;
+		AuthInfoEncrypt.pbAuthData = nullptr;
 		AuthInfoEncrypt.cbAuthData = 0;
 		AuthInfoEncrypt.pbTag = TagBuffer.GetData();
 		AuthInfoEncrypt.cbTag = TagBuffer.GetBufSize();
@@ -404,7 +404,7 @@ void CCngAES_GCM::Encrypt( const BYTE* plaintext, /*In*/DWORD psize, /*InOut*/BY
 	else
 	{
 		DWORD cbCipherText;
-		if (!NT_SUCCESS(Status = BCryptEncrypt(hKey, (PUCHAR)plaintext, psize, NULL, NULL, 0, ciphertext, csize, &cbCipherText, 0)))
+		if (!NT_SUCCESS(Status = BCryptEncrypt(hKey, (PUCHAR)plaintext, psize, nullptr, nullptr, 0, ciphertext, csize, &cbCipherText, 0)))
 			throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 		csize = cbCipherText;
 	}
@@ -427,15 +427,15 @@ void CCngAES_GCM::Decrypt( const BYTE* ciphertext, /*In*/DWORD csize, /*InOut*/B
 #endif
 
     // sanity check
-    ASSERT( NULL != ciphertext );
-    ASSERT( NULL != plaintext );
-    if( NULL == ciphertext || NULL == plaintext )		//lint !e845 !e774
-	    throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, _T("Decrypt(2): Buffer is NULL"));
+    ASSERT( nullptr != ciphertext );
+    ASSERT( nullptr != plaintext );
+    if( nullptr == ciphertext || nullptr == plaintext )		//lint !e845 !e774
+	    throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_USER_BUFFER, _T("Decrypt(2): Buffer is nullptr"));
 	if (!bUseECB)
 	{
 		AuthInfoDecrypt.pbNonce = bUseOldAesGcm ? IVBufCopy.GetData() : IVBuf.GetData();
 		AuthInfoDecrypt.cbNonce = IV_SIZE;
-		AuthInfoDecrypt.pbAuthData = NULL;
+		AuthInfoDecrypt.pbAuthData = nullptr;
 		AuthInfoDecrypt.cbAuthData = 0;
 		AuthInfoDecrypt.pbTag = TagBuffer.GetData();
 		AuthInfoDecrypt.cbTag = TagBuffer.GetBufSize();
@@ -451,7 +451,7 @@ void CCngAES_GCM::Decrypt( const BYTE* ciphertext, /*In*/DWORD csize, /*InOut*/B
 	else
 	{
 		DWORD cbPlainText;
-		if (!NT_SUCCESS(Status = BCryptDecrypt(hKey, (PUCHAR)ciphertext, csize, NULL, NULL, 0, plaintext, psize, &cbPlainText, 0)))
+		if (!NT_SUCCESS(Status = BCryptDecrypt(hKey, (PUCHAR)ciphertext, csize, nullptr, nullptr, 0, plaintext, psize, &cbPlainText, 0)))
 			throw CErrorInfo(_T(__FILE__), __LINE__, Status);
 		psize = cbPlainText;
 	}
@@ -529,7 +529,7 @@ NTSTATUS CCngAES_GCM::OpenCachedAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlg, LPCW
 			*phAlg = itMap->second->hAlg;
 			return STATUS_SUCCESS;
 		}
-		Status = BCryptOpenAlgorithmProvider(phAlg, pszAlgName, NULL, bHMAC ? BCRYPT_ALG_HANDLE_HMAC_FLAG : 0);
+		Status = BCryptOpenAlgorithmProvider(phAlg, pszAlgName, nullptr, bHMAC ? BCRYPT_ALG_HANDLE_HMAC_FLAG : 0);
 		if (!NT_SUCCESS(Status))
 			return Status;
 		// now cache this result

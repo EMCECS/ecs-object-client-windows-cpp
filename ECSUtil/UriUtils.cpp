@@ -42,7 +42,7 @@ static CString EscapeChar(char ch);
 CString UriEncode(LPCTSTR pszInput, bool bEncodeAll)
 {
 #if 0
-	LPWSTR destOut = NULL;
+	LPWSTR destOut = nullptr;
 	DWORD cchDestOut = 0;
 	HRESULT hr = WSDUriEncode(pszInput, lstrlen(pszInput), &destOut, &cchDestOut);
 	ASSERT(hr == S_OK);
@@ -71,7 +71,7 @@ CString UriEncode(LPCTSTR pszInput, bool bEncodeAll)
 // translate from percent encoded string to Unicode string
 CString UriDecode(LPCTSTR pszInput)
 {
-	LPWSTR destOut = NULL;
+	LPWSTR destOut = nullptr;
 	DWORD cchDestOut = 0;
 	HRESULT hr = WSDUriDecode(TO_UNICODE(pszInput), lstrlen(pszInput), &destOut, &cchDestOut);
 	ASSERT(hr == S_OK);

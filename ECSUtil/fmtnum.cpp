@@ -23,6 +23,7 @@
 #include "stdafx.h"
 
 #include "FmtNum.h"
+#include "cbuffer.h"
 
 
 //
@@ -45,9 +46,9 @@ CString DateTimeStr(const SYSTEMTIME *pST, bool bSeconds, bool bDate, bool bTime
 			dwFlags |= DATE_LONGDATE;
 		else
 			dwFlags |= DATE_SHORTDATE;
-		iStrLen = GetDateFormat(Locale, dwFlags, pST, NULL, NULL, 0);
+		iStrLen = GetDateFormat(Locale, dwFlags, pST, nullptr, nullptr, 0);
 		pBuf = sDate.GetBuffer(iStrLen + 2);
-		(void)GetDateFormat(Locale, dwFlags, pST, NULL, pBuf, iStrLen+2);
+		(void)GetDateFormat(Locale, dwFlags, pST, nullptr, pBuf, iStrLen+2);
 		sDate.ReleaseBuffer();
 	}
 	if (bTime)
@@ -55,9 +56,9 @@ CString DateTimeStr(const SYSTEMTIME *pST, bool bSeconds, bool bDate, bool bTime
 		dwFlags = 0;
 		if (!bSeconds)
 			dwFlags |= TIME_NOSECONDS;
-        iStrLen = GetTimeFormat(Locale, dwFlags, pST, NULL, NULL, 0);
+        iStrLen = GetTimeFormat(Locale, dwFlags, pST, nullptr, nullptr, 0);
 		pBuf = sTime.GetBuffer(iStrLen + 2);
-		(void)GetTimeFormat(Locale, dwFlags, pST, NULL, pBuf, iStrLen+2);
+		(void)GetTimeFormat(Locale, dwFlags, pST, nullptr, pBuf, iStrLen+2);
 		sTime.ReleaseBuffer();
 		if (bMilliSec)
 			sTime += TEXT(" ") + FmtNum(pST->wMilliseconds, 3, true) + TEXT(" ms");
@@ -91,3 +92,24 @@ CString DateTimeStr(const FILETIME *pFT, bool bSeconds, bool bDate, bool bTime, 
 	return(TEXT(""));
 }
 
+
+// BinaryToHex
+// output 2 hex characters for each byte (uppercase)
+CString BinaryToHexString(const BYTE *pData, ULONG uData)
+{
+	const WCHAR DEC2HEX[16 + 1] = L"0123456789ABCDEF";
+	CString sOut;
+	sOut.Preallocate(uData * 2 + 1);				// save some time by allocating it all in one shot
+
+	for (ULONG i = 0; i < uData; i++)
+	{
+		sOut += DEC2HEX[pData[i] >> 4];
+		sOut += DEC2HEX[pData[i] & 0x0F];
+	}
+	return sOut;
+}
+
+CString BinaryToHexString(const CBuffer& Data)
+{
+	return BinaryToHexString(Data.GetData(), Data.GetBufSize());
+}

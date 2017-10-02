@@ -33,40 +33,40 @@ private:
 // Constructor
 public:
 	CProcessEvent()
-	: CSyncObject(NULL)
+	: CSyncObject(nullptr)
 	{
 	}
 
 	DWORD Create(DWORD dwProcessId)
 	{
-		if (m_hObject != NULL)
+		if (m_hObject != nullptr)
 		{
 			(void)::CloseHandle(m_hObject);
-			m_hObject = NULL;
+			m_hObject = nullptr;
 		}
 		m_hObject = OpenProcess(SYNCHRONIZE, FALSE, dwProcessId);
-		if (m_hObject == NULL)
+		if (m_hObject == nullptr)
 			return GetLastError();
 		return ERROR_SUCCESS;
 	}
 
 	void CloseProcess(void)
 	{
-		if (m_hObject != NULL)
+		if (m_hObject != nullptr)
 		{
 			(void)::CloseHandle(m_hObject);
-			m_hObject = NULL;
+			m_hObject = nullptr;
 		}
 	}
 
 // Operations
 public:
 	BOOL SetEvent()
-		{ ASSERT(m_hObject != NULL); return ::SetEvent(m_hObject); }
+		{ ASSERT(m_hObject != nullptr); return ::SetEvent(m_hObject); }
 	BOOL PulseEvent()
-		{ ASSERT(m_hObject != NULL); return ::PulseEvent(m_hObject); }
+		{ ASSERT(m_hObject != nullptr); return ::PulseEvent(m_hObject); }
 	BOOL ResetEvent()
-		{ ASSERT(m_hObject != NULL); return ::ResetEvent(m_hObject); }
+		{ ASSERT(m_hObject != nullptr); return ::ResetEvent(m_hObject); }
 	BOOL Unlock()
 		{ return TRUE; }
 
@@ -74,10 +74,10 @@ public:
 public:
 	virtual ~CProcessEvent()
 	{
-		if (m_hObject != NULL)
+		if (m_hObject != nullptr)
 		{
 			::CloseHandle(m_hObject);
-			m_hObject = NULL;
+			m_hObject = nullptr;
 		}
 	}
 };
@@ -90,40 +90,40 @@ private:
 // Constructor
 public:
 	CThreadEvent()
-	: CSyncObject(NULL)
+	: CSyncObject(nullptr)
 	{
 	}
 
 	DWORD Create(DWORD dwThreadId)
 	{
-		if (m_hObject != NULL)
+		if (m_hObject != nullptr)
 		{
 			(void)::CloseHandle(m_hObject);
-			m_hObject = NULL;
+			m_hObject = nullptr;
 		}
 		m_hObject = OpenThread(SYNCHRONIZE, FALSE, dwThreadId);
-		if (m_hObject == NULL)
+		if (m_hObject == nullptr)
 			return GetLastError();
 		return ERROR_SUCCESS;
 	}
 
 	void CloseThread(void)
 	{
-		if (m_hObject != NULL)
+		if (m_hObject != nullptr)
 		{
 			(void)::CloseHandle(m_hObject);
-			m_hObject = NULL;
+			m_hObject = nullptr;
 		}
 	}
 
 // Operations
 public:
 	BOOL SetEvent()
-		{ ASSERT(m_hObject != NULL); return ::SetEvent(m_hObject); }
+		{ ASSERT(m_hObject != nullptr); return ::SetEvent(m_hObject); }
 	BOOL PulseEvent()
-		{ ASSERT(m_hObject != NULL); return ::PulseEvent(m_hObject); }
+		{ ASSERT(m_hObject != nullptr); return ::PulseEvent(m_hObject); }
 	BOOL ResetEvent()
-		{ ASSERT(m_hObject != NULL); return ::ResetEvent(m_hObject); }
+		{ ASSERT(m_hObject != nullptr); return ::ResetEvent(m_hObject); }
 	BOOL Unlock()
 		{ return TRUE; }
 
@@ -131,10 +131,10 @@ public:
 public:
 	virtual ~CThreadEvent()
 	{
-		if (m_hObject != NULL)
+		if (m_hObject != nullptr)
 		{
 			::CloseHandle(m_hObject);
-			m_hObject = NULL;
+			m_hObject = nullptr;
 		}
 	}
 };

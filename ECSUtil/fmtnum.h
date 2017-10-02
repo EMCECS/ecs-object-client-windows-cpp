@@ -23,6 +23,7 @@
 #include "exportdef.h"
 #include <sstream>
 #include <iomanip>
+#include "cbuffer.h"
 
 //
 // formatting functions to be used with the CString library
@@ -71,3 +72,8 @@ inline CString FmtNum(
 //
 ECSUTIL_EXT_API CString DateTimeStr(const SYSTEMTIME *pST, bool bSeconds=false, bool bDate=true, bool bTime=true, bool bLongDate=false, bool bMilliSec=false, LCID Locale=LOCALE_USER_DEFAULT);
 ECSUTIL_EXT_API CString DateTimeStr(const FILETIME *pFT, bool bSeconds=false, bool bDate=true, bool bTime=true, bool bLongDate=false, bool bLocalTime=false, bool bMilliSec=false, LCID Locale=LOCALE_USER_DEFAULT);
+
+// BinaryToHex
+// output 2 hex characters for each byte (uppercase)
+ECSUTIL_EXT_API CString BinaryToHexString(const BYTE *pData, ULONG uData);
+ECSUTIL_EXT_API CString BinaryToHexString(const CBuffer& Data);

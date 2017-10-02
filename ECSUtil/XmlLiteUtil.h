@@ -38,29 +38,29 @@ private:
 	void Register()
 	{
 #ifdef DEBUG_DUMP_QUEUES
-		if (pcsGlobalCBufferStreamSet == NULL)
+		if (pcsGlobalCBufferStreamSet == nullptr)
 		{
 			CCriticalSection *pcsGlobalThreadTemp = new CCriticalSection;			//lint !e1732 !e1733 (Info -- new in constructor for class 'CSimpleWorkerThread' which has no assignment operator)
-			if (InterlockedCompareExchangePointer((void **)&pcsGlobalCBufferStreamSet, pcsGlobalThreadTemp, NULL) != NULL)
+			if (InterlockedCompareExchangePointer((void **)&pcsGlobalCBufferStreamSet, pcsGlobalThreadTemp, nullptr) != nullptr)
 				delete pcsGlobalThreadTemp;
 		}
-		ASSERT(pcsGlobalCBufferStreamSet != NULL);
+		ASSERT(pcsGlobalCBufferStreamSet != nullptr);
 		CSingleLock lockGlobalList(pcsGlobalCBufferStreamSet, true);
-		if (pGlobalCBufferStreamSet == NULL)
+		if (pGlobalCBufferStreamSet == nullptr)
 			pGlobalCBufferStreamSet = new std::set<CBufferStream *>;
 		(void)pGlobalCBufferStreamSet->insert(this);
 #endif
 	}
 
 public:
-	CBufferStream(CBuffer *pBuf = NULL)
+	CBufferStream(CBuffer *pBuf = nullptr)
 	{
 #ifdef DEBUG_DUMP_QUEUES
 		Register();
 #endif
 		_refcount = 0;
 		_pBuf = pBuf;
-		if (_pBuf == NULL)
+		if (_pBuf == nullptr)
 			_pBuf = &_InternalBuf;
 		_liPosition.QuadPart = 0;
 		bReadOnly = false;
@@ -73,7 +73,7 @@ public:
 #endif
 		_refcount = 0;
 		_pBuf = const_cast<CBuffer *> (pBuf);
-		if (_pBuf == NULL)
+		if (_pBuf == nullptr)
 			_pBuf = &_InternalBuf;
 		_liPosition.QuadPart = 0;
 		bReadOnly = true;
@@ -124,9 +124,9 @@ public:
 public:
 	virtual HRESULT STDMETHODCALLTYPE Read(void* pv, ULONG cb, ULONG* pcbRead)
 	{
-		ASSERT(_pBuf != NULL);
+		ASSERT(_pBuf != nullptr);
 		ULONG uBytesRead = 0;
-		if (pcbRead == NULL)
+		if (pcbRead == nullptr)
 			pcbRead = &uBytesRead;
 		if ((DWORD)_liPosition.QuadPart < _pBuf->GetBufSize())
 		{
@@ -148,7 +148,7 @@ public:
 	{
 		if (bReadOnly)
 			return E_ACCESSDENIED;
-		ASSERT(_pBuf != NULL);
+		ASSERT(_pBuf != nullptr);
 		if (((DWORD)_liPosition.QuadPart + cb) > _pBuf->GetBufSize())
 		{
 			_pBuf->SetBufSize((DWORD)_liPosition.QuadPart + cb + 8196);
@@ -157,7 +157,7 @@ public:
 		memcpy(_pBuf->GetData() + (DWORD)_liPosition.QuadPart, pv, cb);
 		_liPosition.LowPart += cb;
 		_liPosition.HighPart = 0;
-		if (pcbWritten != NULL)
+		if (pcbWritten != nullptr)
 			*pcbWritten = cb;
 		return S_OK;
 	}
@@ -221,7 +221,7 @@ public:
 		break;
 	}
 	_liPosition.HighPart = 0;
-	if (lpNewFilePointer != NULL)
+	if (lpNewFilePointer != nullptr)
 		*lpNewFilePointer = _liPosition;
 
 	return S_OK;
@@ -230,7 +230,7 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Stat(STATSTG* pStatstg, DWORD grfStatFlag)
 	{
 		(void)grfStatFlag;
-		ASSERT(_pBuf != NULL);
+		ASSERT(_pBuf != nullptr);
 		pStatstg->cbSize.QuadPart = _pBuf->GetBufSize();
 		return S_OK;
 	}
@@ -297,14 +297,14 @@ public:
 	static HRESULT OpenFile(LPCTSTR pName, IStream ** ppStream, bool fWrite)
 	{
 		HANDLE hFile = ::CreateFile(pName, fWrite ? GENERIC_WRITE : GENERIC_READ, FILE_SHARE_READ,
-			NULL, fWrite ? CREATE_ALWAYS : OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+			nullptr, fWrite ? CREATE_ALWAYS : OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
 		if (hFile == INVALID_HANDLE_VALUE)
 			return HRESULT_FROM_WIN32(GetLastError());
 
 		*ppStream = new FileStream(hFile);
 
-		if (*ppStream == NULL)
+		if (*ppStream == nullptr)
 			CloseHandle(hFile);
 
 		return S_OK;
@@ -341,13 +341,13 @@ public:
 public:
 	virtual HRESULT STDMETHODCALLTYPE Read(void* pv, ULONG cb, ULONG* pcbRead)
 	{
-		BOOL rc = ReadFile(_hFile, pv, cb, pcbRead, NULL);
+		BOOL rc = ReadFile(_hFile, pv, cb, pcbRead, nullptr);
 		return (rc) ? S_OK : HRESULT_FROM_WIN32(GetLastError());
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Write(void const* pv, ULONG cb, ULONG* pcbWritten)
 	{
-		BOOL rc = WriteFile(_hFile, pv, cb, pcbWritten, NULL);
+		BOOL rc = WriteFile(_hFile, pv, cb, pcbWritten, nullptr);
 		return rc ? S_OK : HRESULT_FROM_WIN32(GetLastError());
 	}
 

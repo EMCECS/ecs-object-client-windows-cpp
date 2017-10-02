@@ -31,15 +31,15 @@ CSimpleRWLock CThreadPoolBase::rwlPerfDummy;	// dummy critical section if no CS 
 
 void CThreadPoolBase::RegisterCThreadPool()
 {
-	if (pcsGlobalCThreadPool == NULL)
+	if (pcsGlobalCThreadPool == nullptr)
 	{
 		CCriticalSection *pcsGlobalCThreadPoolTemp = new CCriticalSection;
-		if (InterlockedCompareExchangePointer((void **)&pcsGlobalCThreadPool, pcsGlobalCThreadPoolTemp, NULL) != NULL)
+		if (InterlockedCompareExchangePointer((void **)&pcsGlobalCThreadPool, pcsGlobalCThreadPoolTemp, nullptr) != nullptr)
 			delete pcsGlobalCThreadPoolTemp;
 	}
-	ASSERT(pcsGlobalCThreadPool != NULL);
+	ASSERT(pcsGlobalCThreadPool != nullptr);
 	CSingleLock lockGlobalList(pcsGlobalCThreadPool, true);
-	if (pGlobalCThreadPool == NULL)
+	if (pGlobalCThreadPool == nullptr)
 		pGlobalCThreadPool = new set<CThreadPoolBase *>;
 	(void)pGlobalCThreadPool->insert(this);
 }
@@ -55,7 +55,7 @@ void CThreadPoolBase::UnregisterCThreadPool()
 
 void CThreadPoolBase::GlobalGarbageCollect()
 {
-	if ((pcsGlobalCThreadPool != NULL) && (pGlobalCThreadPool != NULL))
+	if ((pcsGlobalCThreadPool != nullptr) && (pGlobalCThreadPool != nullptr))
 	{
 		CSingleLock lockGlobalList(pcsGlobalCThreadPool, true);
 		for (set<CThreadPoolBase *>::iterator itSet = pGlobalCThreadPool->begin(); itSet != pGlobalCThreadPool->end(); ++itSet)
@@ -65,7 +65,7 @@ void CThreadPoolBase::GlobalGarbageCollect()
 
 void CThreadPoolBase::DumpPools(CString *pDumpMsg)
 {
-	if ((pcsGlobalCThreadPool == NULL) || (pGlobalCThreadPool == NULL) || !bPoolInitialized)
+	if ((pcsGlobalCThreadPool == nullptr) || (pGlobalCThreadPool == nullptr) || !bPoolInitialized)
 		return;
 	CSingleLock lockGlobalQueueList(pcsGlobalCThreadPool, true);
 

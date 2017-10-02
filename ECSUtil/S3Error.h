@@ -100,6 +100,8 @@ enum E_S3_ERROR_TYPE
 	S3_ERROR_UnexpectedContent,						// This request does not support content.
 	S3_ERROR_UnresolvableGrantByEmailAddress,		// The email address you provided does not match any account on record.
 	S3_ERROR_UserKeyMustBeSpecified,				// The bucket POST must contain the specified field name. If it is specified, check the order of the fields.
+	S3_ERROR_ObjectUnderRetention,					// The object is under retention and can't be deleted or modified.
+	S3_ERROR_MetadataSearchNotEnabled,				// Metadata search is not enabled for this bucket.
 	S3_ERROR_LAST_CODE,								// sentinel
 };
 
@@ -108,4 +110,4 @@ extern ECSUTIL_EXT_API E_S3_ERROR_TYPE S3TranslateError(LPCTSTR pszErrorID);
 // S3ErrorInfo
 // get error info given the error code
 // returns true if error is recognized
-extern ECSUTIL_EXT_API bool S3ErrorInfo(E_S3_ERROR_TYPE Code, CString *psErrorID = NULL, CString *psErrorText = NULL);
+extern ECSUTIL_EXT_API bool S3ErrorInfo(E_S3_ERROR_TYPE Code, CString *psErrorID = nullptr, CString *psErrorText = nullptr);

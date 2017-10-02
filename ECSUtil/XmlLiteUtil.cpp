@@ -82,7 +82,7 @@ HRESULT ScanXmlStream(
 	UINT cwchPrefix;
 	deque<XML_REC> XmlStack;
 
-	if (FAILED(hr = CreateXmlReader(__uuidof(IXmlReader), (void**) &pReader, NULL)))
+	if (FAILED(hr = CreateXmlReader(__uuidof(IXmlReader), (void**) &pReader, nullptr)))
 		return hr;
 
 	if (FAILED(hr = pReader->SetProperty(XmlReaderProperty_DtdProcessing, DtdProcessing_Prohibit)))
@@ -106,7 +106,7 @@ HRESULT ScanXmlStream(
 				XML_REC Rec;
 				if (FAILED(hr = pReader->GetPrefix(&pwszPrefix, &cwchPrefix)))
 					return hr;
-				if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, NULL)))
+				if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, nullptr)))
 					return hr;
 				if (cwchPrefix > 0)
 					Rec.sName = CStringW(pwszPrefix) + L":" + pwszLocalName;
@@ -132,9 +132,9 @@ HRESULT ScanXmlStream(
 					{
 						if (FAILED(hr = pReader->GetPrefix(&pwszPrefix, &cwchPrefix)))
 							return hr;
-						if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, NULL)))
+						if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, nullptr)))
 							return hr;
-						if (FAILED(hr = pReader->GetValue(&pwszValue, NULL)))
+						if (FAILED(hr = pReader->GetValue(&pwszValue, nullptr)))
 							return hr;
 						if (cwchPrefix > 0)
 							AttrRec.sAttrName = CStringW(pwszPrefix) + L":" + pwszLocalName;
@@ -148,7 +148,7 @@ HRESULT ScanXmlStream(
 						break;
 				}
 
-				if (FAILED(hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, &AttrList, NULL)))
+				if (FAILED(hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, &AttrList, nullptr)))
 					return hr;
 
 				if (FAILED(hr = pReader->MoveToElement()))
@@ -156,7 +156,7 @@ HRESULT ScanXmlStream(
 				if (bEmptyElement)
 				{
 					// send a fake EndElement if it was empty (meaning it won't get a real end element)
-					hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, XmlNodeType_EndElement, NULL, NULL);
+					hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, XmlNodeType_EndElement, nullptr, nullptr);
 					if (FAILED(hr))
 						return hr;
 					XmlStack.pop_back();
@@ -166,7 +166,7 @@ HRESULT ScanXmlStream(
 
 		case XmlNodeType_EndElement:
 			{
-				hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, NULL, NULL);
+				hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, nullptr, nullptr);
 				if (FAILED(hr))
 					return hr;
 				XML_REC Rec = XmlStack.back();
@@ -175,7 +175,7 @@ HRESULT ScanXmlStream(
 				CStringW sName;
 				if (FAILED(hr = pReader->GetPrefix(&pwszPrefix, &cwchPrefix)))
 					return hr;
-				if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, NULL)))
+				if (FAILED(hr = pReader->GetLocalName(&pwszLocalName, nullptr)))
 					return hr;
 				if (cwchPrefix > 0)
 					sName = CStringW(pwszPrefix) + L":" + pwszLocalName;
@@ -192,10 +192,10 @@ HRESULT ScanXmlStream(
 
 		case XmlNodeType_Text:
 			{
-				if (FAILED(hr = pReader->GetValue(&pwszValue, NULL)))
+				if (FAILED(hr = pReader->GetValue(&pwszValue, nullptr)))
 					return hr;
 				CStringW sValue(pwszValue);
-				hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, NULL, &sValue);
+				hr = CheckIfInterested(XmlStack, ReaderCB, pContext, pReader, nodeType, nullptr, &sValue);
 				if (FAILED(hr))
 					return hr;
 			}

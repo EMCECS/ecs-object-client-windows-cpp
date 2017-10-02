@@ -407,8 +407,8 @@ public:
 		list<shared_ptr<CMPUPoolMsg>>::iterator itPendingList;
 		for (itPendingList = PendingList.begin(); itPendingList != PendingList.end(); ++itPendingList)
 		{
-			(*itPendingList)->Events.pevMsg = NULL;
-			(*itPendingList)->Events.pMsgList = NULL;
+			(*itPendingList)->Events.pevMsg = nullptr;
+			(*itPendingList)->Events.pMsgList = nullptr;
 		}
 	}
 };
@@ -519,7 +519,7 @@ bool DoS3MultiPartUpload(
 		CThreadPoolBase::SetPoolInitialized();
 		MultiPartInfo.reset(new CECSConnection::S3_UPLOAD_PART_INFO);
 		// start up a multipart upload
-		Error = Conn.S3MultiPartInitiate(pszECSPath, *MultiPartInfo, ((pMDList != nullptr) && (!pMDList->empty())) ? pMDList : NULL);
+		Error = Conn.S3MultiPartInitiate(pszECSPath, *MultiPartInfo, ((pMDList != nullptr) && (!pMDList->empty())) ? pMDList : nullptr);
 		if (Error.IfError())
 			throw CECSConnection::CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 		bStartedMultipartUpload = true;
@@ -782,11 +782,11 @@ bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<C
 		if ((Msg->Events.pevMsg == nullptr) || (Msg->Events.pMsgList == nullptr))
 			return true;
 	}
-	if (pThread != NULL)
+	if (pThread != nullptr)
 		Msg->Conn.RegisterShutdownCB(CheckShutdown, const_cast<CSimpleWorkerThread *> (pThread));
 	// S3 multipart upload
 	Msg->Error = Msg->Conn.S3MultiPartUpload(*Msg->MultiPartInfo, *Msg->pUploadPartEntry, Msg->pStreamQueue, Msg->ullTotalLen, nullptr, 0ULL, nullptr);
-	if (pThread != NULL)
+	if (pThread != nullptr)
 		Msg->Conn.UnregisterShutdownCB(CheckShutdown);
 	{
 		CSingleLock lock(&Pending.csPendingList, true);
@@ -796,7 +796,7 @@ bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<C
 	{
 		CSingleLock lock(&Pending.csPendingList, true);
 		Msg->Events.bComplete = true;
-		if ((Msg->Events.pevMsg != NULL) && (Msg->Events.pMsgList != NULL))
+		if ((Msg->Events.pevMsg != nullptr) && (Msg->Events.pMsgList != nullptr))
 		{
 			(void)Msg->Events.pevMsg->SetEvent();
 		}

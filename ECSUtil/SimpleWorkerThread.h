@@ -132,16 +132,16 @@ private:
 public:
 	CSimpleWorkerThreadEvents()
 	{
-		m_pWorkEvent = NULL;
+		m_pWorkEvent = nullptr;
 	}
 
 	~CSimpleWorkerThreadEvents()
 	{
 		CSingleLock lock(&csWorkEvent, true);
-		if (m_pWorkEvent != NULL)
+		if (m_pWorkEvent != nullptr)
 		{
 			delete m_pWorkEvent;
-			m_pWorkEvent = NULL;
+			m_pWorkEvent = nullptr;
 		}
 	}
 
@@ -149,7 +149,7 @@ public:
 	{
 		if (&src == this)			// check for assignment over self
 			return(*this);
-		m_pWorkEvent = NULL;
+		m_pWorkEvent = nullptr;
 		return *this;
 	};
 
@@ -157,7 +157,7 @@ public:
 	CSimpleWorkerThreadEvents(const CSimpleWorkerThreadEvents& src)
 	{
 		(void)src;
-		m_pWorkEvent = NULL;
+		m_pWorkEvent = nullptr;
 	};
 };
 
@@ -190,7 +190,7 @@ public:
 	virtual ~CSimpleWorkerThread();
 	bool CreateThread(
 		UINT nStackSize = 0,
-		LPSECURITY_ATTRIBUTES lpSecurityAttrs = NULL,
+		LPSECURITY_ATTRIBUTES lpSecurityAttrs = nullptr,
 		int nPriority = THREAD_PRIORITY_NORMAL);
 	void StartWork();
 	bool IfActive() const;

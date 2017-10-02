@@ -41,9 +41,9 @@ void CSimpleWorkerThread::SignalTermination(void)
 }
 
 CSimpleWorkerThread::CSimpleWorkerThread()
-	: pThread(NULL)
+	: pThread(nullptr)
 	, dwThreadID(0)
-	, hThread(NULL)
+	, hThread(nullptr)
 	, dwWaitTime(INFINITE)
 	, bRunning(false)
 	, bTerminate(false)
@@ -53,17 +53,17 @@ CSimpleWorkerThread::CSimpleWorkerThread()
 	ZeroFT(ftEndThreadTime);
 	// keep a list of all current threads
 	{
-		if (pcsGlobalThreadSet == NULL)
+		if (pcsGlobalThreadSet == nullptr)
 		{
 			CCriticalSection *pcsGlobalThreadTemp = new CCriticalSection;			//lint !e1732 !e1733 (Info -- new in constructor for class 'CSimpleWorkerThread' which has no assignment operator)
-			if (InterlockedCompareExchangePointer((void **)&pcsGlobalThreadSet, pcsGlobalThreadTemp, NULL) != NULL)
+			if (InterlockedCompareExchangePointer((void **)&pcsGlobalThreadSet, pcsGlobalThreadTemp, nullptr) != nullptr)
 				delete pcsGlobalThreadTemp;
 		}
-		ASSERT(pcsGlobalThreadSet != NULL);
+		ASSERT(pcsGlobalThreadSet != nullptr);
 		CSingleLock lockGlobalList(pcsGlobalThreadSet, true);
-		if (pGlobalThreadSet == NULL)
+		if (pGlobalThreadSet == nullptr)
 			pGlobalThreadSet = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
-		if (pGlobalThreadSetActive == NULL)
+		if (pGlobalThreadSetActive == nullptr)
 			pGlobalThreadSetActive = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
 		(void)pGlobalThreadSet->insert(this);
 	}
@@ -72,7 +72,7 @@ CSimpleWorkerThread::CSimpleWorkerThread()
 CSimpleWorkerThread::~CSimpleWorkerThread()
 {
 	KillThreadWait();
-	if (hThread != NULL)
+	if (hThread != nullptr)
 	{
 		if (!CloseHandle(hThread))				// allow the thread to terminate
 			LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
@@ -82,8 +82,8 @@ CSimpleWorkerThread::~CSimpleWorkerThread()
 		CSingleLock csGlobalList(pcsGlobalThreadSet, true);
 		(void)pGlobalThreadSet->erase(this);
 	}
-	hThread = NULL;
-	pThread = NULL;
+	hThread = nullptr;
+	pThread = nullptr;
 }
 
 bool CSimpleWorkerThread::CreateThread(
@@ -93,23 +93,23 @@ bool CSimpleWorkerThread::CreateThread(
 {
 	{
 		CSingleLock lockWorkEvent(&Events.csWorkEvent, true);
-		if (Events.m_pWorkEvent != NULL)
+		if (Events.m_pWorkEvent != nullptr)
 			delete Events.m_pWorkEvent;
 		Events.m_pWorkEvent = new CEvent();
-		ASSERT(Events.m_pWorkEvent != NULL);
-		if (hThread != NULL)
+		ASSERT(Events.m_pWorkEvent != nullptr);
+		if (hThread != nullptr)
 		{
 			if (!CloseHandle(hThread))				// allow the thread to terminate
 				LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
-			hThread = NULL;
-			pThread = NULL;
+			hThread = nullptr;
+			pThread = nullptr;
 		}
 	}
 	bTerminate = false;
 	// create the thread suspended because there is a race condition:
 	// the thread may get going before the pThread field gets initialized
 	pThread = AfxBeginThread(ThreadProc, this, nPriority, nStackSize, CREATE_SUSPENDED, lpSecurityAttrs);
-	if (pThread != NULL)
+	if (pThread != nullptr)
 	{
 		CSingleLock lock(&Events.csWorkEvent, true);
 		dwThreadID = pThread->m_nThreadID;
@@ -117,14 +117,14 @@ bool CSimpleWorkerThread::CreateThread(
 		bRunning = true;
 		(void)pThread->ResumeThread();
 	}
-	return pThread != NULL;
+	return pThread != nullptr;
 }
 
 void CSimpleWorkerThread::StartWork()
 {
 	CSingleLock lock(&Events.csWorkEvent, true);
 
-	if (Events.m_pWorkEvent != NULL)
+	if (Events.m_pWorkEvent != nullptr)
 		(void)Events.m_pWorkEvent->SetEvent();
 }
 
@@ -166,17 +166,17 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 	}
 	{
 		CSingleLock lock(&pSimpleThread->Events.csWorkEvent, true);
-		if (pSimpleThread->Events.m_pWorkEvent != NULL)
+		if (pSimpleThread->Events.m_pWorkEvent != nullptr)
 		{
 			delete pSimpleThread->Events.m_pWorkEvent;
-			pSimpleThread->Events.m_pWorkEvent = NULL;
+			pSimpleThread->Events.m_pWorkEvent = nullptr;
 		}
-		pSimpleThread->pThread = NULL;
-		if (pSimpleThread->hThread != NULL)
+		pSimpleThread->pThread = nullptr;
+		if (pSimpleThread->hThread != nullptr)
 		{
 			if (!CloseHandle(pSimpleThread->hThread))				// allow the thread to terminate
 				LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
-			pSimpleThread->hThread = NULL;
+			pSimpleThread->hThread = nullptr;
 			pSimpleThread->dwThreadID = 0;
 		}
 		pSimpleThread->bRunning = false;
@@ -191,13 +191,13 @@ void CSimpleWorkerThread::KillThread() throw()
 
 	GetSystemTimeAsFileTime(&ftEndThreadTime);
 	bTerminate = true;
-	if (Events.m_pWorkEvent != NULL)
+	if (Events.m_pWorkEvent != nullptr)
 		(void)Events.m_pWorkEvent->SetEvent();
 }
 
 void CSimpleWorkerThread::KillThreadWait(bool bDontKillWaitOnly) throw()
 {
-	if ((pThread == NULL) || (dwThreadID == 0))
+	if ((pThread == nullptr) || (dwThreadID == 0))
 		return;
 	DWORD dwRet;
 	CThreadEvent ThreadEvent;
@@ -209,7 +209,7 @@ void CSimpleWorkerThread::KillThreadWait(bool bDontKillWaitOnly) throw()
 	if (!bDontKillWaitOnly)
 		KillThread();
 	CSingleLock lockKillThread(&Events.csKillThread, true);
-	if (Events.m_pWorkEvent == NULL)
+	if (Events.m_pWorkEvent == nullptr)
 		return;
 	while (IfActive())
 	{
@@ -230,9 +230,9 @@ void CSimpleWorkerThread::KillThreadWait(bool bDontKillWaitOnly) throw()
 	}
 	{
 		CSingleLock lockWorkEvent(&Events.csWorkEvent, true);
-		if (Events.m_pWorkEvent != NULL)
+		if (Events.m_pWorkEvent != nullptr)
 			delete Events.m_pWorkEvent;
-		Events.m_pWorkEvent = NULL;
+		Events.m_pWorkEvent = nullptr;
 	}
 }
 
@@ -263,7 +263,7 @@ bool CSimpleWorkerThread::GetExitFlag(void) const
 DWORD CSimpleWorkerThread::GetCurrentThreadID(void) const
 {
 	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
-	if (pThread != NULL)
+	if (pThread != nullptr)
 		return pThread->m_nThreadID;
 	return 0;
 }
@@ -286,7 +286,7 @@ bool CSimpleWorkerThread::IfActive() const
 	// for the thread to be killed without returning from the thread proc, so test if the thread is running
 	DWORD dwExitCode = 0;
 	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
-	if (hThread == NULL)
+	if (hThread == nullptr)
 		return false;
 	if (!GetExitCodeThread(hThread, &dwExitCode))
 		return false;
@@ -294,7 +294,7 @@ bool CSimpleWorkerThread::IfActive() const
 		return true;
 	if (!CloseHandle(hThread))				// allow the thread to terminate
 		LogMessage(_T(__FILE__), __LINE__, _T("CloseHandle error"), GetLastError());
-	*const_cast<HANDLE *>(&hThread) = NULL;
+	*const_cast<HANDLE *>(&hThread) = nullptr;
 	return false;
 }
 
@@ -344,7 +344,7 @@ CString CSimpleWorkerThread::GetThreadType(void) const
 
 void CSimpleWorkerThread::GetTerminateTime(FILETIME *pftEndThreadTime) const
 {
-	ASSERT(pftEndThreadTime != NULL);
+	ASSERT(pftEndThreadTime != nullptr);
 	*pftEndThreadTime = ftEndThreadTime;
 }
 
@@ -379,7 +379,7 @@ CSimpleWorkerThread *CSimpleWorkerThread::CurrentThread(void)
 {
 	DWORD dwCurThreadID = GetCurrentThreadId();
 	CSimpleWorkerThread *pCurThread;
-	ASSERT(pcsGlobalThreadSet != NULL);
+	ASSERT(pcsGlobalThreadSet != nullptr);
 	CSingleLock lockGlobalList(pcsGlobalThreadSet, true);
 	set<CSimpleWorkerThread *>::iterator itSet;
 	for (itSet = pGlobalThreadSetActive->begin(); itSet != pGlobalThreadSetActive->end(); ++itSet)
@@ -388,7 +388,7 @@ CSimpleWorkerThread *CSimpleWorkerThread::CurrentThread(void)
 		if (pCurThread->dwThreadID == dwCurThreadID)
 			return pCurThread;
 	}
-	return NULL;
+	return nullptr;
 }
 
 CCriticalSection *CSimpleWorkerThread::GetGlobalListCriticalSection(void)

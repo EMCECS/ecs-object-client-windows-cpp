@@ -66,7 +66,7 @@ public:
 
 	// use any non-keyed hash, such as:
 	// BCRYPT_SHA1_ALGORITHM, BCRYPT_SHA256_ALGORITHM, etc.
-	void CreateHash(LPCWSTR HashType, PUCHAR pbSecret = NULL, ULONG cbSecret = 0);
+	void CreateHash(LPCWSTR HashType, PUCHAR pbSecret = nullptr, ULONG cbSecret = 0);
 	void CreateHash(LPCWSTR HashType, const CBuffer& KeyBuf);
 	CStringW GetHashAlgorithm(void);
 

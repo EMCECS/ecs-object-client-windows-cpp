@@ -102,6 +102,119 @@ public:
 class ECSUTIL_EXT_CLASS CECSConnection
 {
 public:
+	// metadata search
+	enum class E_MD_SEARCH_TYPE : BYTE
+	{
+		Unknown,
+		Integer,
+		Datetime,
+		Decimal,
+		String
+	};
+	static E_MD_SEARCH_TYPE TranslateSearchFieldType(LPCTSTR pszType);
+	enum class E_MD_SEARCH_FIELD
+	{
+		Unknown,
+		SYSMD,
+		USERMD,
+	};
+	struct S3_METADATA_SEARCH_ENTRY
+	{
+		CString sName;
+		E_MD_SEARCH_TYPE Type;
+		S3_METADATA_SEARCH_ENTRY()
+			: Type(E_MD_SEARCH_TYPE::Unknown)
+		{}
+		int Compare(const S3_METADATA_SEARCH_ENTRY& rec) const
+		{
+			return sName.Compare(rec.sName);
+		}
+		bool operator == (const S3_METADATA_SEARCH_ENTRY& rec) const
+		{
+			return Compare(rec) == 0;
+		};
+		bool operator != (const S3_METADATA_SEARCH_ENTRY& rec) const
+		{
+			return Compare(rec) != 0;
+		};
+		bool operator < (const S3_METADATA_SEARCH_ENTRY& rec) const
+		{
+			return Compare(rec) < 0;
+		};
+		bool operator <= (const S3_METADATA_SEARCH_ENTRY& rec) const
+		{
+			return Compare(rec) <= 0;
+		};
+		bool operator > (const S3_METADATA_SEARCH_ENTRY& rec) const
+		{
+			return Compare(rec) > 0;
+		};
+		bool operator >= (const S3_METADATA_SEARCH_ENTRY& rec) const
+		{
+			return Compare(rec) >= 0;
+		};
+	};
+
+	struct S3_METADATA_SEARCH_FIELDS
+	{
+		list<S3_METADATA_SEARCH_ENTRY> KeyList;
+		list<S3_METADATA_SEARCH_ENTRY> AttributeList;
+	};
+
+	struct S3_METADATA_SEARCH_FIELDS_BUCKET
+	{
+		bool bSearchEnabled;
+		list<S3_METADATA_SEARCH_ENTRY> KeyList;
+		S3_METADATA_SEARCH_FIELDS_BUCKET()
+			: bSearchEnabled(false)
+		{}
+	};
+
+	struct ECSUTIL_EXT_CLASS S3_METADATA_SEARCH_PARAMS
+	{
+		CString sBucket;
+		CString sExpression;
+		CString sAttributes;
+		CString sSorted;
+		bool bOlderVersions;
+		S3_METADATA_SEARCH_PARAMS()
+			: bOlderVersions(false)
+		{}
+		int Compare(const S3_METADATA_SEARCH_PARAMS& Rec) const;
+		bool operator == (const S3_METADATA_SEARCH_PARAMS& Rec) const;
+		bool operator != (const S3_METADATA_SEARCH_PARAMS& Rec) const;
+		CString Format(void) const;
+	};
+
+	struct S3_METADATA_SEARCH_RESULT_MD_MAP
+	{
+		CString sKey;
+		CString sValue;
+	};
+
+	struct S3_METADATA_SEARCH_RESULT_QUERY_MD
+	{
+		E_MD_SEARCH_FIELD FieldType;
+		list<S3_METADATA_SEARCH_RESULT_MD_MAP> MDMapList;
+		S3_METADATA_SEARCH_RESULT_QUERY_MD()
+			: FieldType(E_MD_SEARCH_FIELD::Unknown)
+		{}
+	};
+
+	struct S3_METADATA_SEARCH_RESULT_OBJECT_MATCH
+	{
+		CString sObjectName;
+		CString sObjectId;
+		CString sVersionId;
+		list<S3_METADATA_SEARCH_RESULT_QUERY_MD> QueryMDList;
+	};
+
+	struct S3_METADATA_SEARCH_RESULT
+	{
+		CString sBucket;
+		deque<S3_METADATA_SEARCH_RESULT_OBJECT_MATCH> ObjectMatchList;
+	};
+
 	struct ECSUTIL_EXT_CLASS S3_MPU_COMPLETE_INFO
 	{
 		CString sLocation;
@@ -597,7 +710,6 @@ public:
 		bool bIsLatest;			// only used for S3 versions: indicates it is the latest version
 		bool bDeleted;			// object has been deleted
 		CString sVersionId;		// only used for S3 versions: version ID of object
-		CString sChecksum;		// String containing the checksum value and other related information. (x-emc-wschecksum)
 		CString sETag;			// S3: unique key used to determine if the file has changed
 		CString sOwnerDisplayName;	// S3: owner display name
 		CString sOwnerID;		// S3: owner ID
@@ -614,7 +726,6 @@ public:
 		{
 			ZeroFT(ftLastMod);
 			llSize = 0;
-			sChecksum.Empty();
 			sETag.Empty();
 			sOwnerDisplayName.Empty();
 			bIsLatest = false;
@@ -626,7 +737,6 @@ public:
 		{
 			return (ftLastMod == rec.ftLastMod)
 				&& (llSize == rec.llSize)
-				&& (sChecksum == rec.sChecksum)
 				&& (sETag == rec.sETag)
 				&& (sOwnerDisplayName == rec.sOwnerDisplayName)
 				&& (sOwnerID == rec.sOwnerID)
@@ -663,7 +773,7 @@ public:
 	// function to check if the current request needs to be aborted (thread exit or application termination)
 	// returns true if current request needs to be canceled immediately
 	typedef bool (*TEST_SHUTDOWN_CB)(void *pContext);
-	typedef void (*ECS_DISCONNECT_CB)(CECSConnection *pHost, const CS3ErrorInfo *pAtError, bool *pbDisconnected);
+	typedef void (*ECS_DISCONNECT_CB)(CECSConnection *pHost, const CS3ErrorInfo *pError, bool *pbDisconnected);
 	typedef CString (*GET_HTTP_ERROR_TEXT_CB)(DWORD dwHttpError);
 	typedef void (*GET_HOST_PERF_COUNTERS_CB)(LPCTSTR pszHost, ULONGLONG **ppullPerfBytesSentToHost_Host, ULONGLONG **ppullPerfBytesRcvFromHost_Host, int *piHostCounters);
 	typedef void (*DIR_LISTING_CB)(size_t Size, void *pContext);
@@ -1243,12 +1353,10 @@ private:
 	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention);
 	CString signS3ShareableURL(const CString& sResource, const CString& sExpire);
 	void KillHostSessions(void);
-	S3_ERROR ReadMetadataBulkInternalS3(LPCTSTR pszPath, const list<CString>& TagRequestList, list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszVersionId);
 	S3_ERROR UpdateMetadataS3(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDList, const list<CString> *pDeleteTagParam = nullptr);
 	void DeleteS3Send(void);
 	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG *pullObjSize, const list<S3_METADATA_ENTRY> *pMDList);
-	S3_ERROR GetObjectSizeS3(LPCTSTR pszSrcPath, LPCTSTR pszVersionId, ULONGLONG *pullObjSize);
 
 public:
 	CECSConnection();
@@ -1307,23 +1415,17 @@ public:
 	static bool ValidateS3BucketName(LPCTSTR pszBucketName);
 	void SetHTTPSecurityFlags(DWORD dwHTTPSecurityFlagsParam);
 
-	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr);
+	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, list <HEADER_REQ> *pReq = nullptr);
 	S3_ERROR DeleteS3(LPCTSTR pszPath);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr);
 	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr);
 	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList);
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
-	S3_ERROR GetTags(LPCTSTR pszPath, list<CString>& TagList);
 	S3_ERROR WriteMetadataEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, const CBuffer& Data);
 	S3_ERROR WriteMetadataEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, const CString& sStr);
 	S3_ERROR WriteMetadata(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDListParam);
-	S3_ERROR ReadMetadata(LPCTSTR pszPath, LPCTSTR pszTag, CBuffer& Data, LPCTSTR pszVersionId = nullptr);
-	S3_ERROR ReadMetadata(LPCTSTR pszPath, LPCTSTR pszTag, CString& sData, LPCTSTR pszVersionId = nullptr);
-	S3_ERROR ReadMetadataBulk(LPCTSTR pszPath, const list<CString>& TagRequestList, list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszVersionId);
-	S3_ERROR ReadMetadataBulk(LPCTSTR pszPath, list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszVersionId);
-	void ReadMetadataBulkEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, CString& sValue);
-	void ReadMetadataBulkEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, CBuffer& Value);
+	S3_ERROR ReadProperties(LPCTSTR pszPath, S3_SYSTEM_METADATA& Properties, LPCTSTR pszVersionId = nullptr, list<S3_METADATA_ENTRY> *pMDList = nullptr, list<HEADER_REQ> *pReq = nullptr);
 	S3_ERROR DeleteMetadata(LPCTSTR pszPath, LPCTSTR pszTag);
 	S3_ERROR ReadACL(LPCTSTR pszPath, deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	S3_ERROR WriteACL(LPCTSTR pszPath, const deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
@@ -1352,6 +1454,13 @@ public:
 	S3_ERROR ECSAdminCreateUser(S3_ADMIN_USER_INFO& User);
 	S3_ERROR ECSAdminGetKeysForUser(LPCTSTR pszUser, LPCTSTR pszNamespace, S3_ADMIN_USER_KEY_INFO& Keys);
 	S3_ERROR ECSAdminCreateKeyForUser(S3_ADMIN_USER_INFO& User);
+
+	// ECS metadata search functions
+	S3_ERROR S3GetMDSearchFields(S3_METADATA_SEARCH_FIELDS& MDFields);
+	S3_ERROR S3GetMDSearchFields(LPCTSTR pszBucket, S3_METADATA_SEARCH_FIELDS_BUCKET& MDFieldBucket);
+	S3_ERROR S3SearchMD(const S3_METADATA_SEARCH_PARAMS& Params, S3_METADATA_SEARCH_RESULT& MDSearchResult);
+
+	static DWORD MaxMetadataBinarySize(void);
 };
 
 ECSUTIL_EXT_API extern std::wostream& operator<<(std::wostream& os, const CECSConnection::S3_SYSTEM_METADATA& Rec);

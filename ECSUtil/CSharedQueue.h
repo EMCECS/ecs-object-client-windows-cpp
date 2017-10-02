@@ -110,7 +110,7 @@ public:
 	void DisableTriggerEvents(INT flags);
 	bool IsTriggerEventEnabled(INT flag);
 	void Link(CSharedQueueEventBase *pQueue) throw();
-	void Unlink(CSharedQueueEventBase *pQueue = NULL) throw();
+	void Unlink(CSharedQueueEventBase *pQueue = nullptr) throw();
 };
 
 
@@ -138,7 +138,7 @@ private:
 			QueueEvent.SetCount(dwMaxQueueSize);
 			while (size() > dwMaxQueueSize)
 			{
-				if (pTestAbort != NULL)					// check if we are supposed to shut down
+				if (pTestAbort != nullptr)					// check if we are supposed to shut down
 					if (pTestAbort(pContext))
 						break;
 				CSingleLock lockEmpty(&QueueEvent.Event.evQueue);
@@ -220,7 +220,7 @@ public:
 		return (DWORD)list<T>::size();
 	};
 
-	void push_back(const T& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = NULL, void *pContext = NULL)
+	void push_back(const T& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void *pContext = nullptr)
 	{
 		if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 			WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
@@ -229,7 +229,7 @@ public:
 		list<T>::push_back(rec);
 	}
 
-	void push_back(T&& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = NULL, void *pContext = NULL)
+	void push_back(T&& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void *pContext = nullptr)
 	{
 		if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 			WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
@@ -238,7 +238,7 @@ public:
 		list<T>::push_back(rec);
 	}
 
-	void emplace_back(T&& _Val, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = NULL, void *pContext = NULL)
+	void emplace_back(T&& _Val, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void *pContext = nullptr)
 	{
 		if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 			WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
@@ -247,7 +247,7 @@ public:
 		list<T>::emplace_back(_Val);
 	}
 
-	void push_front(const T& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = NULL, void *pContext = NULL)
+	void push_front(const T& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void *pContext = nullptr)
 	{
 		if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 			WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
@@ -256,7 +256,7 @@ public:
 		list<T>::push_front(rec);
 	}
 
-	void push_front(T&& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = NULL, void *pContext = NULL)
+	void push_front(T&& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void *pContext = nullptr)
 	{
 		if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 			WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
@@ -265,7 +265,7 @@ public:
 		list<T>::push_front(rec);
 	}
 
-	void emplace_front(T&& _Val, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = NULL, void *pContext = NULL)
+	void emplace_front(T&& _Val, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void *pContext = nullptr)
 	{
 		if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 			WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);

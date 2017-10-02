@@ -39,9 +39,9 @@ bool FormatMessageLang(DWORD dwMsgID, HMODULE hLib, CString& sMsgText)
 {
 	LPTSTR pMsgBuf;
 	DWORD dwFlags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER;
-	if (hLib != NULL)
+	if (hLib != nullptr)
 		dwFlags |= FORMAT_MESSAGE_FROM_HMODULE;
-	if (!::FormatMessage(dwFlags, hLib, dwMsgID, 0, (LPTSTR)&pMsgBuf, 0, NULL))
+	if (!::FormatMessage(dwFlags, hLib, dwMsgID, 0, (LPTSTR)&pMsgBuf, 0, nullptr))
 		return false;
 	// strip trailing new line characters
 	int Len = lstrlen(pMsgBuf);
@@ -74,7 +74,7 @@ CString GetNTErrorText(DWORD ec)
 {
 	CString sMsg;
 
-	if (FormatMessageLang(ec, NULL, sMsg))
+	if (FormatMessageLang(ec, nullptr, sMsg))
 		return sMsg;
 	if (GetNTSTATUSText(ec, sMsg))
 		return sMsg;

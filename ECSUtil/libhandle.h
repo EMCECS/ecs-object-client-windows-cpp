@@ -31,14 +31,14 @@ private:
 public:
 	CLibraryHandle(bool bAfxFlag = false)
 	{
-		hModule = NULL;
+		hModule = nullptr;
 		bAfx = bAfxFlag;
 	}
 
 	~CLibraryHandle()
 	{
 		Close();
-		hModule = NULL;
+		hModule = nullptr;
 	}
 
 	operator HMODULE() const
@@ -54,12 +54,12 @@ public:
 
 	bool IfOpen() const
 	{
-		return hModule != NULL;
+		return hModule != nullptr;
 	}
 
 	void Close()
 	{
-		if (hModule != NULL)
+		if (hModule != nullptr)
 		{
 			if (!bAfx)
 			{
@@ -74,7 +74,7 @@ public:
 #endif
 			}
 		}
-		hModule = NULL;
+		hModule = nullptr;
 	}
 
 	void SetAfx(bool bAfxFlag = true)
@@ -94,7 +94,7 @@ public:
 #endif
 		}
 		else
-			hModule = ::LoadLibraryEx(lpLibFileName, NULL, DONT_RESOLVE_DLL_REFERENCES);
+			hModule = ::LoadLibraryEx(lpLibFileName, nullptr, DONT_RESOLVE_DLL_REFERENCES);
 	}
 };
 

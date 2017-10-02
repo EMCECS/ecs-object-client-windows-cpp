@@ -32,15 +32,15 @@
 class ECSUTIL_EXT_CLASS CWideString : public CBuffer
 {
 public:
-	CWideString(LPCSTR s = NULL, int inputlen=-1)
+	CWideString(LPCSTR s = nullptr, int inputlen=-1)
 	{
-		if (s != NULL)
+		if (s != nullptr)
 			Set(s, inputlen);
 	}
 
 	CWideString(LPCWSTR s)
 	{
-		if (s == NULL)
+		if (s == nullptr)
 			Empty();
 		else
 			Load(s, (DWORD)((wcslen(s)+1) * sizeof(WCHAR)));
@@ -48,7 +48,7 @@ public:
 
 	CWideString& operator =(LPCSTR s)
 	{
-		if (s == NULL)
+		if (s == nullptr)
 			Empty();
 		else
 			Set(s);
@@ -57,7 +57,7 @@ public:
 
 	CWideString& operator =(LPCWSTR s)
 	{
-		if (s == NULL)
+		if (s == nullptr)
 			Empty();
 		else
 			Load(s, (DWORD)((wcslen(s)+1) * sizeof(WCHAR)));
@@ -117,15 +117,15 @@ public:
 class ECSUTIL_EXT_CLASS CAnsiString : public CBuffer
 {
 public:
-	CAnsiString(LPCWSTR s = NULL, UINT uCodePage = CP_ACP)
+	CAnsiString(LPCWSTR s = nullptr, UINT uCodePage = CP_ACP)
 	{
-		if (s != NULL)
+		if (s != nullptr)
 			Set(s, -1, uCodePage);
 	}
 
 	CAnsiString(LPCSTR s)
 	{
-		if (s == NULL)
+		if (s == nullptr)
 			Empty();
 		else
 			Load(s, (DWORD)((strlen(s)+1) * sizeof(char)));
@@ -133,7 +133,7 @@ public:
 
 	CAnsiString& operator =(LPCWSTR s)
 	{
-		if (s == NULL)
+		if (s == nullptr)
 			Empty();
 		else
 			Set(s);
@@ -142,7 +142,7 @@ public:
 
 	CAnsiString& operator =(LPCSTR s)
 	{
-		if (s == NULL)
+		if (s == nullptr)
 			Empty();
 		else
 			Load(s, (DWORD)((strlen(s)+1) * sizeof(char)));
@@ -177,7 +177,7 @@ public:
 				SetBufSize((DWORD)(sizeof(WCHAR)*(nSize + 1)));
 				CHAR *pOutput = (CHAR *)GetData();
 				// allocate 1 more char than what we tell WideCharToMultiByte so there is room for the NUL
-				int ret = WideCharToMultiByte(uCodePage, 0, s, inputlen, (char *)GetData(), (int)nSize, NULL, NULL);
+				int ret = WideCharToMultiByte(uCodePage, 0, s, inputlen, (char *)GetData(), (int)nSize, nullptr, nullptr);
 				if (ret == 0)
 				{
 					DWORD dwError = GetLastError();

@@ -177,7 +177,7 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 				return false;
 			}
 
-			wPort = (INTERNET_PORT)_tcstoul(*itParam, NULL, 10);
+			wPort = (INTERNET_PORT)_tcstoul(*itParam, nullptr, 10);
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_SECRET) == 0)
 		{
@@ -528,7 +528,8 @@ static int DoTest(CString& sOutMessage)
 	if (!sDirPath.IsEmpty())
 	{
 		CECSConnection::DirEntryList_t DirList;
-		CECSConnection::S3_ERROR Error = Conn.DirListing(sDirPath, DirList);
+//		CECSConnection::S3_ERROR Error = Conn.DirListing(sDirPath, DirList);
+		CECSConnection::S3_ERROR Error = Conn.DirListingS3Versions(sDirPath, DirList);
 		if (Error.IfError())
 		{
 			_tprintf(_T("listing error: %s\n"), (LPCTSTR)Error.Format());
@@ -539,21 +540,46 @@ static int DoTest(CString& sOutMessage)
 			_tprintf(_T("%-28s %-24s %I64d\n"), (LPCTSTR)(itList->sName + (itList->bDir ? _T("/ ") : _T(""))),
 				(LPCTSTR)DateTimeStr(&itList->Properties.ftLastMod, true, true, true, false, true),
 				itList->Properties.llSize);
+			_tprintf(_T("  LastMod: %s\n  Size: %lld\n  IsLatest: %d\n  Deleted: %d\n  VersionId: %s\n  ETag: %s\n  Owner: %s\n  OwnerID: %s\n"),
+				(LPCTSTR)DateTimeStr(&itList->Properties.ftLastMod, true, true, true, false, true, true),
+				itList->Properties.llSize, (int)itList->Properties.bIsLatest, (int)itList->Properties.bDeleted, (LPCTSTR)itList->Properties.sVersionId,
+				(LPCTSTR)itList->Properties.sETag, (LPCTSTR)itList->Properties.sOwnerDisplayName, (LPCTSTR)itList->Properties.sOwnerID);
 		}
 	}
 	if (!sReadMetaECSPath.IsEmpty())
 	{
 		list<CECSConnection::S3_METADATA_ENTRY> MDList;
-		CECSConnection::S3_ERROR Error = Conn.ReadMetadataBulk(sReadMetaECSPath, MDList, nullptr);
+		CECSConnection::S3_SYSTEM_METADATA Properties;
+		CECSConnection::S3_ERROR Error = Conn.ReadProperties(sReadMetaECSPath, Properties, nullptr, &MDList);
 		if (!Error.IfError())
 		{
-			_tprintf(_T("Metadata for %s:\n"), (LPCTSTR)sReadMetaECSPath);
+			_tprintf(_T("Properties for %s:\n"), (LPCTSTR)sReadMetaECSPath);
+			_tprintf(_T("  LastMod: %s\n  Size: %lld\n  IsLatest: %d\n  Deleted: %d\n  VersionId: %s\n  ETag: %s\n  Owner: %s\n  OwnerID: %s\n"),
+				(LPCTSTR)DateTimeStr(&Properties.ftLastMod, true, true, true, false, true, true),
+				Properties.llSize, (int)Properties.bIsLatest, (int)Properties.bDeleted, (LPCTSTR)Properties.sVersionId,
+				(LPCTSTR)Properties.sETag, (LPCTSTR)Properties.sOwnerDisplayName, (LPCTSTR)Properties.sOwnerID);
 			for (list<CECSConnection::S3_METADATA_ENTRY>::const_iterator it = MDList.begin(); it != MDList.end(); ++it)
-				_tprintf(_T("  %s : %s\n"), (LPCTSTR)it->sTag, (LPCTSTR)it->sData);
+				_tprintf(_T("    %s : %s\n"), (LPCTSTR)it->sTag, (LPCTSTR)it->sData);
 		}
 		else
 		{
 			_tprintf(_T("read metadata error: %s\n"), (LPCTSTR)Error.Format());
+			return 1;
+		}
+	}
+	{
+		CECSConnection::S3_METADATA_SEARCH_FIELDS MDFields;
+		CECSConnection::S3_ERROR Error = Conn.S3GetMDSearchFields(MDFields);
+		if (Error.IfError())
+		{
+			_tprintf(_T("S3GetMDSearchFields error: %s\n"), (LPCTSTR)Error.Format());
+			return 1;
+		}
+		CECSConnection::S3_METADATA_SEARCH_FIELDS_BUCKET MDFieldBucket;
+		Error = Conn.S3GetMDSearchFields(_T("bob.testlower"), MDFieldBucket);
+		if (Error.IfError())
+		{
+			_tprintf(_T("S3GetMDSearchFields error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
 	}

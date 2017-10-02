@@ -126,6 +126,8 @@ static S3_ERROR_TRANS_INIT S3ErrorTransTable[] = {
 	{ S3_ERROR_UnexpectedContent, _T("UnexpectedContent"), _T("This request does not support content.") },
 	{ S3_ERROR_UnresolvableGrantByEmailAddress, _T("UnresolvableGrantByEmailAddress"), _T("The email address you provided does not match any account on record.") },
 	{ S3_ERROR_UserKeyMustBeSpecified, _T("UserKeyMustBeSpecified"), _T("The bucket POST must contain the specified field name. If it is specified, check the order of the fields.") },
+	{ S3_ERROR_ObjectUnderRetention, L"ObjectUnderRetention", L"The object is under retention and can't be deleted or modified." },
+	{ S3_ERROR_MetadataSearchNotEnabled, L"Metadata search not enabled", L"Metadata search is not enabled for this bucket." },
 };
 
 CSimpleRWLock rwlS3Translate;
@@ -183,7 +185,7 @@ bool S3ErrorInfo(E_S3_ERROR_TYPE Code, CString *psErrorID, CString *psErrorText)
 		map<E_S3_ERROR_TYPE, shared_ptr<S3_ERROR_TRANS>>::iterator itMap = CodeMap.find(Code);
 		if (itMap != CodeMap.end())
 		{
-			if (psErrorID != NULL)
+			if (psErrorID != nullptr)
 				*psErrorID = itMap->second->sErrorID;
 			if (psErrorText)
 				*psErrorText = itMap->second->sErrorText;
