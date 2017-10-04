@@ -368,7 +368,7 @@ struct CMPUPoolMsg
 	{}
 
 	CMPUPoolMsg(
-		CECSConnection& ConnParam,
+		const CECSConnection& ConnParam,
 		LPCTSTR pszPath,
 		ULONGLONG lwOffsetParam,
 		list<shared_ptr<CMPUPoolMsg>> *pMsgListParam,

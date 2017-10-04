@@ -498,7 +498,7 @@ DWORD CECSConnection::ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftDate, bool b
 
 CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal)
 {
-	SYSTEMTIME stDateUTC, stDate;
+	SYSTEMTIME stDateUTC{ 0,0,0,0,0,0,0,0 }, stDate{ 0,0,0,0,0,0,0,0 };
 	if (!FileTimeToSystemTime(&ftDate, &stDateUTC))
 		return _T("");
 	if (bLocal)
@@ -5816,7 +5816,8 @@ struct XML_S3_SEARCH_MD_CONTEXT
 	CECSConnection::S3_METADATA_SEARCH_RESULT_QUERY_MD QueryMDRec;
 	CECSConnection::S3_METADATA_SEARCH_RESULT_MD_MAP MDMapRec;
 	XML_S3_SEARCH_MD_CONTEXT()
-		: bIsTruncated(false)
+		: pMDSearchResult(nullptr)
+		, bIsTruncated(false)
 	{}
 };
 
@@ -5956,7 +5957,7 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 			CString sStr(sExpr.Mid(iOpen + 1, iClose - iOpen - 1));
 			CBuffer Buf;
 			int iBuf = 0;
-			Buf.SetBufSize(sStr.GetLength() * sizeof(WCHAR));
+			Buf.SetBufSize(DWORD(sStr.GetLength() * sizeof(WCHAR)));
 			// convert each character to 4 hex bytes, MSD first
 			for (UINT i = 0; i < (UINT)sStr.GetLength(); i++)
 			{
@@ -6407,7 +6408,6 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 	list<S3_METADATA_ENTRY> *pMDList,		// (out, optional) metadata list
 	list<HEADER_REQ> *pReq)					// (out, optional) full header list
 {
-	CECSConnectionState& State(GetStateBuf());
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	try

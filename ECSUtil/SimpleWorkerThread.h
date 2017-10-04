@@ -254,7 +254,7 @@ template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& r
 			iWaitLoop++;
 			if (iWaitLoop > WaitLoopMax)
 				break;
-			bAllStopped = true;
+			bAllStopped = true;								//lint !e838 : previous value assigned to 'bAllStopped' not used
 			{
 				CRWLockAcquire lock(&rwlThreadList, true);
 

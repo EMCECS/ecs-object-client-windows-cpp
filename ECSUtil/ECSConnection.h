@@ -74,7 +74,7 @@ public:
 
 	operator HINTERNET() const
 	{
-		return hInternet;
+		return hInternet;					//lint !e1535 !e1536 !e1537 : member function 'CInternetHandle::operator void *' exposes lower access pointer member 'CInternetHandle::hInternet'
 	}
 
 	DWORD CloseHandle()

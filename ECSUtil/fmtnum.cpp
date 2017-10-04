@@ -74,7 +74,7 @@ CString DateTimeStr(const SYSTEMTIME *pST, bool bSeconds, bool bDate, bool bTime
 
 CString DateTimeStr(const FILETIME *pFT, bool bSeconds, bool bDate, bool bTime, bool bLongDate, bool bLocalTime, bool bMilliSec, LCID Locale)
 {
-	SYSTEMTIME  st;
+	SYSTEMTIME  st{ 0,0,0,0,0,0,0,0 };
 	FILETIME ftTime;
 
 	//if (FTtoI64(*pFT) != 0)

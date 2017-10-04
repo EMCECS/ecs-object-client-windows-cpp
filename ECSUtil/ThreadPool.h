@@ -777,7 +777,7 @@ void CThreadPool<MsgT>::AddThreads(DWORD *pdwRealMaxThreads)
 			if (dwQueueRangeMax > dwQueueRangeMin)				// protect against divide by zero
 			{
 				// if it's inside the range, figure out a proportional number of threads
-				dwRealMaxThreads = (dwCurrentQueueSize - dwQueueRangeMin) * (dwMaxNumThreadsRange - dwMaxNumThreads) / (dwQueueRangeMax - dwQueueRangeMin);
+				dwRealMaxThreads = (dwCurrentQueueSize - dwQueueRangeMin) * (dwMaxNumThreadsRange - dwMaxNumThreads) / (dwQueueRangeMax - dwQueueRangeMin);	//lint !e414 possible division by zero
 				dwRealMaxThreads += dwMaxNumThreads;
 			}
 		}
