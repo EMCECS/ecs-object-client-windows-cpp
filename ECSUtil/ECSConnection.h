@@ -1377,7 +1377,7 @@ public:
 	void SetS3KeyID(LPCTSTR pszS3KeyID);
 	CString GetS3KeyID(void);
 	static DWORD ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftTime, bool bLocal = false);
-	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal);
+	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec = true);
 
 	void SetUserAgent(LPCTSTR pszUserAgent);					// typically app name/version. put in 'user agent' field in HTTP protocol
 	void SetPort(INTERNET_PORT PortParam);

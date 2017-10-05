@@ -496,7 +496,7 @@ DWORD CECSConnection::ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftDate, bool b
 	return ERROR_SUCCESS;
 }
 
-CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal)
+CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec)
 {
 	SYSTEMTIME stDateUTC{ 0,0,0,0,0,0,0,0 }, stDate{ 0,0,0,0,0,0,0,0 };
 	if (!FileTimeToSystemTime(&ftDate, &stDateUTC))
@@ -509,7 +509,9 @@ CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal)
 	else
 		stDate = stDateUTC;
 	return FmtNum(stDate.wYear, 4, true) + _T("-") + FmtNum(stDate.wMonth, 2, true) + _T("-") + FmtNum(stDate.wDay, 2, true)
-		+ _T("T") + FmtNum(stDate.wHour, 2, true) + _T(":") + FmtNum(stDate.wMinute, 2, true) + _T(":") + FmtNum(stDate.wSecond, 2, true) + _T(".") + FmtNum(stDate.wMilliseconds, 2, true) + _T("Z");
+		+ _T("T") + FmtNum(stDate.wHour, 2, true) + _T(":") + FmtNum(stDate.wMinute, 2, true) + _T(":") + FmtNum(stDate.wSecond, 2, true)
+		+ (bMilliSec ? (LPCTSTR)(_T(".") + FmtNum(stDate.wMilliseconds, 3, true)) : _T(""))
+		+ _T("Z");
 }
 
 static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
