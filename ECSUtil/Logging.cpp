@@ -29,14 +29,10 @@ void RegisterLogMessageCallback(ECSUTIL_LOG_MESSAGE_PROTO *pLogMessageCBParam)
 	pLogMessageCB = pLogMessageCBParam;
 }
 
-void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, ...)
+void LogMessageVa(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, va_list marker)
 {
 	CString sErrorMsg;
-	va_list marker;
-	va_start(marker, pszLogMessage);     /* Initialize variable arguments. */
-
 	sErrorMsg.FormatV(pszLogMessage, marker);
-	va_end(marker);              /* Reset variable arguments.      */
 	if (pLogMessageCB == nullptr)
 	{
 		OutputDebugString(sErrorMsg + ((dwError == ERROR_SUCCESS) ? _T("") : _T(" - ") + GetNTErrorText(dwError)));
@@ -45,6 +41,14 @@ void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS d
 	{
 		pLogMessageCB(pszFile, dwLine, sErrorMsg, dwError);
 	}
+}
+
+void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, ...)
+{
+	va_list marker;
+	va_start(marker, pszLogMessage);     /* Initialize variable arguments. */
+	LogMessageVa(pszFile, dwLine, pszLogMessage, dwError, marker);
+	va_end(marker);              /* Reset variable arguments.      */
 }
 
 void DebugF(LPCTSTR format, ...)

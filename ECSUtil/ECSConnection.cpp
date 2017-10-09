@@ -2771,7 +2771,7 @@ HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXml
 				if (pInfo->Rec.bDir)
 				{
 					for (CECSConnection::DirEntryList_t::const_iterator itList = pInfo->pDirList->begin(); itList != pInfo->pDirList->end(); ++itList)
-						if (itList->bDir && itList->sName.CompareNoCase(pInfo->Rec.sName) == 0)
+						if (itList->bDir && (itList->sName == pInfo->Rec.sName))
 						{
 							bDup = true;
 							break;
@@ -2785,7 +2785,7 @@ HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXml
 					if (pInfo->pszSearchName != nullptr)
 					{
 						ASSERT(pInfo->psRetSearchName != nullptr);
-						if (pInfo->Rec.sName.CompareNoCase(pInfo->pszSearchName) == 0)
+						if (pInfo->Rec.sName.Compare(pInfo->pszSearchName) == 0)
 							*pInfo->psRetSearchName = pInfo->Rec.sName;
 					}
 				}
@@ -2944,7 +2944,7 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 					if (pInfo->pszSearchName != nullptr)
 					{
 						ASSERT(pInfo->psRetSearchName != nullptr);
-						if (pInfo->Rec.sName.CompareNoCase(pInfo->pszSearchName) == 0)
+						if (pInfo->Rec.sName.Compare(pInfo->pszSearchName) == 0)
 							*pInfo->psRetSearchName = pInfo->Rec.sName;
 					}
 				}

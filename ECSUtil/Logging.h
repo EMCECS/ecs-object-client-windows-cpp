@@ -23,6 +23,7 @@
 typedef void (ECSUTIL_LOG_MESSAGE_PROTO)(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, DWORD dwError);
 
 extern ECSUTIL_EXT_API void RegisterLogMessageCallback(ECSUTIL_LOG_MESSAGE_PROTO *pLogMessageCB);
+extern ECSUTIL_EXT_API void LogMessageVa(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, va_list marker);
 extern ECSUTIL_EXT_API void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
 
 #ifdef DEBUG
