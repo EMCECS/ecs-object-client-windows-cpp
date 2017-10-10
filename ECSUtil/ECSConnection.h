@@ -1335,7 +1335,6 @@ private:
 	void CloseAll() throw();
 	void InitHeader(void);
 	void AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride = true);
-	S3_ERROR SendRequest(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq = nullptr, DWORD dwReceivedDataHint = 0, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamSend = nullptr, STREAM_CONTEXT *pStreamReceive = nullptr, ULONGLONG ullTotalLen = 0ULL);
 	void SetTimeouts(const CInternetHandle& hRequest);
 	CS3ErrorInfo SendRequestInternal(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq, DWORD dwReceivedDataHint, DWORD dwBufOffset, bool *pbGotServerResponse, STREAM_CONTEXT *pStreamSend, STREAM_CONTEXT *pStreamReceive, ULONGLONG ullTotalLen);
 	LPCTSTR GetCurrentServerIP(void);
@@ -1414,6 +1413,8 @@ public:
 	bool TestAbort(void);
 	static bool ValidateS3BucketName(LPCTSTR pszBucketName);
 	void SetHTTPSecurityFlags(DWORD dwHTTPSecurityFlagsParam);
+
+	S3_ERROR SendRequest(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq = nullptr, DWORD dwReceivedDataHint = 0, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamSend = nullptr, STREAM_CONTEXT *pStreamReceive = nullptr, ULONGLONG ullTotalLen = 0ULL);
 
 	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, list <HEADER_REQ> *pReq = nullptr);
 	S3_ERROR DeleteS3(LPCTSTR pszPath);
