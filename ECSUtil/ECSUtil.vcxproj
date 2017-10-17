@@ -202,6 +202,7 @@
     <ClCompile Include="CngAES_GCM.cpp" />
     <ClCompile Include="CRWLock.cpp" />
     <ClCompile Include="CSharedQueue.cpp" />
+    <ClCompile Include="ECSGlobal.cpp" />
     <ClCompile Include="FileSupport.cpp" />
     <ClCompile Include="fmtnum.cpp" />
     <ClCompile Include="Logging.cpp" />
@@ -226,6 +227,7 @@
     <ClInclude Include="CngAES_GCM.h" />
     <ClInclude Include="CRWLock.h" />
     <ClInclude Include="CSharedQueue.h" />
+    <ClInclude Include="ECSGlobal.h" />
     <ClInclude Include="exportdef.h" />
     <ClInclude Include="FileSupport.h" />
     <ClInclude Include="fmtnum.h" />

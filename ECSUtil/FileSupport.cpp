@@ -38,6 +38,28 @@ static bool TestShutdownThread(void *pContext)
 	return false;
 }
 
+class CTestShutdown : public CECSConnectionAbort
+{
+private:
+	const CSimpleWorkerThread *pThread;
+public:
+	CTestShutdown(const CSimpleWorkerThread *pThreadParam, CECSConnection *pHostParam = nullptr)
+		: pThread(pThreadParam)
+		, CECSConnectionAbort(pHostParam, true)
+	{}
+
+	~CTestShutdown()
+	{
+		pThread = nullptr;
+	}
+	virtual bool IfShutdown(void)
+	{
+		if (pThread == nullptr)
+			return false;
+		return pThread->GetExitFlag();
+	}
+};
+
 //////////////////////////////////////////////////////////////////////////////
 /////////////////////////////// S3Read //////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
@@ -145,7 +167,7 @@ void CS3ReadThread::DoWork()
 	CBuffer RetData;
 	pConn->RegisterShutdownCB(TestShutdownThread, this);
 	Error = pConn->Read(sECSPath, 0ULL, 0ULL, RetData, 0UL, &ReadContext);
-	pConn->UnregisterShutdownCB(TestShutdownThread);
+	pConn->UnregisterShutdownCB(TestShutdownThread, this);
 	KillThread();
 }
 
@@ -305,7 +327,7 @@ void CS3WriteThread::DoWork()
 		Hash.GetHashData(HashData);
 	pConn->RegisterShutdownCB(TestShutdownThread, this);
 	Error = pConn->Create(sECSPath, nullptr, 0UL, nullptr, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
-	pConn->UnregisterShutdownCB(TestShutdownThread);
+	pConn->UnregisterShutdownCB(TestShutdownThread, this);
 	KillThread();
 }
 
@@ -414,7 +436,6 @@ public:
 	CMPUPoolList Pending;
 	bool DoProcess(const CSimpleWorkerThread *pThread, const shared_ptr<CMPUPoolMsg>& Msg);
 	bool SearchEntry(const shared_ptr<CMPUPoolMsg>& Msg1, const shared_ptr<CMPUPoolMsg>& Msg2) const;
-	static bool CheckShutdown(void *pContext);
 	CMPUPool()
 	{}
 };
@@ -766,12 +787,11 @@ bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<C
 		if ((Msg->Events.pevMsg == nullptr) || (Msg->Events.pMsgList == nullptr))
 			return true;
 	}
-	if (pThread != nullptr)
-		Msg->Conn.RegisterShutdownCB(CheckShutdown, const_cast<CSimpleWorkerThread *> (pThread));
-	// S3 multipart upload
-	Msg->Error = Msg->Conn.S3MultiPartUpload(*Msg->MultiPartInfo, *Msg->pUploadPartEntry, Msg->pStreamQueue, Msg->ullTotalLen, nullptr, 0ULL, nullptr);
-	if (pThread != nullptr)
-		Msg->Conn.UnregisterShutdownCB(CheckShutdown);
+	{
+		CTestShutdown Shutdown(pThread, &Msg->Conn);
+		// S3 multipart upload
+		Msg->Error = Msg->Conn.S3MultiPartUpload(*Msg->MultiPartInfo, *Msg->pUploadPartEntry, Msg->pStreamQueue, Msg->ullTotalLen, nullptr, 0ULL, nullptr);
+	}
 	{
 		CSingleLock lock(&Pending.csPendingList, true);
 		Msg->lwWriteComplete += Msg->Buf.GetBufSize();
@@ -793,12 +813,4 @@ bool CMPUPool::SearchEntry(const shared_ptr<CMPUPoolMsg>& Msg1, const shared_ptr
 	(void)Msg1;
 	(void)Msg2;
 	return false;
-}
-
-// return true if thread wants to terminate
-bool CMPUPool::CheckShutdown(void * pContext)
-{
-	// context must be address of CSimpleWorkerThread instance
-	CSimpleWorkerThread *pThread = (CSimpleWorkerThread *)pContext;
-	return pThread->GetExitFlag();
 }

@@ -4021,13 +4021,13 @@ void CECSConnection::RegisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *
 	AbortList.push_back(Rec);
 }
 
-void CECSConnection::UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB)
+void CECSConnection::UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *pContext)
 {
 	CECSConnectionState& State(GetStateBuf());
 	CSingleLock lock(&State.csAbortList, true);
 	for (list<ABORT_ENTRY>::iterator itList = AbortList.begin() ; itList!= AbortList.end() ; )
 	{
-		if (itList->ShutdownCB == ShutdownParamCB)
+		if ((itList->ShutdownCB == ShutdownParamCB) && (itList->pShutdownContext == pContext))
 			itList = AbortList.erase(itList);
 		else
 			++itList;
@@ -6472,4 +6472,15 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 	}
 
 	return Error;
+}
+
+bool CECSConnectionAbort::IfShutdownCommon(void *pContext)
+{
+	if (pContext == nullptr)
+		return false;
+	// pContext in this case is a point to an instance of CECSConnectionAbort
+	CECSConnectionAbort *pAbort = (CECSConnectionAbort *)pContext;
+	if (pAbort == nullptr)
+		return false;
+	return pAbort->IfShutdown();
 }

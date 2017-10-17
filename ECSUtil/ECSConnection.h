@@ -1387,7 +1387,7 @@ public:
 	static void TerminateThrottle(void);
 	void IfThrottle(bool *pDownloadThrottle, bool *pUploadThrottle);
 	void RegisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *pContext);
-	void UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB);
+	void UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *pContext);
 	void RegisterAbortPtr(const bool *pbAbort, bool bAbortTrue = true);
 	void UnregisterAbortPtr(const bool *pbAbort);
 	void CheckShutdown(bool bCheckShutdownParam=true);		// set this to false if you need to do ops during a shutdown
@@ -1471,41 +1471,38 @@ class CECSConnectionAbort
 private:
 	const bool *pbAbort;			// pointer to abort bool
 	bool bAbortIfTrue;				// determines sense of pbAbort
+	bool bUseCallback;				// if true, call virtual callback
 	CECSConnection *pHost;
+	static bool IfShutdownCommon(void *pContext);
 
 public:
-	CECSConnectionAbort(CECSConnection *pHostParam = nullptr, const bool *pbAbortParam = nullptr, bool bAbortIfTrueParam = true)
+	CECSConnectionAbort(CECSConnection *pHostParam = nullptr, bool bUseCallbackParam = false, const bool *pbAbortParam = nullptr, bool bAbortIfTrueParam = true)
 	{
 		pbAbort = pbAbortParam;
 		bAbortIfTrue = bAbortIfTrueParam;
+		bUseCallback = bUseCallbackParam;
 		pHost = pHostParam;
-		if (IfSet())
-			pHost->RegisterAbortPtr(pbAbort, bAbortIfTrue);
+		if (pHost != nullptr)
+		{
+			if (pbAbort != nullptr)
+				pHost->RegisterAbortPtr(pbAbort, bAbortIfTrue);
+			if (bUseCallback)
+				pHost->RegisterShutdownCB(&CECSConnectionAbort::IfShutdownCommon, this);
+		}
 	}
 	~CECSConnectionAbort()
 	{
-		Clear();
-	}
-	void Set(CECSConnection *pHostParam, const bool *pbAbortParam, bool bAbortIfTrueParam = true)
-	{
-		Clear();
-		pbAbort = pbAbortParam;
-		bAbortIfTrue = bAbortIfTrueParam;
-		pHost = pHostParam;
-		if (IfSet())
-			pHost->RegisterAbortPtr(pbAbort, bAbortIfTrue);
-	}
-	void Clear(void)
-	{
-		if (IfSet())
+		if (pHost != nullptr)
 		{
-			pHost->UnregisterAbortPtr(pbAbort);
-			pbAbort = nullptr;
+			if (pbAbort != nullptr)
+				pHost->UnregisterAbortPtr(pbAbort);
+			if (bUseCallback)
+				pHost->UnregisterShutdownCB(&CECSConnectionAbort::IfShutdownCommon, this);
 		}
 	}
-	bool IfSet(void)
+	virtual bool IfShutdown(void)
 	{
-		return (pbAbort != nullptr) && (pHost != nullptr);
+		return false;
 	}
 };
 
