@@ -142,7 +142,7 @@ inline bool operator <=(const FILETIME& ftTime1, const FILETIME& ftTime2)
 }
 
 // exception error structure
-class CErrorInfo
+class CErrorInfo : public std::exception
 {
 public:
 	DWORD dwLine;
@@ -151,13 +151,15 @@ public:
 	CString sAdditionalInfo;
 
 public:
-	CErrorInfo()
+	CErrorInfo() throw()
+		: std::exception("CErrorInfo", 1)
 	{
 		dwLine = 0;
 		dwError = ERROR_SUCCESS;
 	}
 
-	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, DWORD dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = nullptr)
+	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, DWORD dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = nullptr) throw()
+		: std::exception("CErrorInfo", 1)
 	{
 		sFile = pszFile;
 		dwLine = dwLineParam;
@@ -165,7 +167,8 @@ public:
 		sAdditionalInfo = pszAdditionalInfo;
 	}
 
-	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, NTSTATUS dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = nullptr)
+	CErrorInfo(LPCTSTR pszFile, DWORD dwLineParam, NTSTATUS dwErrorParam = ERROR_SUCCESS, LPCTSTR pszAdditionalInfo = nullptr) throw()
+		: std::exception("CErrorInfo", 1)
 	{
 		sFile = pszFile;
 		dwLine = dwLineParam;
