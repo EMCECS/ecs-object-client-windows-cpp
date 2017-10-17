@@ -347,8 +347,6 @@ struct CMPUPoolMsg
 {
 	CECSConnection Conn;				// connection to S3 host
 	CECSConnection::S3_ERROR Error;		// error code from part upload
-	CString sPath;						// file to read
-	ULONGLONG lwOffset;					// offset of cloud file
 	ULONGLONG lwWriteComplete;			// how many bytes have been written
 	CMPUPoolMsgEvents Events;			// fields that 
 	CBuffer Buf;						// (read,write) buffer to read into or write from
@@ -360,25 +358,22 @@ struct CMPUPoolMsg
 	shared_ptr<CECSConnection::S3_UPLOAD_PART_INFO> MultiPartInfo;			// if non-empty, multipart upload
 
 	CMPUPoolMsg()
-		: lwOffset(0ULL)
-		, lwWriteComplete(0ULL)
+		: lwWriteComplete(0ULL)
 		, pStreamQueue(nullptr)
 		, ullTotalLen(0ULL)
 		, dwThreadId(GetCurrentThreadId())
-	{}
+	{
+		(void)dwThreadId;
+	}
 
 	CMPUPoolMsg(
 		const CECSConnection& ConnParam,
-		LPCTSTR pszPath,
-		ULONGLONG lwOffsetParam,
 		list<shared_ptr<CMPUPoolMsg>> *pMsgListParam,
 		CEvent *pevMsgParam,
 		CECSConnection::STREAM_CONTEXT *pStreamQueueParam,
 		ULONGLONG ullTotalLenParam
 	)
 		: Conn(ConnParam)
-		, sPath(pszPath)
-		, lwOffset(lwOffsetParam)
 		, lwWriteComplete(0ULL)
 		, pStreamQueue(pStreamQueueParam)
 		, ullTotalLen(ullTotalLenParam)
@@ -440,7 +435,6 @@ static bool TestAbortStatic(void *pContext)
 // returns 'false' if it didn't do the upload
 bool DoS3MultiPartUpload(
 	CECSConnection& Conn,							// established connection to ECS
-	LPCTSTR pszFilePath,							// path to write file
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
 	const CHandle& hDataHandle,						// open handle to file
 	const ULONGLONG ullTotalLen,					// size of the file
@@ -493,18 +487,6 @@ bool DoS3MultiPartUpload(
 			Rec->uPartNum = ++uPartNum;
 			Rec->ullPartSize = ((ullTotalLen - ullOffset) < ullPartLength) ? (ullTotalLen - ullOffset) : ullPartLength;
 			Rec->sETag.Empty();
-#ifdef unused
-			if (!bChecksum)
-				Rec->Checksum.Empty();
-			else
-			{
-				CCngAES_GCM Hash;
-				DWORD dwError = CalcUploadChecksum(hDataHandle, Rec->ullBaseOffset, Rec->ullPartSize, Conn, Buf, Hash);
-				if (dwError != ERROR_SUCCESS)
-					throw CECSConnection::CS3ErrorInfo(_T(__FILE__), __LINE__, dwError);
-				Hash.GetHashData(Rec->Checksum);
-			}
-#endif
 			S3PartList.push_back(Rec);
 			ullOffset += Rec->ullPartSize;
 		}
@@ -550,7 +532,7 @@ bool DoS3MultiPartUpload(
 					break;													// we have enough for now
 				if (Conn.TestAbort())
 					throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_OPERATION_ABORTED);
-				shared_ptr<CMPUPoolMsg> Msg = make_shared<CMPUPoolMsg>(Conn, pszFilePath, (*itList)->ullBaseOffset, &MPUPool.Pending.PendingList, &MPUPool.Pending.evPendingList, &(*itList)->StreamQueue, (*itList)->ullPartSize);
+				shared_ptr<CMPUPoolMsg> Msg = make_shared<CMPUPoolMsg>(Conn, &MPUPool.Pending.PendingList, &MPUPool.Pending.evPendingList, &(*itList)->StreamQueue, (*itList)->ullPartSize);
 				{
 					CSingleLock lock(&MPUPool.Pending.csPendingList, true);
 					Msg->Events.bComplete = false;
@@ -703,6 +685,7 @@ bool DoS3MultiPartUpload(
 						}
 						if (!bDeleteEntry)
 						{
+							lock.Unlock();
 							// check if we could add more data to the stream queues
 							while ((pPartEntry->StreamQueue.StreamData.GetCount() < dwMaxQueueSize)
 								&& (pPartEntry->ullPartSize > pPartEntry->ullCursor))
@@ -731,6 +714,7 @@ bool DoS3MultiPartUpload(
 								pPartEntry->StreamQueue.StreamData.push_back(StreamMsg, 0, TestAbortStatic, &Conn);
 								pPartEntry->ullCursor += dwNumRead;
 							}
+							lock.Lock();
 						}
 						if (bDeleteEntry)
 							itPending = MPUPool.Pending.PendingList.erase(itPending);

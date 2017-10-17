@@ -1142,7 +1142,7 @@ private:
 	struct CECSConnectionStateCS
 	{
 		mutable CCriticalSection csStateMap;
-		mutable map<DWORD, CECSConnectionState> StateMap;
+		mutable map<DWORD, shared_ptr<CECSConnectionState>> StateMap;
 
 		CECSConnectionStateCS()
 		{

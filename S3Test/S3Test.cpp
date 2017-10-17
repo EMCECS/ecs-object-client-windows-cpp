@@ -497,20 +497,19 @@ static int DoTest(CString& sOutMessage)
 		CECSConnection::S3_ERROR Error;
 		_tprintf(L"\nMPU Upload:\n");
 		bool bMPUUpload = DoS3MultiPartUpload(
-			Conn,							// established connection to ECS
-			sWriteLocalPath,							// path to write file
-			sWriteECSPath,								// path to object in format: /bucket/dir1/dir2/object
+			Conn,						// established connection to ECS
+			sWriteECSPath,				// path to object in format: /bucket/dir1/dir2/object
 			hFile,						// open handle to file
-			liFileSize.QuadPart,					// size of the file
-			MEGABYTES(1),							// size of buffer to use
+			liFileSize.QuadPart,		// size of the file
+			MEGABYTES(1),				// size of buffer to use
 			10,							// part size (in MB)
-			3,						// maxiumum number of threads to spawn
-			true,									// if set, include content-MD5 header
-			&MDList,	// optional metadata to send to object
-			4,								// how big the queue can grow that feeds the upload thread
-			5,									// how many times to retry a part before giving up
-			ProgressCallBack,	// optional progress callback
-			&Context,											// context for ShutdownParamCB and UpdateProgressCB
+			3,							// maxiumum number of threads to spawn
+			true,						// if set, include content-MD5 header
+			&MDList,					// optional metadata to send to object
+			4,							// how big the queue can grow that feeds the upload thread
+			5,							// how many times to retry a part before giving up
+			ProgressCallBack,			// optional progress callback
+			&Context,					// context for ShutdownParamCB and UpdateProgressCB
 			Error);						// returned error
 		_tprintf(L"\nMPU Upload: %s, %s\n", bMPUUpload ? L"success" : L"fail", (LPCTSTR)Error.Format(true));
 #endif

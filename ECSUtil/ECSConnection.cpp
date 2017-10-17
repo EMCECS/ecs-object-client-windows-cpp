@@ -143,12 +143,17 @@ CECSConnection::CECSConnectionState& CECSConnection::GetStateBuf(DWORD dwThreadI
 	{
 		CSingleLock lock(&Events.csStateMap, true);
 		// this will either insert it or if it already exists, return the existing entry for this thread
-		pair<map<DWORD, CECSConnectionState>::iterator, bool> ret = Events.StateMap.insert(make_pair(dwThreadID, CECSConnectionState()));
-		if (ret.second)
-			ret.first->second.pECSConnection = this;
-		else
-			ASSERT(ret.first->second.pECSConnection == this);
-		return ret.first->second;
+		map<DWORD, shared_ptr<CECSConnectionState>>::iterator itState = Events.StateMap.find(dwThreadID);
+		if (itState == Events.StateMap.end())
+		{
+			shared_ptr<CECSConnectionState> NewState = make_shared<CECSConnectionState>();
+			pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = Events.StateMap.emplace(make_pair(dwThreadID, NewState));
+			ASSERT(ret.second);
+			ret.first->second->pECSConnection = this;
+			return *ret.first->second;
+		}
+		ASSERT(itState->second->pECSConnection == this);
+		return *itState->second;
 	}
 }
 
@@ -347,9 +352,9 @@ void CECSConnection::CThrottleTimerThread::DoWork()
 			if ((*itList)->sHost == itMap->first)
 			{
 				CSingleLock lockStateMap(&(*itList)->Events.csStateMap, true);
-				map<DWORD,CECSConnectionState>::iterator itStateMap;
+				map<DWORD,shared_ptr<CECSConnectionState>>::iterator itStateMap;
 				for (itStateMap = (*itList)->Events.StateMap.begin(); itStateMap != (*itList)->Events.StateMap.end(); ++itStateMap)
-					VERIFY(itStateMap->second.evThrottle.SetEvent());
+					VERIFY(itStateMap->second->evThrottle.SetEvent());
 			}
 		}
 	}
@@ -4336,9 +4341,9 @@ CECSConnection::CECSConnectionSession::~CECSConnectionSession()
 
 void CECSConnection::CECSConnectionSession::ReleaseSession(void) throw()
 {
-	CSingleLock lock(&csSessionMap, true);
 	if (pValue != nullptr)
 	{
+		CSingleLock lock(&csSessionMap, true);
 		map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap = SessionMap.find(Key);
 		if (itMap != SessionMap.end())
 		{

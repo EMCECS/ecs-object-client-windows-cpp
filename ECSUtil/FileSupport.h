@@ -38,7 +38,6 @@ extern ECSUTIL_EXT_API CECSConnection::S3_ERROR S3Write(
 
 extern ECSUTIL_EXT_API bool DoS3MultiPartUpload(
 	CECSConnection& Conn,							// established connection to ECS
-	LPCTSTR pszFilePath,							// path to write file
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
 	const CHandle& hDataHandle,						// open handle to file
 	const ULONGLONG ullTotalLen,					// size of the file
