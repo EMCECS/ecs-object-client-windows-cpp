@@ -21,10 +21,7 @@
 #include <list>
 #include <deque>
 #include "S3Test.h"
-#include "ECSUtil.h"
-#include "ECSConnection.h"
-#include "NTERRTXT.H"
-#include "FileSupport.h"
+#include "ECSGlobal.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -315,7 +312,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
         {
 			VERIFY(AfxSocketInit(&WsaData));
 
-			CECSConnection::Init();
+			ECSInitLib();
 
 			CString sOutMessage;
 			list<CString> CmdArgs;
@@ -328,6 +325,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 
 			_tprintf(_T("Press ENTER to continue..."));
 			cin.get();
+			ECSTermLib();
 		}
     }
     else
@@ -509,7 +507,7 @@ static int DoTest(CString& sOutMessage)
 			4,							// how big the queue can grow that feeds the upload thread
 			5,							// how many times to retry a part before giving up
 			ProgressCallBack,			// optional progress callback
-			&Context,					// context for ShutdownParamCB and UpdateProgressCB
+			&Context,					// context for UpdateProgressCB
 			Error);						// returned error
 		_tprintf(L"\nMPU Upload: %s, %s\n", bMPUUpload ? L"success" : L"fail", (LPCTSTR)Error.Format(true));
 #endif

@@ -73,3 +73,24 @@ void CThreadPoolBase::DumpPools(CString *pDumpMsg)
 	for (itSet = pGlobalCThreadPool->begin(); itSet != pGlobalCThreadPool->end(); ++itSet)
 		*pDumpMsg += (*itSet)->FormatEntry() + _T("\r\n");
 }
+
+void CThreadPoolBase::AllTerminate()
+{
+	bPoolInitialized = false;
+	// clean up all thread pools
+	if (CThreadPoolBase::pcsGlobalCThreadPool != nullptr)
+	{
+		{
+			CSingleLock lock(CThreadPoolBase::pcsGlobalCThreadPool, true);
+			for (set<CThreadPoolBase *>::const_iterator it = CThreadPoolBase::pGlobalCThreadPool->begin();
+				it != CThreadPoolBase::pGlobalCThreadPool->end(); ++it)
+			{
+				(*it)->Terminate();
+			}
+		}
+		delete pcsGlobalCThreadPool;
+		delete pGlobalCThreadPool;
+		pcsGlobalCThreadPool = nullptr;
+		pGlobalCThreadPool = nullptr;
+	}
+}

@@ -212,6 +212,7 @@ public:
 	void RemoveTermEvent(CEvent *pEvent);
 	void RemoveAllTermEvent(void);
 
+	static void CSimpleWorkerThread::AllTerminate();
 	static void DumpHandles(CString& sHandleMsg);
 	static CSimpleWorkerThread *CurrentThread(void);
 	static CCriticalSection *GetGlobalListCriticalSection(void);

@@ -48,6 +48,7 @@ private:
 	static set<CThreadPoolBase *> *pGlobalCThreadPool;
 	virtual void GarbageCollect(void) = 0;
 	virtual CString FormatEntry(void) = 0;
+	virtual void Terminate(void) = 0;
 
 protected:
 	static CSimpleRWLock rwlPerfDummy;	// dummy critical section if no CS is specified
@@ -67,6 +68,7 @@ public:
 	}
 	static void GlobalGarbageCollect(void);
 	static void DumpPools(CString *pDumpMsg);
+	static void AllTerminate(void);
 };
 
 // CThreadWork

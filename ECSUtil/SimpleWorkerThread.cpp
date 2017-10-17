@@ -395,3 +395,42 @@ CCriticalSection *CSimpleWorkerThread::GetGlobalListCriticalSection(void)
 {
 	return pcsGlobalThreadSet;
 }
+
+void CSimpleWorkerThread::AllTerminate()
+{
+	// clean up all worker threads
+	if (CSimpleWorkerThread::pcsGlobalThreadSet != nullptr)
+	{
+		{
+			CSingleLock lock(CSimpleWorkerThread::pcsGlobalThreadSet, true);
+			for (set<CSimpleWorkerThread *>::const_iterator it = CSimpleWorkerThread::pGlobalThreadSet->begin();
+				it != CSimpleWorkerThread::pGlobalThreadSet->end(); ++it)
+			{
+				if ((*it)->IfActive())
+					(*it)->KillThread();
+			}
+		}
+		for (;;)
+		{
+			CSingleLock lock(CSimpleWorkerThread::pcsGlobalThreadSet, true);
+			bool bActive = false;
+			for (set<CSimpleWorkerThread *>::const_iterator it = CSimpleWorkerThread::pGlobalThreadSet->begin();
+				it != CSimpleWorkerThread::pGlobalThreadSet->end(); ++it)
+			{
+				if ((*it)->IfActive())
+				{
+					bActive = true;
+					break;
+				}
+			}
+			if (!bActive)
+				break;
+			lock.Unlock();
+			Sleep(50);
+		}
+		delete CSimpleWorkerThread::pcsGlobalThreadSet;
+		delete CSimpleWorkerThread::pGlobalThreadSet;
+		CSimpleWorkerThread::pcsGlobalThreadSet = nullptr;
+		CSimpleWorkerThread::pGlobalThreadSet = nullptr;
+	}
+}
