@@ -1490,7 +1490,7 @@ public:
 				pHost->RegisterShutdownCB(&CECSConnectionAbort::IfShutdownCommon, this);
 		}
 	}
-	~CECSConnectionAbort()
+	virtual ~CECSConnectionAbort()
 	{
 		if (pHost != nullptr)
 		{
@@ -1499,6 +1499,8 @@ public:
 			if (bUseCallback)
 				pHost->UnregisterShutdownCB(&CECSConnectionAbort::IfShutdownCommon, this);
 		}
+		pbAbort = nullptr;
+		pHost = nullptr;
 	}
 	virtual bool IfShutdown(void)
 	{

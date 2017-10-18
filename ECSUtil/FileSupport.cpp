@@ -44,15 +44,15 @@ private:
 	const CSimpleWorkerThread *pThread;
 public:
 	CTestShutdown(const CSimpleWorkerThread *pThreadParam, CECSConnection *pHostParam = nullptr)
-		: pThread(pThreadParam)
-		, CECSConnectionAbort(pHostParam, true)
+		: CECSConnectionAbort(pHostParam, true)
+		, pThread(pThreadParam)
 	{}
 
 	~CTestShutdown()
 	{
 		pThread = nullptr;
 	}
-	virtual bool IfShutdown(void)
+	bool IfShutdown(void)
 	{
 		if (pThread == nullptr)
 			return false;

@@ -6480,7 +6480,5 @@ bool CECSConnectionAbort::IfShutdownCommon(void *pContext)
 		return false;
 	// pContext in this case is a point to an instance of CECSConnectionAbort
 	CECSConnectionAbort *pAbort = (CECSConnectionAbort *)pContext;
-	if (pAbort == nullptr)
-		return false;
 	return pAbort->IfShutdown();
 }

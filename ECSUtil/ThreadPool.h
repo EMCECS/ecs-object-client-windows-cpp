@@ -487,7 +487,7 @@ CThreadPool<MsgT>::~CThreadPool()
 	pdwPerfQueueSize = nullptr;
 	pdwPerfQueueMax = nullptr;
 	pdwPerfWorkItems = nullptr;
-	Terminate();
+	CThreadPool<MsgT>::Terminate();
 }
 
 // return true if new message can be run with the currently executing threads
