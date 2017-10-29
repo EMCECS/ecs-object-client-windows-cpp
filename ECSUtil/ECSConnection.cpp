@@ -5983,7 +5983,7 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 		if (!Params.sSorted.IsEmpty())
 			sResource += L"&sorted=" + Params.sSorted;
 		if (Params.bOlderVersions)
-			sResource += CString(L"&include_older_version=") + (Params.bOlderVersions ? L"true" : L"false");
+			sResource += CString(L"&include-older-versions=") + (Params.bOlderVersions ? L"true" : L"false");
 		CString sMarker;
 		for (;;)
 		{
