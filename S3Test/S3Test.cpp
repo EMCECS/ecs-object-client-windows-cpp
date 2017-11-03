@@ -46,7 +46,8 @@ _T("   /create <localfile> <ECSpath>       Create ECS object and initialize with
 _T("   /delete <ECSpath>                   Delete ECS object\n")
 _T("   /read <localfile> <ECSpath>         Read ECS object into file\n")
 _T("   /write <localfile> <ECSpath>        Write ECS object from file\n")
-_T("   /readmeta <ECSpath>                 Read all metadata from object\n");
+_T("   /readmeta <ECSpath>                 Read all metadata from object\n")
+_T("   /dtquery <namespace> <bucket> <object> DT Query for object\n");
 
 
 const TCHAR * const CMD_OPTION_ENDPOINT = _T("/endpoint");
@@ -61,6 +62,7 @@ const TCHAR * const CMD_OPTION_DELETE = _T("/delete");
 const TCHAR * const CMD_OPTION_READ = _T("/read");
 const TCHAR * const CMD_OPTION_WRITE = _T("/write");
 const TCHAR * const CMD_OPTION_READMETA = _T("/readmeta");
+const TCHAR * const CMD_OPTION_DTQUERY = _T("/dtquery");
 const TCHAR * const CMD_OPTION_HELP1 = _T("--help");
 const TCHAR * const CMD_OPTION_HELP2 = _T("-h");
 const TCHAR * const CMD_OPTION_HELP3 = _T("/?");
@@ -79,6 +81,10 @@ CString sWriteLocalPath;
 CString sWriteECSPath;
 CString sReadMetaECSPath;
 CString sDeleteECSPath;
+CString sDTQueryNamespace;
+CString sDTQueryBucket;
+CString sDTQueryObject;
+
 bool bHttps = true;
 INTERNET_PORT wPort = 9021;
 
@@ -264,6 +270,30 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 				return false;
 			}
 			sReadMetaECSPath = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_DTQUERY) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sDTQueryNamespace = *itParam;
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sDTQueryBucket = *itParam;
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sDTQueryObject = *itParam;
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_DELETE) == 0)
 		{
@@ -564,21 +594,18 @@ static int DoTest(CString& sOutMessage)
 			return 1;
 		}
 	}
+	if (!sDTQueryNamespace.IsEmpty() && !sDTQueryBucket.IsEmpty() && !sDTQueryObject.IsEmpty())
 	{
-		CECSConnection::S3_METADATA_SEARCH_FIELDS MDFields;
-		CECSConnection::S3_ERROR Error = Conn.S3GetMDSearchFields(MDFields);
+		CECSConnection::DT_QUERY_RESPONSE Response;
+		CECSConnection::S3_ERROR Error = Conn.ECSDTQuery(sDTQueryNamespace, sDTQueryBucket, sDTQueryObject, Response);
 		if (Error.IfError())
 		{
-			_tprintf(_T("S3GetMDSearchFields error: %s\n"), (LPCTSTR)Error.Format());
+			_tprintf(_T("DT Query error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
-		CECSConnection::S3_METADATA_SEARCH_FIELDS_BUCKET MDFieldBucket;
-		Error = Conn.S3GetMDSearchFields(_T("bob.testlower"), MDFieldBucket);
-		if (Error.IfError())
-		{
-			_tprintf(_T("S3GetMDSearchFields error: %s\n"), (LPCTSTR)Error.Format());
-			return 1;
-		}
+		_tprintf(_T("status = %s\nTotalDataSize = %I64d\nShippedDataSize = %I64d\nShippedDataPercentage = %d\n"),
+			Response.bStatus ? _T("true") : _T("false"), Response.ullTotalDataSize, Response.ullShippedDataSize,
+			Response.uShippedDataPercentage);
 	}
 	return 0;
 }

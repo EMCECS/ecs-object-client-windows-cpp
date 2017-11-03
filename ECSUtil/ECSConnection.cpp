@@ -6026,6 +6026,88 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 	return Error;
 }
 
+struct XML_DT_QUERY_CONTEXT
+{
+	CECSConnection::DT_QUERY_RESPONSE *pResponse;
+};
+
+// DT Query XML
+//<?xml version=“1.0" encoding=“UTF-8” standalone=“no”?>
+//<Summary>
+//<status>false</status>
+//<Version_0>
+//<total_data_size>9</total_data_size>
+//<shipped_data_size>0</shipped_data_size>
+//<shipped_data_percentage>0</shipped_data_percentage>
+//</Version_0>
+//</Summary>
+
+const WCHAR * const XML_DT_QUERY_STATUS = L"//Summary/status";
+const WCHAR * const XML_DT_QUERY_VERSION_0_TOTAL_DATA_SIZE = L"//Summary/Version_0/total_data_size";
+const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_SIZE = L"//Summary/Version_0/shipped_data_size";
+const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_PCT = L"//Summary/Version_0/shipped_data_percentage";
+
+HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+{
+	(void)pReader;
+	(void)pAttrList;
+	XML_DT_QUERY_CONTEXT *pResponse = (XML_DT_QUERY_CONTEXT *)pContext;
+	if ((pResponse == nullptr) || (pResponse->pResponse == nullptr))
+		return ERROR_INVALID_DATA;
+
+	switch (NodeType)
+	{
+	case XmlNodeType_Text:
+		if (psValue != nullptr)
+		{
+			if (sXmlPath.CompareNoCase(XML_DT_QUERY_STATUS) == 0)
+			{
+				pResponse->pResponse->bStatus = psValue->CompareNoCase(L"false") != 0;
+			}
+			else if (sXmlPath.CompareNoCase(XML_DT_QUERY_VERSION_0_TOTAL_DATA_SIZE) == 0)
+			{
+				pResponse->pResponse->ullTotalDataSize = _wtoi64(*psValue);
+			}
+			else if (sXmlPath.CompareNoCase(XML_DT_QUERY_VERSION_0_SHIPPED_DATA_SIZE) == 0)
+			{
+				pResponse->pResponse->ullShippedDataSize = _wtoi64(*psValue);
+			}
+			else if (sXmlPath.CompareNoCase(XML_DT_QUERY_VERSION_0_SHIPPED_DATA_PCT) == 0)
+			{
+				pResponse->pResponse->uShippedDataPercentage = _wtol(*psValue);
+			}
+		}
+		break;
+
+	default:
+		break;
+	}
+	return 0;
+}
+
+CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, DT_QUERY_RESPONSE & Response)
+{
+	list<HEADER_REQ> Req;
+	CBuffer RetData;
+	CString sResource;
+	sResource.Format(_T("/diagnostic/object/checkRepoReplicationStatus?poolname=%s.%s&objectname=%s"), pszNamespace, pszBucket, pszObject);
+	SetPort(9101);
+	S3_ERROR Error = SendRequest(_T("GET"), sResource, nullptr, 0, RetData, &Req);
+	if (Error.IfError())
+	{
+		CWideString Str((LPCSTR)RetData.GetData(), RetData.GetBufSize());
+		Error.sDetails = Str;
+		return Error;
+	}
+	// now interpret the response
+	XML_DT_QUERY_CONTEXT Context;
+	Context.pResponse = &Response;
+	HRESULT hr = ScanXml(&RetData, &Context, XmlDTQueryCB);
+	if (FAILED(hr))
+		return hr;
+	return Error;
+}
+
 // global initialized flag. must be called to set regular timeouts
 void CECSConnection::SetInitialized(void)
 {

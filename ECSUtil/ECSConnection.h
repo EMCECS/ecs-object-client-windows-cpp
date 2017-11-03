@@ -102,6 +102,22 @@ public:
 class ECSUTIL_EXT_CLASS CECSConnection
 {
 public:
+	// DT Query support
+	struct DT_QUERY_RESPONSE
+	{
+		bool bStatus;
+		ULONGLONG ullTotalDataSize;
+		ULONGLONG ullShippedDataSize;
+		UINT uShippedDataPercentage;
+
+		DT_QUERY_RESPONSE()
+			: bStatus(false)
+			, ullTotalDataSize(0ULL)
+			, ullShippedDataSize(0ULL)
+			, uShippedDataPercentage(0)
+		{}
+	};
+
 	// metadata search
 	enum class E_MD_SEARCH_TYPE : BYTE
 	{
@@ -1460,6 +1476,9 @@ public:
 	S3_ERROR S3GetMDSearchFields(S3_METADATA_SEARCH_FIELDS& MDFields);
 	S3_ERROR S3GetMDSearchFields(LPCTSTR pszBucket, S3_METADATA_SEARCH_FIELDS_BUCKET& MDFieldBucket);
 	S3_ERROR S3SearchMD(const S3_METADATA_SEARCH_PARAMS& Params, S3_METADATA_SEARCH_RESULT& MDSearchResult);
+
+	// DT Query
+	S3_ERROR ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, DT_QUERY_RESPONSE& Response);
 
 	static DWORD MaxMetadataBinarySize(void);
 };
