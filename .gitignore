@@ -10,3 +10,7 @@ Release
 lint
 /ECSUtil/*.user
 /S3Test/*.aps
+Debug Lib
+objDebug Lib
+objRelease Lib
+Release Lib
