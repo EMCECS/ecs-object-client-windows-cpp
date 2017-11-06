@@ -36,28 +36,31 @@ extern ECSUTIL_EXT_API void DebugF(LPCTSTR format, ...);
 
 // alternative logging if callback doesn't work
 // derive a class from this base class and define the logging call
-class CECSLoggingBase
+class ECSUTIL_EXT_CLASS CECSLoggingBase
 {
 private:
-	bool bEnabled;			// logging is enabled
+	bool bTraceEnabled;			// tracing is enabled
 
 protected:
-	virtual void LogMessageCB(LPCTSTR pszMsg, DWORD dwError, LPCTSTR pszErrorText) = 0;
+	virtual void LogMessageCB(DWORD dwLogLevel, LPCTSTR pszMsg, DWORD dwError, LPCTSTR pszErrorText) = 0;
+	virtual void TraceMessageCB(LPCTSTR pszMsg) = 0;
+
 public:
-	CECSLoggingBase(bool bLoggingEnabled = true)
+	CECSLoggingBase(bool bTraceEnabledParam = true)
 	{
-		bEnabled = bLoggingEnabled;
+		bTraceEnabled = bTraceEnabledParam;
 	}
 
 	virtual ~CECSLoggingBase()
 	{
 	}
 
-	virtual void EnableLogging(bool bLoggingEnabled = true)
+	virtual void EnableTrace(bool bTraceEnabledParam = true)
 	{
-		bEnabled = bLoggingEnabled;
+		bTraceEnabled = bTraceEnabledParam;
 	}
 
-	void LogMsg(LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
+	void LogMsg(DWORD dwLogLevel, LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
+	void TraceMsg(LPCTSTR pszLogMessage, ...);
 };
 
