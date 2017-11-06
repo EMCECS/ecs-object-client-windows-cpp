@@ -69,16 +69,31 @@ void DebugF(LPCTSTR format, ...)
 	va_end(marker);              /* Reset variable arguments.      */
 }
 
-void CECSLoggingBase::LogMsg(LPCTSTR pszLogMessage, NTSTATUS dwError, ...)
+void CECSLoggingBase::LogMsg(
+	DWORD dwLogLevel,						// EVENTLOG_ERROR_TYPE or EVENTLOG_WARNING_TYPE
+	LPCTSTR pszLogMessage,					// log message
+	NTSTATUS dwError,						// error code, if any
+	...)									// sprintf parameters for pszLogMessage, if any
 {
 	va_list marker;
 	va_start(marker, dwError);     /* Initialize variable arguments. */
-	if (bEnabled)
+	CString sMsg, sErrorText;
+	sMsg.FormatV(pszLogMessage, marker);
+	if (dwError != ERROR_SUCCESS)
+		sErrorText = GetNTErrorText(dwError);
+	LogMessageCB(dwLogLevel, sMsg, dwError, sErrorText);
+}
+
+void CECSLoggingBase::TraceMsg(
+	LPCTSTR pszLogMessage,					// log message
+	...)									// sprintf parameters for pszLogMessage, if any
+{
+	va_list marker;
+	va_start(marker, pszLogMessage);     /* Initialize variable arguments. */
+	if (bTraceEnabled)
 	{
-		CString sMsg, sErrorText;
+		CString sMsg;
 		sMsg.FormatV(pszLogMessage, marker);
-		if (dwError != ERROR_SUCCESS)
-			sErrorText = GetNTErrorText(dwError);
-		LogMessageCB(sMsg, dwError, sErrorText);
+		TraceMessageCB(sMsg);
 	}
 }
