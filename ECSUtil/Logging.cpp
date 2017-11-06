@@ -31,15 +31,15 @@ void RegisterLogMessageCallback(ECSUTIL_LOG_MESSAGE_PROTO *pLogMessageCBParam)
 
 void LogMessageVa(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, va_list marker)
 {
-	CString sErrorMsg;
-	sErrorMsg.FormatV(pszLogMessage, marker);
+	CString sMsg;
+	sMsg.FormatV(pszLogMessage, marker);
 	if (pLogMessageCB == nullptr)
 	{
-		OutputDebugString(sErrorMsg + ((dwError == ERROR_SUCCESS) ? _T("") : _T(" - ") + GetNTErrorText(dwError)));
+		OutputDebugString(sMsg + ((dwError == ERROR_SUCCESS) ? _T("") : _T(" - ") + GetNTErrorText(dwError)));
 	}
 	else
 	{
-		pLogMessageCB(pszFile, dwLine, sErrorMsg, dwError);
+		pLogMessageCB(pszFile, dwLine, sMsg, dwError);
 	}
 }
 
@@ -53,19 +53,32 @@ void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS d
 
 void DebugF(LPCTSTR format, ...)
 {
-	CString sErrorMsg;
+	CString sMsg;
 	va_list marker;
 	va_start(marker, format);     /* Initialize variable arguments. */
 
-	sErrorMsg.FormatV(format, marker);
-	if (sErrorMsg.GetLength() > 0)
+	sMsg.FormatV(format, marker);
+	if (sMsg.GetLength() > 0)
 	{
-		if (sErrorMsg[sErrorMsg.GetLength() - 1] != TEXT('\n'))
+		if (sMsg[sMsg.GetLength() - 1] != TEXT('\n'))
 		{
-			sErrorMsg += TEXT('\n');
+			sMsg += TEXT('\n');
 		}
 	}
-	OutputDebugString(sErrorMsg);
+	OutputDebugString(sMsg);
 	va_end(marker);              /* Reset variable arguments.      */
 }
 
+void CECSLoggingBase::LogMsg(LPCTSTR pszLogMessage, NTSTATUS dwError, ...)
+{
+	va_list marker;
+	va_start(marker, dwError);     /* Initialize variable arguments. */
+	if (bEnabled)
+	{
+		CString sMsg, sErrorText;
+		sMsg.FormatV(pszLogMessage, marker);
+		if (dwError != ERROR_SUCCESS)
+			sErrorText = GetNTErrorText(dwError);
+		LogMessageCB(sMsg, dwError, sErrorText);
+	}
+}

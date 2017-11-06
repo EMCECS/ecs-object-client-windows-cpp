@@ -33,3 +33,31 @@ extern ECSUTIL_EXT_API void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR ps
 #endif
 
 extern ECSUTIL_EXT_API void DebugF(LPCTSTR format, ...);
+
+// alternative logging if callback doesn't work
+// derive a class from this base class and define the logging call
+class CECSLoggingBase
+{
+private:
+	bool bEnabled;			// logging is enabled
+
+protected:
+	virtual void LogMessageCB(LPCTSTR pszMsg, DWORD dwError, LPCTSTR pszErrorText) = 0;
+public:
+	CECSLoggingBase(bool bLoggingEnabled = true)
+	{
+		bEnabled = bLoggingEnabled;
+	}
+
+	virtual ~CECSLoggingBase()
+	{
+	}
+
+	virtual void EnableLogging(bool bLoggingEnabled = true)
+	{
+		bEnabled = bLoggingEnabled;
+	}
+
+	void LogMsg(LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
+};
+
