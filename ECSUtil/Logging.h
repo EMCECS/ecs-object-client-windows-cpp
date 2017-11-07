@@ -55,7 +55,7 @@ public:
 	{
 	}
 
-	virtual void EnableTrace(bool bTraceEnabledParam = true)
+	virtual void EnableTrace(bool bTraceEnabledParam)
 	{
 		bTraceEnabled = bTraceEnabledParam;
 	}

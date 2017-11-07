@@ -26,6 +26,70 @@
 #include "CngAES_GCM.h"
 #include "FileSupport.h"
 
+CECSConnection::S3_ERROR S3Read(
+	LPCWSTR pszFile,								// path to file
+	DWORD grfMode,									// examples: for read: STGM_READ | STGM_SHARE_DENY_WRITE, for write: STGM_SHARE_EXCLUSIVE | STGM_CREATE | STGM_WRITE
+	DWORD dwAttributes,								// attribute of file if created
+	bool bCreate,									// see SHCreateStreamOnFileEx on how to use
+	CECSConnection& Conn,							// established connection to ECS
+	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
+	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
+	void *pContext)									// context for UpdateProgressCB
+{
+	CComPtr<IStream> pFileStream;
+	HRESULT hr;
+	if (FAILED(hr = SHCreateStreamOnFileEx(pszFile, grfMode, dwAttributes, bCreate, NULL, &pFileStream)))
+		return hr;
+	return S3Read(Conn, pszECSPath, pFileStream, UpdateProgressCB, pContext);
+}
+
+CECSConnection::S3_ERROR S3Write(
+	LPCWSTR pszFile,								// path to file
+	DWORD grfMode,									// examples: for read: STGM_READ | STGM_SHARE_DENY_WRITE, for write: STGM_SHARE_EXCLUSIVE | STGM_CREATE | STGM_WRITE
+	DWORD dwAttributes,								// attribute of file if created
+	CECSConnection& Conn,							// established connection to ECS
+	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
+	const DWORD dwBufSize,							// size of buffer to use
+	bool bChecksum,									// if set, include content-MD5 header
+	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
+	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
+	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
+	void *pContext)											// context for UpdateProgressCB
+{
+	CComPtr<IStream> pFileStream;
+	HRESULT hr;
+	if (FAILED(hr = SHCreateStreamOnFileEx(pszFile, grfMode, dwAttributes, false, NULL, &pFileStream)))
+		return hr;
+	return S3Write(Conn, pszECSPath, pFileStream, dwBufSize, bChecksum, dwMaxQueueSize, pMDList, UpdateProgressCB, pContext);
+}
+
+bool DoS3MultiPartUpload(
+	LPCWSTR pszFile,								// path to file
+	DWORD grfMode,									// examples: for read: STGM_READ | STGM_SHARE_DENY_WRITE, for write: STGM_SHARE_EXCLUSIVE | STGM_CREATE | STGM_WRITE
+	DWORD dwAttributes,								// attribute of file if created
+	CECSConnection& Conn,							// established connection to ECS
+	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
+	const DWORD dwBufSize,							// size of buffer to use
+	const DWORD dwPartSize,							// part size (in MB)
+	const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
+	bool bChecksum,									// if set, include content-MD5 header
+	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
+	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
+	DWORD dwMaxRetries,									// how many times to retry a part before giving up
+	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
+	void *pContext,											// context for UpdateProgressCB
+	CECSConnection::S3_ERROR& Error)						// returned error
+{
+	CComPtr<IStream> pFileStream;
+	HRESULT hr;
+	if (FAILED(hr = SHCreateStreamOnFileEx(pszFile, grfMode, dwAttributes, false, NULL, &pFileStream)))
+	{
+		Error = hr;
+		return false;
+	}
+	return DoS3MultiPartUpload(Conn, pszECSPath, pFileStream, dwBufSize, dwPartSize, dwMaxThreads, bChecksum, pMDList, dwMaxQueueSize,
+		dwMaxRetries, UpdateProgressCB, pContext, Error);
+}
 
 // TestShutdownThread
 // pContext must point to CSimpleWorkerThread
@@ -92,7 +156,7 @@ struct CS3ReadThread : public CSimpleWorkerThread
 CECSConnection::S3_ERROR S3Read(
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
-	const CHandle& hDataHandle,						// open handle to file
+	IStream *pStream,								// open stream to file
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext)											// context for UpdateProgressCB
 {
@@ -144,8 +208,9 @@ CECSConnection::S3_ERROR S3Read(
 				// write out the data
 				if (!StreamData.Data.IsEmpty())
 				{
-					if (!WriteFile(hDataHandle, StreamData.Data.GetData(), StreamData.Data.GetBufSize(), &dwNumWritten, nullptr))
-						return GetLastError();
+					dwError = pStream->Write(StreamData.Data.GetData(), StreamData.Data.GetBufSize(), &dwNumWritten);
+					if (dwError != S_OK)
+						return dwError;
 					if (UpdateProgressCB != nullptr)
 						UpdateProgressCB(dwNumWritten, pContext);
 				}
@@ -185,23 +250,26 @@ struct CS3WriteThread : public CSimpleWorkerThread
 	LARGE_INTEGER FileSize;
 	CCngAES_GCM Hash;					// optional MD5 hash
 	bool bGotHash;						// set if MD5 hash is complete
+	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList;	// optional metadata to send to object
 
 	CS3WriteThread()
 		: pConn(nullptr)
 		, bGotHash(false)
+		, pMDList(nullptr)
 	{
 		FileSize.QuadPart = 0;
 	}
 	~CS3WriteThread()
 	{
 		pConn = nullptr;
+		pMDList = nullptr;
 		KillThreadWait();
 	}
 	void DoWork();
 };
 
 static DWORD CalcUploadChecksum(
-	const CHandle& hDataHandle,					// open handle to file
+	IStream *pStream,							// open stream to file
 	ULONGLONG ullOffset,						// offset if reading a portion of the file
 	ULONGLONG ullLength,						// length (if reading a portion) if 0 && ullOffset == 0, read the whole file
 	CECSConnection& Conn,						// used for abort test
@@ -212,11 +280,13 @@ static DWORD CalcUploadChecksum(
 	{
 		Hash.CreateHash(BCRYPT_MD5_ALGORITHM);
 		DWORD dwNumRead;
+		DWORD dwError;
 		LARGE_INTEGER liOffset;
 		liOffset.QuadPart = ullOffset;
-		OVERLAPPED Overlapped;
 		bool bPart = (ullOffset != 0ULL) || (ullLength != 0ULL);
-		ZeroMemory(&Overlapped, sizeof(Overlapped));
+		dwError = pStream->Seek(liOffset, STREAM_SEEK_SET, nullptr);
+		if (dwError != S_OK)
+			throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
 		for (;;)
 		{
 			DWORD dwBytesToRead = ReadBuf.GetBufSize();
@@ -225,15 +295,11 @@ static DWORD CalcUploadChecksum(
 				if ((ULONGLONG)dwBytesToRead > ullLength)
 					dwBytesToRead = (DWORD)ullLength;
 			}
-			Overlapped.Offset = liOffset.LowPart;
-			Overlapped.OffsetHigh = liOffset.HighPart;
-			if (!ReadFile(hDataHandle, ReadBuf.GetData(), dwBytesToRead, &dwNumRead, &Overlapped))
-			{
-				DWORD dwError = GetLastError();
-				if (dwError != ERROR_HANDLE_EOF)
-					throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
-				break;
-			}
+			dwError = pStream->Read(ReadBuf.GetData(), dwBytesToRead, &dwNumRead);
+			if ((dwError != S_OK) && (dwError != S_FALSE))
+				throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
+			if (dwNumRead == 0)
+				break;						// didn't read anything
 			liOffset.QuadPart += dwNumRead;
 			Hash.AddHashData(ReadBuf.GetData(), dwNumRead);
 			if (bPart)
@@ -259,10 +325,11 @@ static DWORD CalcUploadChecksum(
 CECSConnection::S3_ERROR S3Write(
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
-	const CHandle& hDataHandle,						// open handle to file
+	IStream *pStream,								// open stream to file
 	const DWORD dwBufSize,							// size of buffer to use
 	bool bChecksum,									// if set, include content-MD5 header
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
+	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext)											// context for UpdateProgressCB
 {
@@ -270,53 +337,60 @@ CECSConnection::S3_ERROR S3Write(
 	CECSConnection::STREAM_DATA_ENTRY WriteRec;
 	CBuffer WriteBuf;
 	DWORD dwBytesRead;
+	DWORD dwError;
+	STATSTG FileStat;
 
-	WriteBuf.SetBufSize(dwBufSize);				// how much data to write at a time
-	WriteThread.pConn = &Conn;
-	WriteThread.sECSPath = pszECSPath;
-	if (!GetFileSizeEx(hDataHandle, &WriteThread.FileSize))
-		return GetLastError();
-	if (bChecksum)
+	try
 	{
-		DWORD dwError = CalcUploadChecksum(hDataHandle, 0ULL, 0ULL, Conn, WriteBuf, WriteThread.Hash);
-		if (dwError != ERROR_SUCCESS)
-			return dwError;						// error creating the hash
-		WriteThread.bGotHash = true;
-	}
-	WriteThread.WriteContext.UpdateProgressCB = UpdateProgressCB;
-	WriteThread.WriteContext.pContext = pContext;
-	// file is open and ready, now start up the worker thread so it starts writing to ECS
-	WriteThread.CreateThread();				// create the thread
-	WriteThread.StartWork();					// kick it off
-
-	bool bDone = false;
-	LARGE_INTEGER liOffset;
-	liOffset.QuadPart = 0LL;
-	OVERLAPPED Overlapped;
-	ZeroMemory(&Overlapped, sizeof(Overlapped));
-	while (!bDone)
-	{
-		if (Conn.TestAbort())
-			break;
-		Overlapped.Offset = liOffset.LowPart;
-		Overlapped.OffsetHigh = liOffset.HighPart;
-		if (!ReadFile(hDataHandle, WriteBuf.GetData(), WriteBuf.GetBufSize(), &dwBytesRead, &Overlapped))
+		WriteBuf.SetBufSize(dwBufSize);				// how much data to write at a time
+		WriteThread.pConn = &Conn;
+		WriteThread.sECSPath = pszECSPath;
+		WriteThread.pMDList = pMDList;
+		dwError = pStream->Stat(&FileStat, STATFLAG_NONAME);
+		if (dwError != S_OK)
+			return dwError;
+		WriteThread.FileSize.QuadPart = FileStat.cbSize.QuadPart;
+		if (bChecksum)
 		{
-			DWORD dwError = GetLastError();
-			if (dwError != ERROR_HANDLE_EOF)
-			{
-				WriteThread.KillThreadWait();			// kill background thread
-				return dwError;
-			}
-			bDone = WriteRec.bLast = true;
+			dwError = CalcUploadChecksum(pStream, 0ULL, 0ULL, Conn, WriteBuf, WriteThread.Hash);
+			if (dwError != ERROR_SUCCESS)
+				return dwError;						// error creating the hash
+			WriteThread.bGotHash = true;
 		}
-		WriteRec.Data.Load(WriteBuf.GetData(), dwBytesRead);
-		WriteRec.ullOffset = liOffset.QuadPart;
-		liOffset.QuadPart += dwBytesRead;
-		WriteThread.WriteContext.StreamData.push_back(WriteRec, dwMaxQueueSize, TestShutdownThread, &WriteThread);
+		WriteThread.WriteContext.UpdateProgressCB = UpdateProgressCB;
+		WriteThread.WriteContext.pContext = pContext;
+		// file is open and ready, now start up the worker thread so it starts writing to ECS
+		WriteThread.CreateThread();				// create the thread
+		WriteThread.StartWork();					// kick it off
+
+		bool bDone = false;
+		LARGE_INTEGER liOffset;
+		liOffset.QuadPart = 0LL;
+		dwError = pStream->Seek(liOffset, STREAM_SEEK_SET, nullptr);
+		if (dwError != S_OK)
+			throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
+		while (!bDone)
+		{
+			if (Conn.TestAbort())
+				break;
+			dwError = pStream->Read(WriteBuf.GetData(), WriteBuf.GetBufSize(), &dwBytesRead);
+			if ((dwError != S_OK) && (dwError != S_FALSE))
+				throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
+			if (dwError == S_FALSE)
+				bDone = WriteRec.bLast = true;
+			WriteRec.Data.Load(WriteBuf.GetData(), dwBytesRead);
+			WriteRec.ullOffset = liOffset.QuadPart;
+			liOffset.QuadPart += dwBytesRead;
+			WriteThread.WriteContext.StreamData.push_back(WriteRec, dwMaxQueueSize, TestShutdownThread, &WriteThread);
+		}
+		// now wait for the worker thread to terminate to get its error code
+		WriteThread.KillThreadWait(true);			// don't kill it - just wait for it to die
 	}
-							// now wait for the worker thread to terminate to get its error code
-	WriteThread.KillThreadWait(true);			// don't kill it - just wait for it to die
+	catch (const CErrorInfo& E)
+	{
+		WriteThread.KillThreadWait();			// kill background thread
+		return E.dwError;
+	}
 	return WriteThread.Error;
 }
 
@@ -326,7 +400,7 @@ void CS3WriteThread::DoWork()
 	if (bGotHash)
 		Hash.GetHashData(HashData);
 	pConn->RegisterShutdownCB(TestShutdownThread, this);
-	Error = pConn->Create(sECSPath, nullptr, 0UL, nullptr, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
+	Error = pConn->Create(sECSPath, nullptr, 0UL, pMDList, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
 	pConn->UnregisterShutdownCB(TestShutdownThread, this);
 	KillThread();
 }
@@ -457,13 +531,12 @@ static bool TestAbortStatic(void *pContext)
 bool DoS3MultiPartUpload(
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
-	const CHandle& hDataHandle,						// open handle to file
-	const ULONGLONG ullTotalLen,					// size of the file
+	IStream *pStream,								// open stream to file
 	const DWORD dwBufSize,							// size of buffer to use
 	const DWORD dwPartSize,							// part size (in MB)
 	const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
 	bool bChecksum,									// if set, include content-MD5 header
-	list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
+	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
 	DWORD dwMaxRetries,									// how many times to retry a part before giving up
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
@@ -478,21 +551,29 @@ bool DoS3MultiPartUpload(
 	bool bStartedMultipartUpload = false;
 	list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>> S3PartList;
 	CMPUPool MPUPool;
+	STATSTG FileStat;
+	DWORD dwError;
 
 	Error = CECSConnection::S3_ERROR();			// clear the error return
 	if (dwMaxQueueSize == 0)
 		dwMaxQueueSize = 10;					// reasonable default
 	try
 	{
+		dwError = pStream->Stat(&FileStat, STATFLAG_NONAME);
+		if (dwError != S_OK)
+		{
+			Error = dwError;
+			return false;
+		}
 		Buf.SetBufSize(dwBufSize);
 		S3PartList.clear();
-		if ((ullTotalLen < MEGABYTES(dwPartSize)))
+		if ((FileStat.cbSize.QuadPart < MEGABYTES(dwPartSize)))
 			return false;
 		ULONGLONG ullPartLength = ALIGN_ANY(MEGABYTES((ULONGLONG)dwPartSize), 0x10000);
 		// don't let the number of parts go over dwMaxParts
-		if (ullTotalLen / ullPartLength > dwMaxParts)
+		if (FileStat.cbSize.QuadPart / ullPartLength > dwMaxParts)
 		{
-			ullPartLength = ullTotalLen / (ULONGLONG)(dwMaxParts - 1);
+			ullPartLength = FileStat.cbSize.QuadPart / (ULONGLONG)(dwMaxParts - 1);
 		}
 		if (ullPartLength < MEGABYTES(5))					// if the part size goes below the minimum
 			return false;									// don't do a multipart upload
@@ -501,12 +582,12 @@ bool DoS3MultiPartUpload(
 		// now create the part list
 		for (;;)
 		{
-			if (ullTotalLen <= ullOffset)
+			if (FileStat.cbSize.QuadPart <= ullOffset)
 				break;
 			shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY> Rec = make_shared<CECSConnection::S3_UPLOAD_PART_ENTRY>();
 			Rec->ullBaseOffset = ullOffset;
 			Rec->uPartNum = ++uPartNum;
-			Rec->ullPartSize = ((ullTotalLen - ullOffset) < ullPartLength) ? (ullTotalLen - ullOffset) : ullPartLength;
+			Rec->ullPartSize = ((FileStat.cbSize.QuadPart - ullOffset) < ullPartLength) ? (FileStat.cbSize.QuadPart - ullOffset) : ullPartLength;
 			Rec->sETag.Empty();
 			S3PartList.push_back(Rec);
 			ullOffset += Rec->ullPartSize;
@@ -577,19 +658,17 @@ bool DoS3MultiPartUpload(
 					ULONGLONG ullPartSize = (*itList)->ullPartSize;
 					DWORD dwNumRead, dwReadBufSize;
 					DWORD dwRecCount = 0;
+					dwError = pStream->Seek(liChecksumOffset, STREAM_SEEK_SET, nullptr);
+					if (dwError != S_OK)
+						throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
 					while (ullPartSize > 0ULL)
 					{
 						dwReadBufSize = Buf.GetBufSize();
 						if ((ULONGLONG)dwReadBufSize > ullPartSize)
 							dwReadBufSize = (DWORD)ullPartSize;
-						OVERLAPPED Overlapped;
-						ZeroMemory(&Overlapped, sizeof(Overlapped));
-						Overlapped.Offset = liChecksumOffset.LowPart;
-						Overlapped.OffsetHigh = liChecksumOffset.HighPart;
-						if (!ReadFile(hDataHandle, Buf.GetData(), dwReadBufSize, &dwNumRead, &Overlapped))
-						{
-							throw CErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-						}
+						dwError = pStream->Read(Buf.GetData(), dwReadBufSize, &dwNumRead);
+						if ((dwError != S_OK) && (dwError != S_FALSE))
+							throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
 						if (bChecksum)
 							MPUPool.Pending.MsgHash.AddHashData(Buf.GetData(), dwNumRead);
 						// as long as we've read the data, might as well queue it to be uploaded
@@ -707,6 +786,11 @@ bool DoS3MultiPartUpload(
 						if (!bDeleteEntry)
 						{
 							lock.Unlock();
+							LARGE_INTEGER liOffset;
+							liOffset.QuadPart = pPartEntry->ullBaseOffset + pPartEntry->ullCursor;
+							dwError = pStream->Seek(liOffset, STREAM_SEEK_SET, nullptr);
+							if (dwError != S_OK)
+								throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
 							// check if we could add more data to the stream queues
 							while ((pPartEntry->StreamQueue.StreamData.GetCount() < dwMaxQueueSize)
 								&& (pPartEntry->ullPartSize > pPartEntry->ullCursor))
@@ -717,16 +801,9 @@ bool DoS3MultiPartUpload(
 								ullRemainingPart = pPartEntry->ullPartSize - pPartEntry->ullCursor;
 								if ((ULONGLONG)dwReadBufSize > ullRemainingPart)
 									dwReadBufSize = (DWORD)ullRemainingPart;
-								OVERLAPPED Overlapped;
-								ZeroMemory(&Overlapped, sizeof(Overlapped));
-								LARGE_INTEGER liOffset;
-								liOffset.QuadPart = pPartEntry->ullBaseOffset + pPartEntry->ullCursor;
-								Overlapped.Offset = liOffset.LowPart;
-								Overlapped.OffsetHigh = liOffset.HighPart;
-								if (!ReadFile(hDataHandle, Buf.GetData(), dwReadBufSize, &dwNumRead, &Overlapped))
-								{
-									throw CErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-								}
+								dwError = pStream->Read(Buf.GetData(), dwReadBufSize, &dwNumRead);
+								if ((dwError != S_OK) && (dwError != S_FALSE))
+									throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
 								CECSConnection::STREAM_DATA_ENTRY StreamMsg;
 								StreamMsg.Data.Load(Buf.GetData(), dwNumRead);
 								StreamMsg.bLast = pPartEntry->ullPartSize <= (pPartEntry->ullCursor + dwNumRead);

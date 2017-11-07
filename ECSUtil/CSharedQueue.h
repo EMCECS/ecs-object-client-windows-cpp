@@ -142,7 +142,7 @@ private:
 					if (pTestAbort(pContext))
 						break;
 				CSingleLock lockEmpty(&QueueEvent.Event.evQueue);
-				(void)lockEmpty.Lock(SECONDS(5));
+				(void)lockEmpty.Lock(SECONDS(1));
 				if (lockEmpty.IsLocked())
 					VERIFY(lockEmpty.Unlock());
 			}

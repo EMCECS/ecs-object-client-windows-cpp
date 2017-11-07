@@ -480,13 +480,7 @@ static int DoTest(CString& sOutMessage)
 	{
 		PROGRESS_CONTEXT Context;
 		Context.sTitle = L"Read";
-		CHandle hFile(CreateFile(sReadLocalPath, FILE_GENERIC_READ | FILE_GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
-		if (hFile.m_h == INVALID_HANDLE_VALUE)
-		{
-			_tprintf(_T("Open error for %s: %s\n"), (LPCTSTR)sWriteLocalPath, (LPCTSTR)GetNTLastErrorText());
-			return 1;
-		}
-		CECSConnection::S3_ERROR Error = S3Read(Conn, sReadECSPath, hFile, ProgressCallBack, &Context);
+		CECSConnection::S3_ERROR Error = S3Read(sReadLocalPath, STGM_SHARE_EXCLUSIVE | STGM_CREATE | STGM_WRITE, FILE_ATTRIBUTE_NORMAL, true, Conn, sReadECSPath, ProgressCallBack, &Context);
 		if (Error.IfError())
 		{
 			_tprintf(_T("Error from S3Read: %s\n"), (LPCTSTR)Error.Format());
@@ -497,38 +491,30 @@ static int DoTest(CString& sOutMessage)
 	{
 		PROGRESS_CONTEXT Context;
 		Context.sTitle = L"Write";
-		CHandle hFile(CreateFile(sWriteLocalPath, FILE_GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-		if (hFile.m_h == INVALID_HANDLE_VALUE)
-		{
-			_tprintf(_T("Open error for %s: %s\n"), (LPCTSTR)sWriteLocalPath, (LPCTSTR)GetNTLastErrorText());
-			return 1;
-		}
-#ifdef unused
-		CECSConnection::S3_ERROR Error = S3Write(Conn, sWriteECSPath, hFile, MEGABYTES(1), true, 20, ProgressCallBack, &Context);
+		list<CECSConnection::S3_METADATA_ENTRY> MDList;
+		CECSConnection::S3_METADATA_ENTRY MD_Rec;
+#ifndef unused
+		MD_Rec.sTag = _T("NewTag");
+		MD_Rec.sData = _T("NewTagValue");
+		MDList.push_back(MD_Rec);
+		CECSConnection::S3_ERROR Error = S3Write(sWriteLocalPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, Conn, sWriteECSPath, MEGABYTES(1), true, 20, &MDList, ProgressCallBack, &Context);
 		if (Error.IfError())
 		{
 			_tprintf(_T("Error from S3Write: %s\n"), (LPCTSTR)Error.Format());
 		}
 		_tprintf(L"\r\n");
 #else
-		LARGE_INTEGER liFileSize;
-		if (!GetFileSizeEx(hFile, &liFileSize))
-		{
-			_tprintf(_T("Error getting file size for %s: %s\n"), (LPCTSTR)sWriteLocalPath, (LPCTSTR)GetNTLastErrorText());
-			return 1;
-		}
-		list<CECSConnection::S3_METADATA_ENTRY> MDList;
-		CECSConnection::S3_METADATA_ENTRY MD_Rec;
 		MD_Rec.sTag = _T("NewTag");
-		MD_Rec.sData = _T("NewTagValue");
+		MD_Rec.sData = _T("NewTagValueMPU");
 		MDList.push_back(MD_Rec);
 		CECSConnection::S3_ERROR Error;
 		_tprintf(L"\nMPU Upload:\n");
 		bool bMPUUpload = DoS3MultiPartUpload(
+			sWriteLocalPath,
+			STGM_READ | STGM_SHARE_DENY_WRITE,
+			FILE_ATTRIBUTE_NORMAL,
 			Conn,						// established connection to ECS
 			sWriteECSPath,				// path to object in format: /bucket/dir1/dir2/object
-			hFile,						// open handle to file
-			liFileSize.QuadPart,		// size of the file
 			MEGABYTES(1),				// size of buffer to use
 			10,							// part size (in MB)
 			3,							// maxiumum number of threads to spawn
