@@ -95,5 +95,6 @@ void CECSLoggingBase::TraceMsg(
 		CString sMsg;
 		sMsg.FormatV(pszLogMessage, marker);
 		TraceMessageCB(sMsg);
+		DEBUGF(L"%s", (LPCTSTR)sMsg);
 	}
 }
