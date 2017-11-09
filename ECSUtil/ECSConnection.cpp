@@ -2143,10 +2143,7 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 		{
 			for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 			{
-				if (!itList->bS3Header)
-					AddHeader(sAmzMetaPrefix + itList->sTag, itList->sData);
-				else
-					AddHeader(itList->sTag, itList->sData);
+				AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
 			}
 		}
 		if (pIfNoneMatch != nullptr)
@@ -3515,7 +3512,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 			{
 				// add in all metadata
 				for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
-					AddHeader(sAmzMetaPrefix + itList->sTag, itList->sData);
+					AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
 			}
 			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath), nullptr, 0, RetData, &Req);
 			return Error;
@@ -3599,7 +3596,7 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadataS3(LPCTSTR pszPath, const
 				AddHeader(it->sLabel, it->ContentList.front());
 		// add in any new tags
 		for (list<S3_METADATA_ENTRY>::const_iterator itList = MDList.begin(); itList != MDList.end(); ++itList)
-			AddHeader(sAmzMetaPrefix + itList->sTag, itList->sData);
+			AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
 		// delete tags
 		if (pDeleteTagParam != nullptr)
 		{
@@ -4622,7 +4619,9 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 	if (pMDList != nullptr)
 	{
 		for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
-			AddHeader(sAmzMetaPrefix + itList->sTag, itList->sData);
+		{
+			AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
+		}
 	}
 	AddHeader(_T("content-type"), _T("application/octet-stream"));
 	Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploads"), nullptr, 0, RetData);
