@@ -512,6 +512,10 @@ public:
 	bool SearchEntry(const shared_ptr<CMPUPoolMsg>& Msg1, const shared_ptr<CMPUPoolMsg>& Msg2) const;
 	CMPUPool()
 	{}
+	~CMPUPool()
+	{
+		CThreadPool<shared_ptr<CMPUPoolMsg>>::Terminate();
+	}
 };
 
 // used where a class method can't be used
