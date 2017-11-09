@@ -376,7 +376,7 @@ CECSConnection::S3_ERROR S3Write(
 			dwError = pStream->Read(WriteBuf.GetData(), WriteBuf.GetBufSize(), &dwBytesRead);
 			if ((dwError != S_OK) && (dwError != S_FALSE))
 				throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
-			if (dwError == S_FALSE)
+			if ((dwError == S_FALSE) || (dwBytesRead == 0))
 				bDone = WriteRec.bLast = true;
 			WriteRec.Data.Load(WriteBuf.GetData(), dwBytesRead);
 			WriteRec.ullOffset = liOffset.QuadPart;
