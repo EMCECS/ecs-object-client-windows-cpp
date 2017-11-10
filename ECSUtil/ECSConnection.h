@@ -869,6 +869,18 @@ public:
 		}
 	};
 
+	struct HEADER_REQ
+	{
+		CString sLabel;
+		list<CString> ContentList;
+
+		HEADER_REQ(LPCTSTR pszLabel = nullptr)
+		{
+			if (pszLabel != nullptr)
+				sLabel = pszLabel;
+		}
+	};
+
 private:
 	struct HEADER_STRUCT
 	{
@@ -881,18 +893,6 @@ private:
 				sLabel = pszLabel;
 			if (pszContents != nullptr)
 				sContents = pszContents;
-		}
-	};
-
-	struct HEADER_REQ
-	{
-		CString sLabel;
-		list<CString> ContentList;
-
-		HEADER_REQ(LPCTSTR pszLabel = nullptr)
-		{
-			if (pszLabel != nullptr)
-				sLabel = pszLabel;
 		}
 	};
 
@@ -1435,7 +1435,7 @@ public:
 	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, list <HEADER_REQ> *pReq = nullptr);
 	S3_ERROR DeleteS3(LPCTSTR pszPath);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
-	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr);
+	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
 	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr);
 	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList);
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
@@ -1485,45 +1485,40 @@ public:
 
 ECSUTIL_EXT_API extern std::wostream& operator<<(std::wostream& os, const CECSConnection::S3_SYSTEM_METADATA& Rec);
 
-class CECSConnectionAbort
+class CECSConnectionAbortBase
 {
 private:
 	const bool *pbAbort;			// pointer to abort bool
 	bool bAbortIfTrue;				// determines sense of pbAbort
-	bool bUseCallback;				// if true, call virtual callback
 	CECSConnection *pHost;
 	static bool IfShutdownCommon(void *pContext);
 
+protected:
+	virtual bool IfShutdown(void) = 0;
+
 public:
-	CECSConnectionAbort(CECSConnection *pHostParam = nullptr, bool bUseCallbackParam = false, const bool *pbAbortParam = nullptr, bool bAbortIfTrueParam = true)
+	CECSConnectionAbortBase(CECSConnection *pHostParam = nullptr, const bool *pbAbortParam = nullptr, bool bAbortIfTrueParam = true)
 	{
 		pbAbort = pbAbortParam;
 		bAbortIfTrue = bAbortIfTrueParam;
-		bUseCallback = bUseCallbackParam;
 		pHost = pHostParam;
 		if (pHost != nullptr)
 		{
 			if (pbAbort != nullptr)
 				pHost->RegisterAbortPtr(pbAbort, bAbortIfTrue);
-			if (bUseCallback)
-				pHost->RegisterShutdownCB(&CECSConnectionAbort::IfShutdownCommon, this);
+			pHost->RegisterShutdownCB(&CECSConnectionAbortBase::IfShutdownCommon, this);
 		}
 	}
-	virtual ~CECSConnectionAbort()
+	virtual ~CECSConnectionAbortBase()
 	{
 		if (pHost != nullptr)
 		{
 			if (pbAbort != nullptr)
 				pHost->UnregisterAbortPtr(pbAbort);
-			if (bUseCallback)
-				pHost->UnregisterShutdownCB(&CECSConnectionAbort::IfShutdownCommon, this);
+			pHost->UnregisterShutdownCB(&CECSConnectionAbortBase::IfShutdownCommon, this);
 		}
 		pbAbort = nullptr;
 		pHost = nullptr;
-	}
-	virtual bool IfShutdown(void)
-	{
-		return false;
 	}
 };
 

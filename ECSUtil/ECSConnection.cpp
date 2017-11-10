@@ -2526,7 +2526,15 @@ void CECSConnection::DeleteS3Send()
 // if dwLen != 0, read 'dwLen' bytes starting from lwOffset
 // if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
 // dwBufOffset reserves that many bytes at the start of the buffer. The data is written starting at dwBufOffset
-CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset, STREAM_CONTEXT *pStreamReceive)
+CECSConnection::S3_ERROR CECSConnection::Read(
+	LPCTSTR pszPath,
+	ULONGLONG lwLen,
+	ULONGLONG lwOffset,
+	CBuffer& RetData,
+	DWORD dwBufOffset,
+	STREAM_CONTEXT *pStreamReceive,
+	list<HEADER_REQ> *pRcvHeaders,
+	ULONGLONG *pullReturnedLength)
 {
 	const UINT READ_RETRY_MAX_TRIES = 5;
 	CECSConnectionState& State(GetStateBuf());
@@ -2540,8 +2548,6 @@ CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, 
 		{
 			(void)State.Headers.erase(_T("range"));			// erase it in case of a retry
 			HeaderReq.clear();
-			HeaderReq.push_back(HEADER_REQ(_T("Content-Length")));
-			HeaderReq.push_back(HEADER_REQ(_T("Content-Range")));
 			if ((lwOffset != 0) || (lwLen != 0))
 			{
 				sRange = _T("bytes=") + FmtNum(lwOffset) + _T("-");
@@ -2552,6 +2558,8 @@ CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, 
 			State.ullReadBytes = 0ULL;
 			Error = SendRequest(_T("GET"), (LPCTSTR)UriEncode(pszPath), nullptr, 0, RetData, &HeaderReq,
 				((pStreamReceive == nullptr) && (lwLen != 0)) ? ((DWORD)lwLen + 1024) : 0, dwBufOffset, nullptr, pStreamReceive, lwOffset);
+			if (pRcvHeaders != nullptr)
+				*pRcvHeaders = HeaderReq;
 			if (!Error.IfError())
 			{
 				LONGLONG llStartRange, llExpectedLength, llTotalSize;
@@ -2562,6 +2570,8 @@ CECSConnection::S3_ERROR CECSConnection::Read(LPCTSTR pszPath, ULONGLONG lwLen, 
 					ullTotalLength = (ULONGLONG)RetData.GetBufSize();
 				else
 					ullTotalLength = State.ullReadBytes;
+				if (pullReturnedLength != nullptr)
+					*pullReturnedLength = ullTotalLength;
 				// make sure we have all the bytes we asked for
 				for (list<HEADER_REQ>::const_iterator it = HeaderReq.begin(); it != HeaderReq.end(); ++it)
 				{
@@ -6555,11 +6565,11 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 	return Error;
 }
 
-bool CECSConnectionAbort::IfShutdownCommon(void *pContext)
+bool CECSConnectionAbortBase::IfShutdownCommon(void *pContext)
 {
 	if (pContext == nullptr)
 		return false;
 	// pContext in this case is a point to an instance of CECSConnectionAbort
-	CECSConnectionAbort *pAbort = (CECSConnectionAbort *)pContext;
+	CECSConnectionAbortBase *pAbort = (CECSConnectionAbortBase *)pContext;
 	return pAbort->IfShutdown();
 }

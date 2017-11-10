@@ -33,14 +33,19 @@ CECSConnection::S3_ERROR S3Read(
 	bool bCreate,									// see SHCreateStreamOnFileEx on how to use
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
+	ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
+	ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
+													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
+	list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
-	void *pContext)									// context for UpdateProgressCB
+	void *pContext,											// context for UpdateProgressCB
+	ULONGLONG *pullReturnedLength)					// optional output returned size
 {
 	CComPtr<IStream> pFileStream;
 	HRESULT hr;
 	if (FAILED(hr = SHCreateStreamOnFileEx(pszFile, grfMode, dwAttributes, bCreate, NULL, &pFileStream)))
 		return hr;
-	return S3Read(Conn, pszECSPath, pFileStream, UpdateProgressCB, pContext);
+	return S3Read(Conn, pszECSPath, pFileStream, lwLen, lwOffset, pRcvHeaders, UpdateProgressCB, pContext, pullReturnedLength);
 }
 
 CECSConnection::S3_ERROR S3Write(
@@ -102,13 +107,13 @@ static bool TestShutdownThread(void *pContext)
 	return false;
 }
 
-class CTestShutdown : public CECSConnectionAbort
+class CTestShutdown : public CECSConnectionAbortBase
 {
 private:
 	const CSimpleWorkerThread *pThread;
 public:
 	CTestShutdown(const CSimpleWorkerThread *pThreadParam, CECSConnection *pHostParam = nullptr)
-		: CECSConnectionAbort(pHostParam, true)
+		: CECSConnectionAbortBase(pHostParam)
 		, pThread(pThreadParam)
 	{}
 
@@ -136,15 +141,25 @@ struct CS3ReadThread : public CSimpleWorkerThread
 	CECSConnection *pConn;				// ECS connection object
 	CSharedQueueEvent *pMsgEvent;		// event that the main thread will wait on
 	CECSConnection::S3_ERROR Error;		// returned status
+	ULONGLONG lwLen;								// if lwOffset == 0 and dwLen == 0, read entire file
+	ULONGLONG lwOffset;								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
+													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
+	list<CECSConnection::HEADER_REQ> *pRcvHeaders;	// optional return all headers
+	ULONGLONG ullReturnedLength;		// returned length from Read
 
 	CS3ReadThread()
 		: pConn(nullptr)
 		, pMsgEvent(nullptr)
+		, lwLen(0ULL)
+		, lwOffset(0ULL)
+		, pRcvHeaders(nullptr)
+		, ullReturnedLength(0ULL)
 	{}
 	~CS3ReadThread()
 	{
 		pConn = nullptr;
 		pMsgEvent = nullptr;
+		pRcvHeaders = nullptr;
 		KillThreadWait();
 	}
 	void DoWork();
@@ -157,16 +172,25 @@ CECSConnection::S3_ERROR S3Read(
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
 	IStream *pStream,								// open stream to file
+	ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
+	ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
+													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
+	list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
-	void *pContext)											// context for UpdateProgressCB
+	void *pContext,											// context for UpdateProgressCB
+	ULONGLONG *pullReturnedLength)					// optional output returned size
 {
 	CS3ReadThread ReadThread;						// thread object
 	CSharedQueueEvent MsgEvent;						// event that new data was pushed on the read queue
 	DWORD dwError;
+	DWORD dwMainThreadError = ERROR_SUCCESS;
 
 	ReadThread.pConn = &Conn;
 	ReadThread.pMsgEvent = &MsgEvent;
 	ReadThread.sECSPath = pszECSPath;
+	ReadThread.lwLen = lwLen;
+	ReadThread.lwOffset = lwOffset;
+	ReadThread.pRcvHeaders = pRcvHeaders;
 
 	MsgEvent.Link(&ReadThread.ReadContext.StreamData);					// link the queue to the event
 	MsgEvent.DisableAllTriggerEvents();
@@ -185,14 +209,24 @@ CECSConnection::S3_ERROR S3Read(
 		dwError = WaitForSingleObject(MsgEvent.Event.evQueue.m_hObject, SECONDS(2));
 		// check for thread exit (but not if we are waiting for the handle to close)
 		if (Conn.TestAbort())
-			return ERROR_OPERATION_ABORTED;
+		{
+			dwMainThreadError = ERROR_OPERATION_ABORTED;
+			break;
+		}
 		// check if the background thread has ended with an error
 		if (!ReadThread.IfActive() && ReadThread.Error.IfError())
 			break;
 		if (ReadThread.GetExitFlag())
-			break;							// the thread has called KillThread()
+		{
+			// the thread has called KillThread()
+			dwMainThreadError = ERROR_OPERATION_ABORTED;
+			break;
+		}
 		if (dwError == WAIT_FAILED)
-			return GetLastError();
+		{
+			dwMainThreadError = GetLastError();
+			break;
+		}
 		if (dwError == WAIT_OBJECT_0)
 		{
 			// got an event that something was pushed on the queue
@@ -224,14 +258,18 @@ CECSConnection::S3_ERROR S3Read(
 	}
 							// now wait for the worker thread to terminate to get its error code
 	ReadThread.KillThreadWait();
-	return ReadThread.Error;
+	if (pullReturnedLength != nullptr)
+		*pullReturnedLength = ReadThread.ullReturnedLength;
+	if ((dwMainThreadError == ERROR_SUCCESS) || ReadThread.Error.IfError())
+		return ReadThread.Error;
+	return dwMainThreadError;
 }
 
 void CS3ReadThread::DoWork()
 {
 	CBuffer RetData;
 	pConn->RegisterShutdownCB(TestShutdownThread, this);
-	Error = pConn->Read(sECSPath, 0ULL, 0ULL, RetData, 0UL, &ReadContext);
+	Error = pConn->Read(sECSPath, lwLen, lwOffset, RetData, 0UL, &ReadContext, pRcvHeaders, &ullReturnedLength);
 	pConn->UnregisterShutdownCB(TestShutdownThread, this);
 	KillThread();
 }

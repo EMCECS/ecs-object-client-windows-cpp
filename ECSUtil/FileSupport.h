@@ -23,8 +23,13 @@ extern ECSUTIL_EXT_API CECSConnection::S3_ERROR S3Read(
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
 	IStream *pStream,								// open stream to file
+	ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
+	ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
+													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
+	list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
-	void *pContext);										// context for UpdateProgressCB
+	void *pContext,											// context for UpdateProgressCB
+	ULONGLONG *pullReturnedLength);					// optional output returned size
 
 extern ECSUTIL_EXT_API CECSConnection::S3_ERROR S3Write(
 	CECSConnection& Conn,							// established connection to ECS
@@ -59,8 +64,13 @@ extern ECSUTIL_EXT_API CECSConnection::S3_ERROR S3Read(
 	bool bCreate,									// see SHCreateStreamOnFileEx on how to use
 	CECSConnection& Conn,							// established connection to ECS
 	LPCTSTR pszECSPath,								// path to object in format: /bucket/dir1/dir2/object
+	ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
+	ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
+													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
+	list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
-	void *pContext);										// context for UpdateProgressCB
+	void *pContext,											// context for UpdateProgressCB
+	ULONGLONG *pullReturnedLength);					// optional output returned size
 
 extern ECSUTIL_EXT_API CECSConnection::S3_ERROR S3Write(
 	LPCWSTR pszFile,								// path to file
