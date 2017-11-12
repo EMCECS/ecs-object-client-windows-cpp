@@ -57,7 +57,7 @@ CECSConnection::S3_ERROR S3Write(
 	const DWORD dwBufSize,							// size of buffer to use
 	bool bChecksum,									// if set, include content-MD5 header
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
-	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
+	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext)											// context for UpdateProgressCB
 {
@@ -78,7 +78,7 @@ bool DoS3MultiPartUpload(
 	const DWORD dwPartSize,							// part size (in MB)
 	const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
 	bool bChecksum,									// if set, include content-MD5 header
-	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
+	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
 	DWORD dwMaxRetries,									// how many times to retry a part before giving up
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
@@ -288,7 +288,7 @@ struct CS3WriteThread : public CSimpleWorkerThread
 	LARGE_INTEGER FileSize;
 	CCngAES_GCM Hash;					// optional MD5 hash
 	bool bGotHash;						// set if MD5 hash is complete
-	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList;	// optional metadata to send to object
+	const list<CECSConnection::HEADER_STRUCT> *pMDList;	// optional metadata to send to object
 
 	CS3WriteThread()
 		: pConn(nullptr)
@@ -367,7 +367,7 @@ CECSConnection::S3_ERROR S3Write(
 	const DWORD dwBufSize,							// size of buffer to use
 	bool bChecksum,									// if set, include content-MD5 header
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
-	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
+	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext)											// context for UpdateProgressCB
 {
@@ -578,7 +578,7 @@ bool DoS3MultiPartUpload(
 	const DWORD dwPartSize,							// part size (in MB)
 	const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
 	bool bChecksum,									// if set, include content-MD5 header
-	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,	// optional metadata to send to object
+	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
 	DWORD dwMaxRetries,									// how many times to retry a part before giving up
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback

@@ -115,6 +115,45 @@ LPCTSTR CSignQuerySet::InitArray[] =
 };
 CSignQuerySet SignQuerySet;
 
+struct HTTP_ERROR_ENTRY
+{
+	DWORD dwHTTPErrorCode;				// HTTP error
+	HRESULT dwErrorCode;					// corresponding win32 error code
+} HttpErrorInitArray[] =
+{
+	{ HTTP_STATUS_AMBIGUOUS, HTTP_E_STATUS_AMBIGUOUS},
+	{ HTTP_STATUS_MOVED, HTTP_E_STATUS_MOVED},
+	{ HTTP_STATUS_REDIRECT, HTTP_E_STATUS_REDIRECT},
+	{ HTTP_STATUS_REDIRECT_METHOD, HTTP_E_STATUS_REDIRECT_METHOD},
+	{ HTTP_STATUS_NOT_MODIFIED, HTTP_E_STATUS_NOT_MODIFIED},
+	{ HTTP_STATUS_USE_PROXY, HTTP_E_STATUS_USE_PROXY},
+	{ HTTP_STATUS_REDIRECT_KEEP_VERB, HTTP_E_STATUS_REDIRECT_KEEP_VERB},
+	{ HTTP_STATUS_BAD_REQUEST, HTTP_E_STATUS_BAD_REQUEST},
+	{ HTTP_STATUS_DENIED, HTTP_E_STATUS_DENIED},
+	{ HTTP_STATUS_PAYMENT_REQ, HTTP_E_STATUS_PAYMENT_REQ},
+	{ HTTP_STATUS_FORBIDDEN, HTTP_E_STATUS_FORBIDDEN},
+	{ HTTP_STATUS_NOT_FOUND, HTTP_E_STATUS_NOT_FOUND},
+	{ HTTP_STATUS_BAD_METHOD, HTTP_E_STATUS_BAD_METHOD},
+	{ HTTP_STATUS_NONE_ACCEPTABLE, HTTP_E_STATUS_NONE_ACCEPTABLE},
+	{ HTTP_STATUS_PROXY_AUTH_REQ, HTTP_E_STATUS_PROXY_AUTH_REQ},
+	{ HTTP_STATUS_REQUEST_TIMEOUT, HTTP_E_STATUS_REQUEST_TIMEOUT},
+	{ HTTP_STATUS_CONFLICT, HTTP_E_STATUS_CONFLICT},
+	{ HTTP_STATUS_GONE, HTTP_E_STATUS_GONE},
+	{ HTTP_STATUS_LENGTH_REQUIRED, HTTP_E_STATUS_LENGTH_REQUIRED},
+	{ HTTP_STATUS_PRECOND_FAILED, HTTP_E_STATUS_PRECOND_FAILED},
+	{ HTTP_STATUS_REQUEST_TOO_LARGE, HTTP_E_STATUS_REQUEST_TOO_LARGE},
+	{ HTTP_STATUS_URI_TOO_LONG, HTTP_E_STATUS_URI_TOO_LONG},
+	{ HTTP_STATUS_UNSUPPORTED_MEDIA, HTTP_E_STATUS_UNSUPPORTED_MEDIA},
+	{ HTTP_STATUS_SERVER_ERROR, HTTP_E_STATUS_SERVER_ERROR},
+	{ HTTP_STATUS_NOT_SUPPORTED, HTTP_E_STATUS_NOT_SUPPORTED},
+	{ HTTP_STATUS_BAD_GATEWAY, HTTP_E_STATUS_BAD_GATEWAY},
+	{ HTTP_STATUS_SERVICE_UNAVAIL, HTTP_E_STATUS_SERVICE_UNAVAIL},
+	{ HTTP_STATUS_GATEWAY_TIMEOUT, HTTP_E_STATUS_GATEWAY_TIMEOUT},
+	{ HTTP_STATUS_VERSION_NOT_SUP, HTTP_E_STATUS_VERSION_NOT_SUP},
+};
+
+map<DWORD, HRESULT> HttpErrorMap;
+
 static bool IfServerReached(DWORD dwError)
 {
 	switch (dwError)
@@ -395,6 +434,8 @@ CECSConnection::CECSConnection()
 void CECSConnection::Init()
 {
 	SignQuerySet.Init();
+	for (UINT i = 0; i < _countof(HttpErrorInitArray); i++)
+		(void)HttpErrorMap.insert(make_pair(HttpErrorInitArray[i].dwHTTPErrorCode, HttpErrorInitArray[i].dwErrorCode));
 	bInitialized = true;
 };
 
@@ -2124,7 +2165,7 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 	LPCTSTR pszPath,
 	const void *pData,
 	DWORD dwLen,
-	const list<S3_METADATA_ENTRY> *pMDList,
+	const list<HEADER_STRUCT> *pMDList,
 	const CBuffer *pChecksum,
 	STREAM_CONTEXT *pStreamSend,
 	ULONGLONG ullTotalLen,								// only used if stream send
@@ -2141,9 +2182,9 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 			AddHeader(_T("Content-MD5"), pChecksum->EncodeBase64());
 		if (pMDList != nullptr)
 		{
-			for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
+			for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 			{
-				AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
+				AddHeader(itList->sLabel, itList->sContents);
 			}
 		}
 		if (pIfNoneMatch != nullptr)
@@ -2164,7 +2205,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 	LPCTSTR pszNewPath,
 	LPCTSTR pszVersionId,		// nonNULL: version ID to copy
 	bool bCopy,
-	const list<CECSConnection::S3_METADATA_ENTRY> *pMDList,
+	const list<CECSConnection::HEADER_STRUCT> *pMDList,
 	const list<CString> *pDeleteTagParam)
 {
 	CECSConnection::S3_ERROR Error;
@@ -2184,7 +2225,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 
 		// object - copy to new path and then delete the old object
 		InitHeader();
-		list<CECSConnection::S3_METADATA_ENTRY> MDList;
+		list<CECSConnection::HEADER_STRUCT> MDList;
 		if (pMDList != nullptr)
 			MDList = *pMDList;
 		// we are ALWAYS going to read the current headers and never do a CopyMD
@@ -2203,14 +2244,12 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 				return Error;
 			for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 			{
-				if ((it->sLabel.Find(sAmzMetaPrefix) == 0) && !it->ContentList.empty())
+				if (!it->ContentList.empty())
 				{
-					CString sTag(it->sLabel.Mid(sAmzMetaPrefix.GetLength()));				// strip off x-amz-meta-
-																							// if this tag is already in the MDList, don't transfer it over from the old file
 					bool bFound = false;
-					for (list<S3_METADATA_ENTRY>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
+					for (list<HEADER_STRUCT>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
 					{
-						if (sTag == itMD->sTag)
+						if (it->sLabel.CompareNoCase(itMD->sLabel) == 0)
 						{
 							bFound = true;
 							break;
@@ -2218,20 +2257,18 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 					}
 					if (!bFound)
 					{
-						Error = WriteMetadataEntry(MDList, sTag, it->ContentList.front());
-						if (Error.IfError())
-							return Error;
+						WriteMetadataEntry(MDList, it->sLabel, it->ContentList.front());
 					}
 				}
 			}
 			if (!MDList.empty() && pDeleteTagParam != nullptr && !pDeleteTagParam->empty())
 			{
-				for (list<S3_METADATA_ENTRY>::const_iterator itList = MDList.begin(); itList != MDList.end(); )
+				for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end(); )
 				{
 					bool bDeleted = false;
 					for (list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
 					{
-						if (*itDel == itList->sTag)
+						if (*itDel == itList->sLabel)
 						{
 							bDeleted = true;
 							break;
@@ -3453,28 +3490,24 @@ CString CECSConnection::GetHost(void) const
 // it will encode it. if it is bigger than 7k, it is rejected
 // if not, it splits it into 1k segments. The first has the name specified (pszTag)
 // the overflow adds "_n", where n is 2 to 7
-CECSConnection::S3_ERROR CECSConnection::WriteMetadataEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, const CBuffer& Data)
+void CECSConnection::WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data)
 {
 	// convert to ANSI string
-	return WriteMetadataEntry(MDList, pszTag, Data.EncodeBase64());
+	WriteMetadataEntry(MDList, pszTag, Data.EncodeBase64());
 }
 
-CECSConnection::S3_ERROR CECSConnection::WriteMetadataEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, const CString& sStr)
+void CECSConnection::WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr)
 {
 	// if the specified tag already exists, erase it
 	CString sTag(pszTag);
-	for (list<S3_METADATA_ENTRY>::iterator itList = MDList.begin(); itList != MDList.end(); )
+	for (list<HEADER_STRUCT>::iterator itList = MDList.begin(); itList != MDList.end(); )
 	{
-		if (sTag == itList->sTag)
+		if (sTag.CompareNoCase(itList->sLabel) == 0)
 			itList = MDList.erase(itList);
 		else
 			++itList;
 	}
-	S3_METADATA_ENTRY Rec;
-	Rec.sTag = pszTag;
-	Rec.sData = sStr;
-	MDList.push_back(Rec);
-	return ERROR_SUCCESS;
+	MDList.emplace_back(HEADER_STRUCT(pszTag, sStr));
 }
 
 CECSConnection::S3_ERROR CECSConnection::CopyS3(
@@ -3483,7 +3516,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 	LPCTSTR pszVersionId,		// nonNULL: version ID to copy
 	bool bCopyMD,				// true - copy metadata, false - replace
 	ULONGLONG *pullObjSize,		// optional - if object size supplied it doesn't have to query it
-	const list<S3_METADATA_ENTRY> *pMDList)	// list of metadata to apply to object
+	const list<HEADER_STRUCT> *pMDList)	// list of metadata to apply to object
 {
 	const ULONGLONG MULTIPART_SIZE = GIGABYTES(1ULL);		// each part will be 1GB
 
@@ -3521,8 +3554,8 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 			if ((pMDList != nullptr) && !pMDList->empty())
 			{
 				// add in all metadata
-				for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
-					AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
+				for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
+					AddHeader(itList->sLabel, itList->sContents);
 			}
 			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath), nullptr, 0, RetData, &Req);
 			return Error;
@@ -3567,32 +3600,30 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::UpdateMetadataS3(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDListParam, const list<CString> *pDeleteTagParam)
+CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const list<HEADER_STRUCT>& MDListParam, const list<CString> *pDeleteTagParam)
 {
 	S3_ERROR Error;
 	try
 	{
 		CECSConnectionState& State(GetStateBuf());
-		list<S3_METADATA_ENTRY> MDList = MDListParam;
+		list<HEADER_STRUCT> MDList = MDListParam;
 		CBuffer RetData;
-		list<HEADER_REQ> Req, OrigReq;
+		list<HEADER_REQ> Req;
 		CString sPath(pszPath);
 		InitHeader();
 		Error = SendRequest(_T("HEAD"), UriEncode(sPath), nullptr, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 
-		OrigReq = Req;
 		for (list<HEADER_REQ>::iterator it = Req.begin(); it != Req.end(); ++it)
 		{
 			if (!it->ContentList.empty() && (it->sLabel.Find(sAmzMetaPrefix) == 0))
 			{
-				CString sTag(it->sLabel.Mid(sAmzMetaPrefix.GetLength()));				// strip off x-amz-meta-
-				for (list<S3_METADATA_ENTRY>::const_iterator itList = MDList.begin(); itList != MDList.end();)
+				for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end();)
 				{
-					if ((itList->sTag.CompareNoCase(sTag) == 0) && (it->ContentList.size() > 0))
+					if ((itList->sLabel.CompareNoCase(it->sLabel) == 0) && !it->ContentList.empty())
 					{
-						it->ContentList.front() = itList->sData;
+						it->ContentList.front() = itList->sContents;
 						itList = MDList.erase(itList);
 					}
 					else
@@ -3605,14 +3636,14 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadataS3(LPCTSTR pszPath, const
 			if (!it->ContentList.empty() && (it->sLabel.Find(sAmzMetaPrefix) == 0))
 				AddHeader(it->sLabel, it->ContentList.front());
 		// add in any new tags
-		for (list<S3_METADATA_ENTRY>::const_iterator itList = MDList.begin(); itList != MDList.end(); ++itList)
-			AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
+		for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end(); ++itList)
+			AddHeader(itList->sLabel, itList->sContents);
 		// delete tags
 		if (pDeleteTagParam != nullptr)
 		{
 			for (list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
 			{
-				CString sTag(sAmzMetaPrefix + *itDel);
+				CString sTag(*itDel);
 				sTag.MakeLower();
 				(void)State.Headers.erase(sTag);
 			}
@@ -3620,59 +3651,15 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadataS3(LPCTSTR pszPath, const
 		AddHeader(_T("x-amz-copy-source"), UriEncode(sPath));							// copy it to itself
 		AddHeader(_T("x-amz-metadata-directive"), _T("REPLACE"));
 		// now compare with the original metadata to see if there has been a change
-		bool bMetaChanged = false;
-		for (map<CString, HEADER_STRUCT>::const_iterator it = State.Headers.begin(); it != State.Headers.end(); ++it)
-		{
-			if (it->first.Find(sAmzMetaPrefix) == 0)
-			{
-				bool bFound = false;
-				for (list<HEADER_REQ>::const_iterator itOrig = OrigReq.begin(); itOrig != OrigReq.end(); ++itOrig)
-				{
-					if ((itOrig->sLabel.CompareNoCase(it->first) == 0)
-						&& !itOrig->ContentList.empty()
-						&& (itOrig->ContentList.front() == it->second.sContents))
-					{
-						OrigReq.erase(itOrig);
-						bFound = true;
-						break;
-					}
-				}
-				if (!bFound)
-				{
-					bMetaChanged = true;
-					break;
-				}
-			}
-		}
-		// okay, now see if there are any metadata tags left over. in other words, were any added?
-		if (!bMetaChanged)
-		{
-			for (list<HEADER_REQ>::const_iterator itOrig = OrigReq.begin(); itOrig != OrigReq.end(); ++itOrig)
-			{
-				if (itOrig->sLabel.Find(sAmzMetaPrefix) == 0)
-				{
-					bMetaChanged = true;
-					break;
-				}
-			}
-		}
-		if (bMetaChanged)
-		{
-			Error = SendRequest(_T("PUT"), UriEncode(sPath), nullptr, 0, RetData, &Req);
-			if (Error.IfError())
-				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
-		}
+		Error = SendRequest(_T("PUT"), UriEncode(sPath), nullptr, 0, RetData, &Req);
+		if (Error.IfError())
+			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 	}
 	catch (const CS3ErrorInfo& E)
 	{
 		return E.Error;
 	}
 	return ERROR_SUCCESS;
-}
-
-CECSConnection::S3_ERROR CECSConnection::WriteMetadata(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDList)
-{
-	return UpdateMetadataS3(pszPath, MDList);
 }
 
 // ParseS3Timestamp
@@ -3710,26 +3697,6 @@ CECSConnection::S3_ERROR CECSConnection::ParseS3Timestamp(const CString& sS3Time
 		return Error;
 	}
 	return ERROR_SUCCESS;
-}
-
-// DeleteMetadata
-// delete specified user metadata
-// pszTag can contain multiple, comma-separated tags
-CECSConnection::S3_ERROR CECSConnection::DeleteMetadata(LPCTSTR pszPath, LPCTSTR pszTag)
-{
-	S3_ERROR Error;
-	try
-	{
-		list<S3_METADATA_ENTRY> MDList;
-		list<CString> DeleteList;
-		DeleteList.emplace_back(pszTag);
-		return UpdateMetadataS3(pszPath, MDList, &DeleteList);
-	}
-	catch (const CS3ErrorInfo& E)
-	{
-		return E.Error;
-	}
-	return Error;
 }
 
 // take text permission and translate it to E_S3_ACL_VALUES enum
@@ -4617,7 +4584,7 @@ HRESULT XmlMultiPartCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRe
 }
 
 // S3 multipart upload support
-CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<S3_METADATA_ENTRY> *pMDList)
+CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<HEADER_STRUCT> *pMDList)
 {
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
@@ -4628,9 +4595,9 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 	// add in all metadata
 	if (pMDList != nullptr)
 	{
-		for (list<S3_METADATA_ENTRY>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
+		for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 		{
-			AddHeader((itList->bS3Header ? L"" : (LPCTSTR)sAmzMetaPrefix) + itList->sTag, itList->sData);
+			AddHeader(itList->sLabel, itList->sContents);
 		}
 	}
 	AddHeader(_T("content-type"), _T("application/octet-stream"));
@@ -6503,7 +6470,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 	LPCTSTR pszPath,						// (in) S3 path to object
 	S3_SYSTEM_METADATA& Properties,			// (out) object properties
 	LPCTSTR pszVersionId,					// (in, optional) version ID
-	list<S3_METADATA_ENTRY> *pMDList,		// (out, optional) metadata list
+	list<HEADER_STRUCT> *pMDList,		// (out, optional) metadata list
 	list<HEADER_REQ> *pReq)					// (out, optional) full header list
 {
 	list<HEADER_REQ> Req;
@@ -6547,12 +6514,10 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 			}
 			else if ((pMDList != nullptr) && (it->sLabel.Find(sAmzMetaPrefix) == 0))
 			{
-				CString sTag(it->sLabel.Mid(sAmzMetaPrefix.GetLength()));				// strip off x-amz-meta-
-				S3_METADATA_ENTRY Rec;
-				Rec.sTag = sTag;
+				HEADER_STRUCT Rec;
+				Rec.sLabel = it->sLabel;
 				if (!it->ContentList.empty())
-					Rec.sData = it->ContentList.front();
-				Rec.bS3Header = false;
+					Rec.sContents = it->ContentList.front();
 				pMDList->push_back(Rec);
 			}
 		}
@@ -6572,4 +6537,15 @@ bool CECSConnectionAbortBase::IfShutdownCommon(void *pContext)
 	// pContext in this case is a point to an instance of CECSConnectionAbort
 	CECSConnectionAbortBase *pAbort = (CECSConnectionAbortBase *)pContext;
 	return pAbort->IfShutdown();
+}
+
+void CECSConnection::S3_ERROR::SetError(void)
+{
+	if ((dwError != ERROR_SUCCESS) || !IfError())
+		return;
+	map<DWORD, HRESULT>::const_iterator it = HttpErrorMap.find(dwHttpError);
+	if (it == HttpErrorMap.end())
+		dwError = (DWORD)HTTP_E_STATUS_UNEXPECTED;
+	else
+		dwError = it->second;
 }

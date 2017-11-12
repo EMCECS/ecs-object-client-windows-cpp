@@ -648,6 +648,30 @@ public:
 				&& ((S3Error == S3_ERROR_NoSuchKey)
 					|| (dwHttpError == HTTP_STATUS_NOT_FOUND)));
 		}
+		S3_ERROR(const S3_ERROR& src)
+		{
+			Assign(src);
+		}
+		const S3_ERROR& operator =(const S3_ERROR& src)
+		{
+			if (&src == this)
+				return *this;
+			Assign(src);
+			return *this;
+		};
+	private:
+		void Assign(const S3_ERROR& src)
+		{
+			dwError = src.dwError;
+			dwHttpError = src.dwHttpError;
+			S3Error = src.S3Error;
+			sS3Code = src.sS3Code;
+			sS3Resource = src.sS3Resource;
+			sS3RequestID = src.sS3RequestID;
+			sDetails = src.sDetails;
+			SetError();						// if http error, set dwError code to reflect it
+		}
+		void SetError(void);
 	};
 
 	class CS3ErrorInfo : public CErrorInfo
@@ -707,16 +731,6 @@ public:
 		CString sCertName;								// if certificate error, these fields contain info from the server cert
 		CString sCertSubject;
 		CBuffer SerializedCert;							// if self-signed cert, this contains the certificate from the server
-	};
-
-	struct ECSUTIL_EXT_CLASS S3_METADATA_ENTRY
-	{
-		CString sTag;
-		CString sData;
-		bool bS3Header;
-		S3_METADATA_ENTRY()
-			: bS3Header(false)
-		{}
 	};
 
 	struct ECSUTIL_EXT_CLASS S3_SYSTEM_METADATA
@@ -881,7 +895,6 @@ public:
 		}
 	};
 
-private:
 	struct HEADER_STRUCT
 	{
 		CString sLabel;
@@ -896,6 +909,7 @@ private:
 		}
 	};
 
+private:
 	struct HTTP_CALLBACK_EVENT
 	{
 		CEvent evCmd;								// event is fired when async callback is received
@@ -1368,10 +1382,9 @@ private:
 	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention);
 	CString signS3ShareableURL(const CString& sResource, const CString& sExpire);
 	void KillHostSessions(void);
-	S3_ERROR UpdateMetadataS3(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDList, const list<CString> *pDeleteTagParam = nullptr);
 	void DeleteS3Send(void);
 	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
-	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG *pullObjSize, const list<S3_METADATA_ENTRY> *pMDList);
+	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG *pullObjSize, const list<HEADER_STRUCT> *pMDList);
 
 public:
 	CECSConnection();
@@ -1432,18 +1445,17 @@ public:
 
 	S3_ERROR SendRequest(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq = nullptr, DWORD dwReceivedDataHint = 0, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamSend = nullptr, STREAM_CONTEXT *pStreamReceive = nullptr, ULONGLONG ullTotalLen = 0ULL);
 
-	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<S3_METADATA_ENTRY> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, list <HEADER_REQ> *pReq = nullptr);
+	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<HEADER_STRUCT> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, list <HEADER_REQ> *pReq = nullptr);
 	S3_ERROR DeleteS3(LPCTSTR pszPath);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
 	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr);
 	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList);
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
-	S3_ERROR WriteMetadataEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, const CBuffer& Data);
-	S3_ERROR WriteMetadataEntry(list<S3_METADATA_ENTRY>& MDList, LPCTSTR pszTag, const CString& sStr);
-	S3_ERROR WriteMetadata(LPCTSTR pszPath, const list<S3_METADATA_ENTRY>& MDListParam);
-	S3_ERROR ReadProperties(LPCTSTR pszPath, S3_SYSTEM_METADATA& Properties, LPCTSTR pszVersionId = nullptr, list<S3_METADATA_ENTRY> *pMDList = nullptr, list<HEADER_REQ> *pReq = nullptr);
-	S3_ERROR DeleteMetadata(LPCTSTR pszPath, LPCTSTR pszTag);
+	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data);
+	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr);
+	S3_ERROR UpdateMetadata(LPCTSTR pszPath, const list<HEADER_STRUCT>& MDList, const list<CString> *pDeleteTagParam = nullptr);
+	S3_ERROR ReadProperties(LPCTSTR pszPath, S3_SYSTEM_METADATA& Properties, LPCTSTR pszVersionId = nullptr, list<HEADER_STRUCT> *pMDList = nullptr, list<HEADER_REQ> *pReq = nullptr);
 	S3_ERROR ReadACL(LPCTSTR pszPath, deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	S3_ERROR WriteACL(LPCTSTR pszPath, const deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	CString GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExpire);
@@ -1451,14 +1463,14 @@ public:
 	S3_ERROR DeleteS3Bucket(LPCTSTR pszBucketName);
 	S3_ERROR S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning);
 	S3_ERROR S3PutBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING Versioning);
-	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const list<CECSConnection::S3_METADATA_ENTRY> *pMDList, const list<CString> *pDeleteTagParam = nullptr);
+	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const list<CECSConnection::HEADER_STRUCT> *pMDList, const list<CString> *pDeleteTagParam = nullptr);
 	S3_ERROR DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint);
 	S3_ERROR S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO& Lifecycle);
 	S3_ERROR S3PutLifecycle(LPCTSTR pszBucket, const S3_LIFECYCLE_INFO& Lifecycle);
 	S3_ERROR S3DeleteLifecycle(LPCTSTR pszBucket);
 
 	// S3 multipart upload support
-	S3_ERROR S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<S3_METADATA_ENTRY> *pMDList);
+	S3_ERROR S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<HEADER_STRUCT> *pMDList);
 	S3_ERROR S3MultiPartUpload(const S3_UPLOAD_PART_INFO& MultiPartInfo, S3_UPLOAD_PART_ENTRY& PartEntry, STREAM_CONTEXT *pStreamSend, ULONGLONG ullTotalLen, LPCTSTR pszCopySource, ULONGLONG ullStartRange, LPCTSTR pszVersionId);
 	S3_ERROR S3MultiPartComplete(const S3_UPLOAD_PART_INFO& MultiPartInfo, const list<shared_ptr<S3_UPLOAD_PART_ENTRY>>& PartList, S3_MPU_COMPLETE_INFO& MPUCompleteInfo);
 	S3_ERROR S3MultiPartAbort(const S3_UPLOAD_PART_INFO& MultiPartInfo);
