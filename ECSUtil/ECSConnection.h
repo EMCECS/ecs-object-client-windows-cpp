@@ -614,6 +614,7 @@ public:
 
 	struct ECSUTIL_EXT_CLASS S3_ERROR
 	{
+		// IMPORTANT: any change in the fields below must be reflected in Assign()
 		DWORD dwError;					// WIN32 error
 		DWORD dwHttpError;				// HTTP error
 		E_S3_ERROR_TYPE S3Error;		// S3 error

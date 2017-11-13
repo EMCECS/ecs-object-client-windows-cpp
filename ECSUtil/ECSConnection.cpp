@@ -118,7 +118,7 @@ CSignQuerySet SignQuerySet;
 struct HTTP_ERROR_ENTRY
 {
 	DWORD dwHTTPErrorCode;				// HTTP error
-	HRESULT dwErrorCode;					// corresponding win32 error code
+	HRESULT dwErrorCode;				// corresponding win32 error code
 } HttpErrorInitArray[] =
 {
 	{ HTTP_STATUS_AMBIGUOUS, HTTP_E_STATUS_AMBIGUOUS},
