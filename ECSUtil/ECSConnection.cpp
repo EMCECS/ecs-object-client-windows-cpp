@@ -6061,7 +6061,7 @@ HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRead
 	return 0;
 }
 
-CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, DT_QUERY_RESPONSE & Response)
+CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, DT_QUERY_RESPONSE& Response, CString *psRawXML)
 {
 	list<HEADER_REQ> Req;
 	CBuffer RetData;
@@ -6076,6 +6076,11 @@ CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTST
 		return Error;
 	}
 	// now interpret the response
+	if (psRawXML != nullptr)
+	{
+		CWideString Str((LPCSTR)RetData.GetData(), RetData.GetBufSize());
+		*psRawXML = Str;
+	}
 	XML_DT_QUERY_CONTEXT Context;
 	Context.pResponse = &Response;
 	HRESULT hr = ScanXml(&RetData, &Context, XmlDTQueryCB);

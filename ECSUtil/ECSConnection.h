@@ -1491,7 +1491,7 @@ public:
 	S3_ERROR S3SearchMD(const S3_METADATA_SEARCH_PARAMS& Params, S3_METADATA_SEARCH_RESULT& MDSearchResult);
 
 	// DT Query
-	S3_ERROR ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, DT_QUERY_RESPONSE& Response);
+	S3_ERROR ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, DT_QUERY_RESPONSE& Response, CString *psRawXML = nullptr);
 
 	static DWORD MaxMetadataBinarySize(void);
 };
