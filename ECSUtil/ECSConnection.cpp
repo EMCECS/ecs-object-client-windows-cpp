@@ -1017,12 +1017,12 @@ void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bo
 	CString sLabelLower(pszHeaderLabel);
 	sLabelLower.MakeLower();
 	HEADER_STRUCT Hdr;
-	Hdr.sLabel = pszHeaderLabel;
+	Hdr.sHeader = pszHeaderLabel;
 	Hdr.sContents = pszHeaderText;
 	pair<map<CString, HEADER_STRUCT>::iterator,bool> ret = State.Headers.insert(make_pair(sLabelLower, Hdr));
 	if (!ret.second && bOverride)
 	{
-		ret.first->second.sLabel = pszHeaderLabel;
+		ret.first->second.sHeader = pszHeaderLabel;
 		ret.first->second.sContents = pszHeaderText;
 	}
 }
@@ -1522,7 +1522,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 		map<CString,HEADER_STRUCT>::const_iterator iter;
 		for (iter=State.Headers.begin() ; iter != State.Headers.end() ; ++iter)
 		{
-			sHeaders += iter->second.sLabel + _T(":") + iter->second.sContents + _T("\r\n");
+			sHeaders += iter->second.sHeader + _T(":") + iter->second.sContents + _T("\r\n");
 		}
 		if (!State.bS3Admin)
 			sHeaders += _T("Authorization: ") + sSignature + _T("\r\n");
@@ -1830,27 +1830,27 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					HeadersStr.Set((LPCWSTR)RetBuf.GetData(), RetBuf.GetBufSize()/sizeof(WCHAR));
 					LoadNullTermStringArray((LPCSTR)HeadersStr.GetData(), AllHeaders);
 #endif
-					CString sLabel, sContent;
+					CString sHeader, sContent;
 					for (list<CString>::const_iterator it = AllHeaders.begin(); it != AllHeaders.end(); ++it)
 					{
 						int iSep = it->Find(L':');
 						if (iSep >= 0)
 						{
-							sLabel = it->Left(iSep);
-							sLabel.TrimRight();
-							sLabel.TrimLeft();
+							sHeader = it->Left(iSep);
+							sHeader.TrimRight();
+							sHeader.TrimLeft();
 							sContent = it->Mid(iSep + 1);
 							sContent.TrimRight();
 							sContent.TrimLeft();
 							// see if we've already seen this label
 							list<HEADER_REQ>::iterator itReq;
 							for (itReq = pHeaderReq->begin(); itReq != pHeaderReq->end(); ++itReq)
-								if (itReq->sLabel.CompareNoCase(sLabel) == 0)
+								if (itReq->sHeader.CompareNoCase(sHeader) == 0)
 									break;
 							if (itReq == pHeaderReq->end())
 							{
 								HEADER_REQ Rec;
-								Rec.sLabel = sLabel;
+								Rec.sHeader = sHeader;
 								Rec.ContentList.push_back(sContent);
 								pHeaderReq->push_back(Rec);
 							}
@@ -1867,12 +1867,12 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 					dwIndex = 0;
 					for (;;)
 					{
-						if (!WinHttpQueryHeadersBuffer(State.hRequest, WINHTTP_QUERY_CUSTOM, itReq->sLabel, RetBuf, &dwIndex))
+						if (!WinHttpQueryHeadersBuffer(State.hRequest, WINHTTP_QUERY_CUSTOM, itReq->sHeader, RetBuf, &dwIndex))
 						{
 							dwError = GetLastError();
 							if (dwError == ERROR_WINHTTP_HEADER_NOT_FOUND)
 								break;
-							LogMessage(_T(__FILE__), __LINE__, _T("WinHttpQueryHeadersBuffer error: %1"), dwError, (LPCTSTR)(itReq->sLabel + _T(" #") + FmtNum(dwIndex)));
+							LogMessage(_T(__FILE__), __LINE__, _T("WinHttpQueryHeadersBuffer error: %1"), dwError, (LPCTSTR)(itReq->sHeader + _T(" #") + FmtNum(dwIndex)));
 							break;
 						}
 						itReq->ContentList.emplace_back(FROM_UNICODE((LPCWSTR)RetBuf.GetData()));
@@ -2184,7 +2184,7 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 		{
 			for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 			{
-				AddHeader(itList->sLabel, itList->sContents);
+				AddHeader(itList->sHeader, itList->sContents);
 			}
 		}
 		if (pIfNoneMatch != nullptr)
@@ -2249,7 +2249,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 					bool bFound = false;
 					for (list<HEADER_STRUCT>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
 					{
-						if (it->sLabel.CompareNoCase(itMD->sLabel) == 0)
+						if (it->sHeader.CompareNoCase(itMD->sHeader) == 0)
 						{
 							bFound = true;
 							break;
@@ -2257,7 +2257,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 					}
 					if (!bFound)
 					{
-						WriteMetadataEntry(MDList, it->sLabel, it->ContentList.front());
+						WriteMetadataEntry(MDList, it->sHeader, it->ContentList.front());
 					}
 				}
 			}
@@ -2268,7 +2268,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 					bool bDeleted = false;
 					for (list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
 					{
-						if (*itDel == itList->sLabel)
+						if (*itDel == itList->sHeader)
 						{
 							bDeleted = true;
 							break;
@@ -2612,7 +2612,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 				// make sure we have all the bytes we asked for
 				for (list<HEADER_REQ>::const_iterator it = HeaderReq.begin(); it != HeaderReq.end(); ++it)
 				{
-					if (it->sLabel == _T("Content-Length"))
+					if (it->sHeader == _T("Content-Length"))
 					{
 						if (it->ContentList.size() == 1)				// there should only be 1
 						{
@@ -2622,7 +2622,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 								break;
 						}
 					}
-					else if (it->sLabel == _T("Content-Range"))
+					else if (it->sHeader == _T("Content-Range"))
 					{
 						if (it->ContentList.size() == 1)				// there should only be 1
 						{
@@ -3091,7 +3091,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				CString sRetentionPeriod;
 				for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 				{
-					if (it->sLabel == _T("x-emc-retention-period"))
+					if (it->sHeader == _T("x-emc-retention-period"))
 					{
 						for (list<CString>::const_iterator itResp = it->ContentList.begin(); itResp != it->ContentList.end(); ++itResp)
 						{
@@ -3502,7 +3502,7 @@ void CECSConnection::WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR psz
 	CString sTag(pszTag);
 	for (list<HEADER_STRUCT>::iterator itList = MDList.begin(); itList != MDList.end(); )
 	{
-		if (sTag.CompareNoCase(itList->sLabel) == 0)
+		if (sTag.CompareNoCase(itList->sHeader) == 0)
 			itList = MDList.erase(itList);
 		else
 			++itList;
@@ -3555,7 +3555,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 			{
 				// add in all metadata
 				for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
-					AddHeader(itList->sLabel, itList->sContents);
+					AddHeader(itList->sHeader, itList->sContents);
 			}
 			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath), nullptr, 0, RetData, &Req);
 			return Error;
@@ -3617,11 +3617,11 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 
 		for (list<HEADER_REQ>::iterator it = Req.begin(); it != Req.end(); ++it)
 		{
-			if (!it->ContentList.empty() && (it->sLabel.Find(sAmzMetaPrefix) == 0))
+			if (!it->ContentList.empty() && (it->sHeader.Find(sAmzMetaPrefix) == 0))
 			{
 				for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end();)
 				{
-					if ((itList->sLabel.CompareNoCase(it->sLabel) == 0) && !it->ContentList.empty())
+					if ((itList->sHeader.CompareNoCase(it->sHeader) == 0) && !it->ContentList.empty())
 					{
 						it->ContentList.front() = itList->sContents;
 						itList = MDList.erase(itList);
@@ -3633,11 +3633,11 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 		}
 		// now construct the new metadata list
 		for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
-			if (!it->ContentList.empty() && (it->sLabel.Find(sAmzMetaPrefix) == 0))
-				AddHeader(it->sLabel, it->ContentList.front());
+			if (!it->ContentList.empty() && (it->sHeader.Find(sAmzMetaPrefix) == 0))
+				AddHeader(it->sHeader, it->ContentList.front());
 		// add in any new tags
 		for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end(); ++itList)
-			AddHeader(itList->sLabel, itList->sContents);
+			AddHeader(itList->sHeader, itList->sContents);
 		// delete tags
 		if (pDeleteTagParam != nullptr)
 		{
@@ -4597,7 +4597,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 	{
 		for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 		{
-			AddHeader(itList->sLabel, itList->sContents);
+			AddHeader(itList->sHeader, itList->sContents);
 		}
 	}
 	AddHeader(_T("content-type"), _T("application/octet-stream"));
@@ -4959,7 +4959,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 		{
 			for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 			{
-				if (it->sLabel.CompareNoCase(_T("ETag")) == 0)
+				if (it->sHeader.CompareNoCase(_T("ETag")) == 0)
 				{
 					if (it->ContentList.size() != 1)
 						return ERROR_INVALID_DATA;
@@ -5132,7 +5132,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogin(LPCTSTR pszUser, LPCTSTR 
 	{
 		for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 		{
-			if ((it->sLabel.CompareNoCase(_T("X-SDS-AUTH-TOKEN")) == 0) && (it->ContentList.size() == 1))
+			if ((it->sHeader.CompareNoCase(_T("X-SDS-AUTH-TOKEN")) == 0) && (it->ContentList.size() == 1))
 				State.sX_SDS_AUTH_TOKEN = it->ContentList.front();
 		}
 		if (State.sX_SDS_AUTH_TOKEN.IsEmpty())
@@ -6497,15 +6497,15 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 		Properties.Empty();
 		for (list<HEADER_REQ>::const_iterator it = pReq->begin(); it != pReq->end(); ++it)
 		{
-			if ((it->sLabel.CompareNoCase(L"Last-Modified") == 0) && !it->ContentList.empty())
+			if ((it->sHeader.CompareNoCase(L"Last-Modified") == 0) && !it->ContentList.empty())
 			{
 				Properties.ftLastMod = ParseCanonicalTime(it->ContentList.front());
 			}
-			else if ((it->sLabel.CompareNoCase(L"ETag") == 0) && !it->ContentList.empty())
+			else if ((it->sHeader.CompareNoCase(L"ETag") == 0) && !it->ContentList.empty())
 			{
 				Properties.sETag = it->ContentList.front();
 			}
-			else if ((it->sLabel.CompareNoCase(L"Content-Length") == 0) && !it->ContentList.empty())
+			else if ((it->sHeader.CompareNoCase(L"Content-Length") == 0) && !it->ContentList.empty())
 			{
 				wistringstream In;
 				In.str((LPCTSTR)it->ContentList.front());
@@ -6517,10 +6517,10 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 					return Error;
 				}
 			}
-			else if ((pMDList != nullptr) && (it->sLabel.Find(sAmzMetaPrefix) == 0))
+			else if ((pMDList != nullptr) && (it->sHeader.Find(sAmzMetaPrefix) == 0))
 			{
 				HEADER_STRUCT Rec;
-				Rec.sLabel = it->sLabel;
+				Rec.sHeader = it->sHeader;
 				if (!it->ContentList.empty())
 					Rec.sContents = it->ContentList.front();
 				pMDList->push_back(Rec);

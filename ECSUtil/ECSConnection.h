@@ -886,25 +886,25 @@ public:
 
 	struct HEADER_REQ
 	{
-		CString sLabel;
+		CString sHeader;
 		list<CString> ContentList;
 
-		HEADER_REQ(LPCTSTR pszLabel = nullptr)
+		HEADER_REQ(LPCTSTR pszHeader = nullptr)
 		{
-			if (pszLabel != nullptr)
-				sLabel = pszLabel;
+			if (pszHeader != nullptr)
+				sHeader = pszHeader;
 		}
 	};
 
 	struct HEADER_STRUCT
 	{
-		CString sLabel;
+		CString sHeader;
 		CString sContents;
 
-		HEADER_STRUCT(LPCTSTR pszLabel = nullptr, LPCTSTR pszContents = nullptr)
+		HEADER_STRUCT(LPCTSTR pszHeader = nullptr, LPCTSTR pszContents = nullptr)
 		{
-			if (pszLabel != nullptr)
-				sLabel = pszLabel;
+			if (pszHeader != nullptr)
+				sHeader = pszHeader;
 			if (pszContents != nullptr)
 				sContents = pszContents;
 		}

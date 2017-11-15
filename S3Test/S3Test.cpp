@@ -480,7 +480,7 @@ static int DoTest(CString& sOutMessage)
 	{
 		PROGRESS_CONTEXT Context;
 		Context.sTitle = L"Read";
-		CECSConnection::S3_ERROR Error = S3Read(sReadLocalPath, STGM_SHARE_EXCLUSIVE | STGM_CREATE | STGM_WRITE, FILE_ATTRIBUTE_NORMAL, true, Conn, sReadECSPath, ProgressCallBack, &Context);
+		CECSConnection::S3_ERROR Error = S3Read(sReadLocalPath, STGM_SHARE_EXCLUSIVE | STGM_CREATE | STGM_WRITE, FILE_ATTRIBUTE_NORMAL, true, Conn, sReadECSPath, 0ULL, 0ULL, nullptr, ProgressCallBack, &Context, nullptr);
 		if (Error.IfError())
 		{
 			_tprintf(_T("Error from S3Read: %s\n"), (LPCTSTR)Error.Format());
@@ -491,11 +491,11 @@ static int DoTest(CString& sOutMessage)
 	{
 		PROGRESS_CONTEXT Context;
 		Context.sTitle = L"Write";
-		list<CECSConnection::S3_METADATA_ENTRY> MDList;
-		CECSConnection::S3_METADATA_ENTRY MD_Rec;
+		list<CECSConnection::HEADER_STRUCT> MDList;
+		CECSConnection::HEADER_STRUCT MD_Rec;
 #ifndef unused
-		MD_Rec.sTag = _T("NewTag");
-		MD_Rec.sData = _T("NewTagValue");
+		MD_Rec.sHeader = _T("x-amz-meta-NewTag");
+		MD_Rec.sContents = _T("NewTagValue");
 		MDList.push_back(MD_Rec);
 		CECSConnection::S3_ERROR Error = S3Write(sWriteLocalPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, Conn, sWriteECSPath, MEGABYTES(1), true, 20, &MDList, ProgressCallBack, &Context);
 		if (Error.IfError())
@@ -561,7 +561,7 @@ static int DoTest(CString& sOutMessage)
 	}
 	if (!sReadMetaECSPath.IsEmpty())
 	{
-		list<CECSConnection::S3_METADATA_ENTRY> MDList;
+		list<CECSConnection::HEADER_STRUCT> MDList;
 		CECSConnection::S3_SYSTEM_METADATA Properties;
 		CECSConnection::S3_ERROR Error = Conn.ReadProperties(sReadMetaECSPath, Properties, nullptr, &MDList);
 		if (!Error.IfError())
@@ -571,8 +571,8 @@ static int DoTest(CString& sOutMessage)
 				(LPCTSTR)DateTimeStr(&Properties.ftLastMod, true, true, true, false, true, true),
 				Properties.llSize, (int)Properties.bIsLatest, (int)Properties.bDeleted, (LPCTSTR)Properties.sVersionId,
 				(LPCTSTR)Properties.sETag, (LPCTSTR)Properties.sOwnerDisplayName, (LPCTSTR)Properties.sOwnerID);
-			for (list<CECSConnection::S3_METADATA_ENTRY>::const_iterator it = MDList.begin(); it != MDList.end(); ++it)
-				_tprintf(_T("    %s : %s\n"), (LPCTSTR)it->sTag, (LPCTSTR)it->sData);
+			for (list<CECSConnection::HEADER_STRUCT>::const_iterator it = MDList.begin(); it != MDList.end(); ++it)
+				_tprintf(_T("    %s : %s\n"), (LPCTSTR)it->sHeader, (LPCTSTR)it->sContents);
 		}
 		else
 		{
