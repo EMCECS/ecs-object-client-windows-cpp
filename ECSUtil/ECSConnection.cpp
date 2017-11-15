@@ -6022,6 +6022,7 @@ const WCHAR * const XML_DT_QUERY_STATUS = L"//Summary/status";
 const WCHAR * const XML_DT_QUERY_VERSION_0_TOTAL_DATA_SIZE = L"//Summary/Version_0/total_data_size";
 const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_SIZE = L"//Summary/Version_0/shipped_data_size";
 const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_PCT = L"//Summary/Version_0/shipped_data_percentage";
+const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_RANGE = L"//Summary/Version_0/Data_Range_Shipping_Details/Range";
 
 HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
@@ -6052,6 +6053,10 @@ HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRead
 			{
 				pResponse->pResponse->uShippedDataPercentage = _wtol(*psValue);
 			}
+			else if (sXmlPath.CompareNoCase(XML_DT_QUERY_VERSION_0_SHIPPED_DATA_RANGE) == 0)
+			{
+				pResponse->pResponse->DataRangeShippingDetails.push_back(*psValue);
+			}
 		}
 		break;
 
@@ -6061,14 +6066,21 @@ HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRead
 	return 0;
 }
 
-CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, DT_QUERY_RESPONSE& Response, CString *psRawXML)
+CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, bool bShowValue, LPCTSTR pszRandom, DT_QUERY_RESPONSE& Response)
 {
+	INTERNET_PORT wSavePort = Port;
 	list<HEADER_REQ> Req;
 	CBuffer RetData;
 	CString sResource;
 	sResource.Format(_T("/diagnostic/object/checkRepoReplicationStatus?poolname=%s.%s&objectname=%s"), pszNamespace, pszBucket, pszObject);
+	if (bShowValue)
+		sResource += L"&showvalue=true";
+	if (pszRandom != nullptr)
+		sResource += CString(L"&random=") + pszRandom;
 	SetPort(9101);
+	InitHeader();
 	S3_ERROR Error = SendRequest(_T("GET"), sResource, nullptr, 0, RetData, &Req);
+	SetPort(wSavePort);
 	if (Error.IfError())
 	{
 		CWideString Str((LPCSTR)RetData.GetData(), RetData.GetBufSize());
@@ -6076,11 +6088,6 @@ CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTST
 		return Error;
 	}
 	// now interpret the response
-	if (psRawXML != nullptr)
-	{
-		CWideString Str((LPCSTR)RetData.GetData(), RetData.GetBufSize());
-		*psRawXML = Str;
-	}
 	XML_DT_QUERY_CONTEXT Context;
 	Context.pResponse = &Response;
 	HRESULT hr = ScanXml(&RetData, &Context, XmlDTQueryCB);
