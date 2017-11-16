@@ -720,8 +720,6 @@ bool DoS3MultiPartUpload(
 							CECSConnection::STREAM_DATA_ENTRY StreamMsg;
 							StreamMsg.Data.Load(Buf.GetData(), dwNumRead);
 							StreamMsg.bLast = ullPartSize == (ULONGLONG)dwNumRead;
-							DEBUGF(L"DoS3MultiPartUpload (%d) data1: error:%s, Total:%I64d, Off:%I64d, part:%d, size:%I64d, retry:%d, last:%d, qsize:%d\n", __LINE__, (LPCTSTR)Msg->Error.Format(), Msg->ullTotalLen,
-								(*itList)->ullBaseOffset + (*itList)->ullCursor, (*itList)->uPartNum, ullPartSize, (*itList)->dwRetryNum, (int)StreamMsg.bLast, (*itList)->StreamQueue.StreamData.size());
 							(*itList)->StreamQueue.StreamData.push_back(StreamMsg, 0, TestAbortStatic, &Conn);
 							(*itList)->ullCursor += (ULONGLONG)dwNumRead;
 							dwRecCount++;
@@ -793,8 +791,6 @@ bool DoS3MultiPartUpload(
 						CECSConnection::S3_UPLOAD_PART_ENTRY *pPartEntry = (*itPending)->pUploadPartEntry.get();
 						if ((*itPending)->Events.bComplete)
 						{
-							DEBUGF(L"DoS3MultiPartUpload (%d) Complete: error:%s, Total:%I64d, Off:%I64d, part:%d, size:%I64d, retry:%d, qsize:%d\n", __LINE__, (LPCTSTR)(*itPending)->Error.Format(), (*itPending)->ullTotalLen,
-								(*itPending)->pUploadPartEntry->ullBaseOffset, (*itPending)->pUploadPartEntry->uPartNum, (*itPending)->pUploadPartEntry->ullPartSize, (*itPending)->pUploadPartEntry->dwRetryNum, (*itPending)->pStreamQueue->StreamData.size());
 							// done! see if it was successful
 							if ((*itPending)->Error.IfError())
 							{
@@ -849,8 +845,6 @@ bool DoS3MultiPartUpload(
 								CECSConnection::STREAM_DATA_ENTRY StreamMsg;
 								StreamMsg.Data.Load(Buf.GetData(), dwNumRead);
 								StreamMsg.bLast = pPartEntry->ullPartSize <= (pPartEntry->ullCursor + dwNumRead);
-								DEBUGF(L"DoS3MultiPartUpload (%d) data2: error:%s, Total:%I64d, Off:%I64d, part:%d, size:%I64d, retry:%d, last:%d, qsize:%d\n", __LINE__, (LPCTSTR)(*itPending)->Error.Format(), (*itPending)->ullTotalLen,
-									liOffset.QuadPart, pPartEntry->uPartNum, ullRemainingPart, pPartEntry->dwRetryNum, (int)StreamMsg.bLast, (*itPending)->pStreamQueue->StreamData.size());
 								pPartEntry->StreamQueue.StreamData.push_back(StreamMsg, 0, TestAbortStatic, &Conn);
 								pPartEntry->ullCursor += dwNumRead;
 							}

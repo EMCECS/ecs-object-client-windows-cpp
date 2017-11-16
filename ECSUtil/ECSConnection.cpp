@@ -206,7 +206,6 @@ void CECSConnection::PrepareCmd()
 	State.CallbackContext.bDisableSecureLog = State.bDisableSecureLog;
 	State.CallbackContext.dwSecureError = State.dwSecureError;
 	State.CallbackContext.pHost = this;
-	DEBUGF(TEXT("CECSConnection::PrepareCmd: entry: State.hRequest: %x"), (HINTERNET)State.hRequest);
 }
 
 void CECSConnection::CleanupCmd()
@@ -220,7 +219,6 @@ void CECSConnection::CleanupCmd()
 bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 {
 	CECSConnectionState& State(GetStateBuf());
-	DEBUGF(TEXT("CECSConnection::WaitComplete: entry, %x"), dwCallbackExpected);
 	const UINT MaxWaitInterval = SECONDS(1);			// max time to wait before checking for abort
 	DWORD dwError;
 	UINT iTimeout = 0;
@@ -233,7 +231,6 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		if ((dwCallbackExpected != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) && TestAbort())
 		{
 			CSingleLock lock(&State.CallbackContext.csContext, true);
-			DEBUGF(_T("CECSConnection::WaitComplete: ABORT!"));
 			State.CallbackContext.Result.dwError = ERROR_OPERATION_ABORTED;
 			State.CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
@@ -267,7 +264,6 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 			iTimeout++;
 			if (iTimeout > iTimeoutMax)
 			{
-				DEBUGF(TEXT("CECSConnection::WaitComplete: TIMEOUT, %x"), dwCallbackExpected);
 				State.CallbackContext.Result.dwError = WAIT_TIMEOUT;
 				State.CallbackContext.Result.dwResult = 0;
 				CleanupCmd();
@@ -732,12 +728,10 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 				|| (dwInternetStatus == WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING));
 	}
 #endif
-	DEBUGF(TEXT("CECSConnection::HttpStatusCallback: entry %x, %x, %s"), hInternet, dwInternetStatus, (LPCTSTR)FmtNum(dwContext, 0, false, true));
 	pContext->CallbacksReceived.push_back(dwInternetStatus);
 	switch (dwInternetStatus)
 	{
 	case WINHTTP_CALLBACK_STATUS_SECURE_FAILURE:
-		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_SECURE_FAILURE"));
 		{
 			ASSERT((dwStatusInformationLength == 4) && (lpvStatusInformation != nullptr));
 			if ((dwStatusInformationLength == 4) && (lpvStatusInformation != nullptr))
@@ -780,7 +774,6 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		}
 		break;
 	case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE:				// WinHttpQueryDataAvailable finished
-		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE %x"), hInternet);
 		{
 			ASSERT(dwStatusInformationLength == 4);
 			pContext->dwReadLength = *((DWORD *)lpvStatusInformation);
@@ -789,7 +782,6 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		}
 		break;
 	case WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE:				// WinHttpReceiveResponse finished
-		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE %x"), hInternet);
 		{
 			pContext->bHeadersAvail = true;
 			pContext->bComplete = true;
@@ -797,7 +789,6 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		}
 		break;
 	case WINHTTP_CALLBACK_STATUS_READ_COMPLETE:					// WinHttpReadData finished
-		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_READ_COMPLETE %x"), hInternet);
 		{
 			pContext->pReadData = (BYTE *)lpvStatusInformation;
 			pContext->dwReadLength = dwStatusInformationLength;
@@ -806,7 +797,6 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		}
 		break;
 	case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE:			// WinHttpSendRequest finished
-		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE %x"), hInternet);
 		{
 			pContext->bSendRequestComplete = true;
 			pContext->bComplete = true;
@@ -814,7 +804,6 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		}
 		break;
 	case WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE:				// WinHttpWriteData finished
-		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE %x"), hInternet);
 		{
 			ASSERT(dwStatusInformationLength == 4);
 			pContext->dwBytesWritten = *((DWORD *)lpvStatusInformation);
@@ -829,13 +818,11 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 			pContext->Result = *((WINHTTP_ASYNC_RESULT *)lpvStatusInformation);
 			VERIFY(pContext->Event.evCmd.SetEvent());
 		}
-		DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_REQUEST_ERROR, error:%d, result:%d %x"), pContext->Result.dwError, pContext->Result.dwResult, hInternet);
 		break;
 	case WINHTTP_CALLBACK_STATUS_HANDLE_CREATED:
 		{
 			ASSERT(dwStatusInformationLength == sizeof(HINTERNET));
 			HINTERNET hIntHandle = *((HINTERNET *)lpvStatusInformation);
-			DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_HANDLE_CREATED: %s"), (LPCTSTR)FmtNum(hIntHandle, 0, false, true));
 			pContext->bHandleCreated = true;
 		}
 		break;
@@ -843,7 +830,6 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		{
 			ASSERT(dwStatusInformationLength == sizeof(HINTERNET));
 			HINTERNET hIntHandle = *((HINTERNET *)lpvStatusInformation);
-			DEBUGF(TEXT("CECSConnection::HttpStatusCallback: WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING: %s %x"), (LPCTSTR)FmtNum(hIntHandle, 0, false, true), hInternet);
 			pContext->bHandleClosing = true;
 			pContext->bComplete = true;
 			(void)WinHttpSetStatusCallback(hIntHandle, nullptr, WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS, NULL);
@@ -868,7 +854,6 @@ DWORD CECSConnection::InitSession()
 		sVer = _T("Test/1.0");
 	else
 		sVer = sUserAgent;
-	DEBUGF(TEXT("WinHttpOpen: version string:\r\n%s\r\n"), (LPCTSTR)sVer);
 	if (!State.Session.pValue->hSession.IfOpen() || !State.Session.pValue->hConnect.IfOpen())
 	{
 		State.Session.pValue->CloseAll();
@@ -974,10 +959,6 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 				(void)CertFreeCertificateContext(pCert);
 			}
 		}
-#ifdef DEBUG
-		HINTERNET hRequestSave = hRequest;
-		DEBUGF(TEXT("CloseRequest: entry %s\r\n"), (LPCTSTR)FmtNum((HINTERNET)hRequest, 0, false, true));
-#endif
 		if (bCallbackRegistered)
 			if (pECSConnection != nullptr)
 				pECSConnection->PrepareCmd();
@@ -986,9 +967,6 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 			if (pECSConnection != nullptr)
 				(void)pECSConnection->WaitComplete(WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING);
 		bCallbackRegistered = false;
-#ifdef DEBUG
-		DEBUGF(TEXT("CloseRequest: done %s\r\n"), (LPCTSTR)FmtNum(hRequestSave, 0, false, true));
-#endif
 	}
 }
 
@@ -1526,7 +1504,6 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 		}
 		if (!State.bS3Admin)
 			sHeaders += _T("Authorization: ") + sSignature + _T("\r\n");
-		DEBUGF(TEXT("WinHttpSendRequest: headers:\r\n%s\r\n"), (LPCTSTR)sHeaders);
 		DWORD dwIndex;
 		CBuffer RetBuf;
 		bool bUploadThrottle;
@@ -1542,7 +1519,6 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				// if passport, we must use WinHttpSetOption instead of WinHttpSetCredentials
 				if (State.dwProxyAuthScheme == WINHTTP_AUTH_SCHEME_PASSPORT)
 				{
-					DEBUGF(_T("SetCredentials - passport: '%s', '%s'"), (LPCTSTR)sProxyUser, (LPCTSTR)sProxyPassword);
 					if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_PROXY_USERNAME, (void *)(LPCTSTR)sProxyUser, sProxyUser.GetLength()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 					if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_PROXY_PASSWORD, (void *)(LPCTSTR)sProxyPassword, sProxyPassword.GetLength()))
@@ -1550,14 +1526,12 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				}
 				else
 				{
-					DEBUGF(_T("WinHttpSetCredentials: '%s', '%s'"), (LPCTSTR)sProxyUser, (LPCTSTR)sProxyPassword);
 					if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_PROXY, State.dwProxyAuthScheme, TO_UNICODE(sProxyUser), TO_UNICODE(sProxyPassword), nullptr))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 				}
 			}
 			if ((State.dwAuthScheme != 0) && !State.sHTTPUser.IsEmpty())
 			{
-				DEBUGF(_T("WinHttpSetCredentials: '%s', '%s'"), (LPCTSTR)State.sHTTPUser, (LPCTSTR)State.sHTTPPassword);
 				if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_SERVER, State.dwAuthScheme, TO_UNICODE(State.sHTTPUser), TO_UNICODE(State.sHTTPPassword), nullptr))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 			}
@@ -1784,14 +1758,11 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 				// Obtain the supported and preferred schemes.
 				if (!WinHttpQueryAuthSchemes(State.hRequest, &dwSupportedSchemes, &dwFirstScheme, &dwTarget))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-				DEBUGF(_T("WinHttpQueryAuthSchemes: Supported: %d, First: %d, Target: %d"),
-					dwSupportedSchemes, dwFirstScheme, dwTarget);
 				// Set the credentials before re-sending the request.
 				if (Error.dwHttpError == HTTP_STATUS_PROXY_AUTH_REQ)
 					State.dwProxyAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
 				else
 					State.dwAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
-				DEBUGF(_T("ChooseAuthScheme: %d"), State.dwProxyAuthScheme);
 			}
 		}
 		// if it required authorization and was successful
