@@ -613,9 +613,8 @@ public:
 
 	typedef list<ACL_ENTRY> UIDList_t;
 
-	struct ECSUTIL_EXT_CLASS S3_ERROR
+	struct ECSUTIL_EXT_CLASS S3_ERROR_BASE
 	{
-		// IMPORTANT: any change in the fields below must be reflected in Assign()
 		DWORD dwError;					// WIN32 error
 		DWORD dwHttpError;				// HTTP error
 		E_S3_ERROR_TYPE S3Error;		// S3 error
@@ -624,23 +623,27 @@ public:
 		CString sS3RequestID;			// S3: request ID associated with the error
 		CString sDetails;				// ECS Admin: additional details
 
-		S3_ERROR(DWORD dwErrorParam = ERROR_SUCCESS)
+		S3_ERROR_BASE(DWORD dwErrorParam = ERROR_SUCCESS)
 			: dwError(dwErrorParam)
 			, dwHttpError(0)
 			, S3Error(S3_ERROR_SUCCESS)
-		{
-		}
+		{}
 
-		bool IfError() const;
+		bool IfError() const
+		{
+			return (dwError != ERROR_SUCCESS)
+				|| (dwHttpError >= 400)
+				|| (S3Error != S3_ERROR_SUCCESS);
+		}
 		CString Format(bool bOneLine = false) const;
-		bool operator ==(const S3_ERROR &Error) const
+		bool operator ==(const S3_ERROR_BASE &Error) const
 		{
 			return (dwError == Error.dwError)
 				&& (dwHttpError == Error.dwHttpError)
 				&& (S3Error == Error.S3Error)
 				&& (sS3Code == Error.sS3Code);
 		}
-		bool operator !=(const S3_ERROR &Error) const
+		bool operator !=(const S3_ERROR_BASE &Error) const
 		{
 			return !operator ==(Error);
 		}
@@ -650,29 +653,28 @@ public:
 				&& ((S3Error == S3_ERROR_NoSuchKey)
 					|| (dwHttpError == HTTP_STATUS_NOT_FOUND)));
 		}
+	};
+
+	struct ECSUTIL_EXT_CLASS S3_ERROR : public S3_ERROR_BASE
+	{
+		S3_ERROR(DWORD dwErrorParam = ERROR_SUCCESS)
+			: S3_ERROR_BASE(dwErrorParam)
+		{}
+
 		S3_ERROR(const S3_ERROR& src)
+			: S3_ERROR_BASE(src)
 		{
-			Assign(src);
+			SetError();						// if http error, set dwError code to reflect it
 		}
 		const S3_ERROR& operator =(const S3_ERROR& src)
 		{
 			if (&src == this)
 				return *this;
-			Assign(src);
+			(void)S3_ERROR_BASE::operator =(src);
+			SetError();
 			return *this;
 		};
 	private:
-		void Assign(const S3_ERROR& src)
-		{
-			dwError = src.dwError;
-			dwHttpError = src.dwHttpError;
-			S3Error = src.S3Error;
-			sS3Code = src.sS3Code;
-			sS3Resource = src.sS3Resource;
-			sS3RequestID = src.sS3RequestID;
-			sDetails = src.sDetails;
-			SetError();						// if http error, set dwError code to reflect it
-		}
 		void SetError(void);
 	};
 

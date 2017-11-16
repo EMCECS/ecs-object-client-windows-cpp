@@ -3197,14 +3197,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, D
 	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr);
 }
 
-bool CECSConnection::S3_ERROR::IfError() const
-{
-	return (dwError != ERROR_SUCCESS)
-		|| (dwHttpError >= 400)
-		|| (S3Error != S3_ERROR_SUCCESS);
-}
-
-CString CECSConnection::S3_ERROR::Format(bool bOneLine) const
+CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 {
 	CString sMsg, sLineEnd;
 	if (bOneLine)
