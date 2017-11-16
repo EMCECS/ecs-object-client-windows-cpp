@@ -441,6 +441,7 @@
     <ClInclude Include="targetver.h" />
     <ClInclude Include="ThreadPool.h" />
     <ClInclude Include="UriUtils.h" />
+    <ClInclude Include="Version.h" />
     <ClInclude Include="widestring.h" />
     <ClInclude Include="XmlLiteUtil.h" />
   </ItemGroup>
