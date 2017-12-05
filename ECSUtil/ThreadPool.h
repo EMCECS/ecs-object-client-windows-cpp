@@ -209,7 +209,7 @@ private:
 	void UpdatePerf(UINT uLine, std::shared_ptr<MsgT> *pMsg, CThreadWork<MsgT> *pResetIdle, UINT uPriority, UINT uGrouping);
 	virtual bool CompareEntry(const MsgT& Msg1, const MsgT& Msg2, UINT uSearchType) const;
 	bool IfInGroup(UINT uGrouping) const;
-	DWORD GetNumThreadsInternal(DWORD *pdwWorkItems = nullptr, DWORD dwIgnoreCurrentThreadID = 0, DWORD *pdwNumRunning = nullptr) const;
+	DWORD GetNumThreadsInternal(DWORD *pdwWorkItems = nullptr, DWORD dwIgnoreCurrentThreadID = 0, bool bExclusive = false) const;
 	void AddThreads(DWORD *pdwRealMaxThreads = nullptr);
 	void GarbageCollect(void);
 	void DeleteOldThreadEntries(void);
@@ -234,13 +234,14 @@ public:
 	void SetPerfCounter(CSimpleRWLock *prwlPerfParam, DWORD *pdwPerfNumThreadsParam, DWORD *pdwPerfQueueSizeParam, DWORD *pdwPerfQueueMaxParam, DWORD *pdwPerfQueueRateInParam, DWORD *pdwPerfQueueRateOutParam, DWORD *pdwPerfWorkItemsParam, DWORD *pdwPerfOverflowParam);
 	bool SearchMessage(const MsgT& MsgFind, MsgT *pPayloadRet, UINT uSearchType) const;
 	bool SearchMessageKill(const MsgT& MsgFind, UINT uSearchType);
-	DWORD GetNumThreads(DWORD *pdwWorkItems = nullptr, DWORD *pdwNumRunning = nullptr) const;
+	DWORD GetNumThreads(DWORD *pdwWorkItems = nullptr) const;
 	void DumpQueue(void *pContext) const;
 	virtual bool DumpEntry(bool bInProcess, const MsgT& Message, void *pContext) const;
 	DWORD GetMsgQueueCount() const;
 	void GetCurrentWorkItems(list<MsgT>& RetList) const;
 	void WaitForWorkFinished(THREADPOOL_ABORT_CB AbortProc, void *pContext, DWORD dwWaitMillisec = 500);
 	DWORD GetMaxConcurrentThreads(bool bReset = false);
+	void DiscardPool(void) throw();
 };
 
 template <class MsgT>
@@ -370,8 +371,7 @@ void CThreadWork<MsgT>::DoWork()
 				// message processed, remove it from the queue
 				CRWLockAcquire lock(&pThreadPool->Pool.GetLock(), true);		// write lock
 				{
-					DWORD dwRunningThreads = 0;
-					(void)pThreadPool->GetNumThreads(nullptr, &dwRunningThreads);
+					DWORD dwRunningThreads = pThreadPool->GetNumThreads();
 					if (dwRunningThreads > pThreadPool->dwMaxConcurrentThreads)
 						pThreadPool->dwMaxConcurrentThreads = dwRunningThreads;
 					CRWLockAcquire lockMsg(&pThreadPool->MsgQueue.GetLock(), true);		// write lock
@@ -413,8 +413,7 @@ void CThreadWork<MsgT>::DoWork()
 			if (bFutureEmpty)
 			{
 				CRWLockAcquire lock(&pThreadPool->Pool.GetLock(), true);		// write lock
-				DWORD dwNumRunning;
-				(void)pThreadPool->GetNumThreadsInternal(nullptr, 0, &dwNumRunning);
+				DWORD dwNumRunning = pThreadPool->GetNumThreadsInternal();
 				if ((dwNumRunning > pThreadPool->GetMinNumThreadsInternal()) && IfThreadIdleTooLong())
 					KillThread();				// kill my thread
 			}
@@ -445,8 +444,8 @@ void CThreadWork<MsgT>::ExitInstance()
 	bInUse = false;
 	CoUninitialize();
 	// update the count of active threads. make it ignore this thread as it is going down
-	if (pThreadPool != nullptr)
-		(void)pThreadPool->GetNumThreadsInternal(nullptr, GetCurrentThreadId());
+	if (pThreadPool != NULL)
+		(void)pThreadPool->GetNumThreadsInternal(NULL, GetCurrentThreadId());
 }
 
 template <class MsgT>
@@ -599,41 +598,34 @@ void CThreadPool<MsgT>::SetPerfCounter(CSimpleRWLock *prwlPerfParam, DWORD *pdwP
 // get the number of active threads
 // optionally get the number of items currently being worked on
 template <class MsgT>
-DWORD CThreadPool<MsgT>::GetNumThreads(DWORD *pdwWorkItems, DWORD *pdwNumRunning) const
+DWORD CThreadPool<MsgT>::GetNumThreads(DWORD *pdwWorkItems) const
 {
-	return GetNumThreadsInternal(pdwWorkItems, 0, pdwNumRunning);
+	return GetNumThreadsInternal(pdwWorkItems, 0);
 }
 
 // GetNumThreadsInternal
-// get the number of active threads
+// get the number of active threads, not including threads that are scheduled to be terminated
 // optionally get the number of items currently being worked on
 // internal version allows a thread ID to be excluded from the count
 template <class MsgT>
 DWORD CThreadPool<MsgT>::GetNumThreadsInternal(
 	DWORD *pdwWorkItems,							// returns number of items in queue including items being processed
 	DWORD dwIgnoreCurrentThreadID,					// if non-zero, exclude that thread from the count
-	DWORD *pdwNumRunning) const						// produce a count of running threads not including threads that are scheduled to be terminated
+	bool bExclusive) const							// if set, get exclusive lock to get an absolute accurate thread count
 {
-	CRWLockAcquire lock(&Pool.GetLock(), false);	// read lock
+	CRWLockAcquire lock(&Pool.GetLock(), bExclusive);	// read lock or write lock if bExclusive is set
 	DWORD dwCount = MsgQueue.GetCount();			// get current length of queue
 	DWORD dwThreads = 0;
-	DWORD dwNumRunning = 0;
 	for (CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
 	{
 		if ((dwIgnoreCurrentThreadID == 0) || (itPool->GetCurrentThreadID() != dwIgnoreCurrentThreadID))
 		{
-			if (itPool->IfActive())
-			{
+			if (itPool->IfActive() && !itPool->GetExitFlag())
 				dwThreads++;
-				if (!itPool->GetExitFlag())
-					dwNumRunning++;
-			}
 		}
 	}
 	if (pdwWorkItems != nullptr)
 		*pdwWorkItems = dwCount;
-	if (pdwNumRunning != nullptr)
-		*pdwNumRunning = dwNumRunning;
 	if (pdwPerfNumThreads != nullptr)
 	{
 		CSimpleRWLockAcquire lockSharedMem(prwlPerf);
@@ -876,6 +868,34 @@ void CThreadPool<MsgT>::Terminate() throw()
 	}
 }
 
+// DiscardPool
+// discard all entries in the queue
+template <class MsgT>
+void CThreadPool<MsgT>::DiscardPool() throw()
+{
+	bDisable = true;
+	KillThreadQueueSRW(Pool, Pool.GetLock());
+	{
+		CRWLockAcquire lockPool(&Pool.GetLock(), false);		// always lock pool first, then msg if you need both locked
+		{
+			CRWLockAcquire lockMsg(&MsgQueue.GetLock(), true);	// write lock
+			MsgQueue.clear();
+			FutureMsgQueue.clear();
+		}
+	}
+	{
+		CSimpleRWLockAcquire lockSharedMem(prwlPerf);
+		if (pdwPerfNumThreads != NULL)
+			*pdwPerfNumThreads = 0;
+		if (pdwPerfQueueSize != NULL)
+			*pdwPerfQueueSize = 0;
+		if (pdwPerfQueueMax != NULL)
+			*pdwPerfQueueMax = 0;
+		if (pdwPerfWorkItems != NULL)
+			*pdwPerfWorkItems = 0;
+	}
+}
+
 // update perf counters
 // if bAdd - adding entry to queue, so count add rate
 // if pResetIdle != nullptr, then, while locked, call SetIdle for that entry
@@ -1054,7 +1074,9 @@ template <class MsgT>
 DWORD CThreadPool<MsgT>::GetMinNumThreadsInternal(void)
 {
 	CRWLockAcquire lock(&MsgQueue.GetLock(), false);		// read lock
-	if ((dwMinNumThreads > 0) || FutureMsgQueue.empty())
+	if (dwMinNumThreads > 0)
+		return dwMinNumThreads;
+	if (FutureMsgQueue.empty() && MsgQueue.empty())			// if nothing to service, it's okay to return 0
 		return dwMinNumThreads;
 	return 1;
 }
