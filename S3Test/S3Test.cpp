@@ -583,7 +583,7 @@ static int DoTest(CString& sOutMessage)
 	if (!sDTQueryNamespace.IsEmpty() && !sDTQueryBucket.IsEmpty() && !sDTQueryObject.IsEmpty())
 	{
 		CECSConnection::DT_QUERY_RESPONSE Response;
-		CECSConnection::S3_ERROR Error = Conn.ECSDTQuery(sDTQueryNamespace, sDTQueryBucket, sDTQueryObject, Response);
+		CECSConnection::S3_ERROR Error = Conn.ECSDTQuery(sDTQueryNamespace, sDTQueryBucket, sDTQueryObject, false, nullptr, Response);
 		if (Error.IfError())
 		{
 			_tprintf(_T("DT Query error: %s\n"), (LPCTSTR)Error.Format());
