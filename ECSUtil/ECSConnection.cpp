@@ -46,6 +46,7 @@ CCriticalSection CECSConnection::csThrottleMap;				// critical section protectin
 list<CECSConnection *> CECSConnection::ECSConnectionList;			// list of all CECSConnection objects (protected by csThrottleMap)
 CECSConnection::CThrottleTimerThread CECSConnection::TimerThread;	// throttle timer thread
 DWORD CECSConnection::dwGlobalHttpsProtocol = 0;
+DWORD CECSConnection::dwS3BucketListingMax = 1000;					// maxiumum number of items to return on a bucket listing (S3). Default = 1000 (cannot be larger than 1000)
 
 CCriticalSection CECSConnection::csBadIPMap;
 map<CECSConnection::BAD_IP_KEY,CECSConnection::BAD_IP_ENTRY> CECSConnection::BadIPMap;		// protected by csBadIPMap
@@ -434,6 +435,11 @@ void CECSConnection::Init()
 		(void)HttpErrorMap.insert(make_pair(HttpErrorInitArray[i].dwHTTPErrorCode, HttpErrorInitArray[i].dwErrorCode));
 	bInitialized = true;
 };
+
+void CECSConnection::SetS3BucketListingMax(DWORD dwS3BucketListingMaxParam)
+{
+	dwS3BucketListingMax = dwS3BucketListingMaxParam;
+}
 
 void CECSConnection::SetGlobalHttpsProtocol(DWORD dwGlobalHttpsProtocolParam)
 {
@@ -3041,8 +3047,8 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					sResource += _T("?versions&delimiter=/");
 				else
 					sResource += _T("?delimiter=/");
-				if (bSingle || (MaxS3ListingSize < 1000))						//lint !e774	// (Info -- Boolean within 'if' always evaluates to True
-					sResource += CString(_T("&max-keys=")) + (bSingle ? _T("10") : (LPCTSTR)FmtNum(MaxS3ListingSize));
+				if (bSingle || ((dwS3BucketListingMax >= 10) && (dwS3BucketListingMax < 1000)))
+					sResource += CString(L"&max-keys=") + (bSingle ? L"10" : (LPCTSTR)FmtNum(dwS3BucketListingMax));
 				if (!sPrefix.IsEmpty())
 					sResource += _T("&prefix=") + sPrefix;
 				if (!State.sEmcToken.IsEmpty())
@@ -3926,8 +3932,8 @@ bool CECSConnection::TestAbort(void)
 	CECSConnectionState& State(GetStateBuf());
 	if (!bCheckShutdown)
 		return false;
-	CSingleLock lock(&State.csAbortList, true);
-	for (list<ABORT_ENTRY>::iterator itList = AbortList.begin() ; itList!= AbortList.end() ; ++itList)
+	CSimpleRWLockAcquire lock(&State.rwlAbortList, false);			// read lock
+	for (list<ABORT_ENTRY>::const_iterator itList = State.AbortList.begin(); itList != State.AbortList.end(); ++itList)
 	{
 		if ((itList->ShutdownCB != nullptr) && (itList->ShutdownCB)(itList->pShutdownContext))
 			return true;
@@ -3955,18 +3961,18 @@ void CECSConnection::RegisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *
 	ABORT_ENTRY Rec;
 	Rec.ShutdownCB = ShutdownParamCB;
 	Rec.pShutdownContext = pContext;
-	CSingleLock lock(&State.csAbortList, true);
-	AbortList.push_back(Rec);
+	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
+	State.AbortList.push_back(Rec);
 }
 
 void CECSConnection::UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *pContext)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CSingleLock lock(&State.csAbortList, true);
-	for (list<ABORT_ENTRY>::iterator itList = AbortList.begin() ; itList!= AbortList.end() ; )
+	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
+	for (list<ABORT_ENTRY>::iterator itList = State.AbortList.begin(); itList != State.AbortList.end(); )
 	{
 		if ((itList->ShutdownCB == ShutdownParamCB) && (itList->pShutdownContext == pContext))
-			itList = AbortList.erase(itList);
+			itList = State.AbortList.erase(itList);
 		else
 			++itList;
 	}
@@ -3978,18 +3984,18 @@ void CECSConnection::RegisterAbortPtr(const bool *pbAbort, bool bAbortTrue)
 	ABORT_ENTRY Rec;
 	Rec.pbAbort = pbAbort;
 	Rec.bAbortIfTrue = bAbortTrue;
-	CSingleLock lock(&State.csAbortList, true);
-	AbortList.push_back(Rec);
+	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
+	State.AbortList.push_back(Rec);
 }
 
 void CECSConnection::UnregisterAbortPtr(const bool *pbAbort)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CSingleLock lock(&State.csAbortList, true);
-	for (list<ABORT_ENTRY>::iterator itList = AbortList.begin() ; itList!= AbortList.end() ; )
+	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
+	for (list<ABORT_ENTRY>::iterator itList = State.AbortList.begin(); itList != State.AbortList.end(); )
 	{
 		if (itList->pbAbort == pbAbort)
-			itList = AbortList.erase(itList);
+			itList = State.AbortList.erase(itList);
 		else
 			++itList;
 	}

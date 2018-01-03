@@ -30,7 +30,6 @@ const UINT MaxRetryCount = 5;
 const UINT MaxWriteRequest = 0;
 const UINT MaxWriteRequestThrottle = 8192;
 const UINT MaxS3DeleteObjects = 1000;				// maximum number of objects to delete in one command (S3)
-const UINT MaxS3ListingSize = 1000;					// max number of objects to get in one list command (S3 - Max is 1000)
 const UINT MaxStreamQueueSize = 30;					// maximum size of stream queue. if there is a mismatch between the queue feed and consumer, you don't want it to grow too big
 
 class CInternetHandle
@@ -649,9 +648,9 @@ public:
 		}
 		bool IfNotFound(void) const
 		{
-			return ((dwError == ERROR_SUCCESS)
-				&& ((S3Error == S3_ERROR_NoSuchKey)
-					|| (dwHttpError == HTTP_STATUS_NOT_FOUND)));
+			return ((dwError == HTTP_E_STATUS_NOT_FOUND)
+				|| (S3Error == S3_ERROR_NoSuchKey)
+				|| (dwHttpError == HTTP_STATUS_NOT_FOUND));
 		}
 	};
 
@@ -1098,7 +1097,6 @@ private:
 		DWORD dwCurrentThread;
 		DWORD dwProxyAuthScheme;				// if non-zero, proxy requires authorization (WINHTTP_AUTH_SCHEME_...)
 		DWORD dwAuthScheme;						
-		CCriticalSection csAbortList;			// critical section used for AbortList
 		DWORD dwSecureError;					// explanation for SSL errors (WINHTTP_CALLBACK_STATUS_FLAG_...)
 		bool bDisableSecureLog;					// if set, don't log security errors in the callback
 		bool bDisableUserSupport;				// don't redirect to a different user based on path
@@ -1112,6 +1110,8 @@ private:
 		CString sHTTPUser;						// for HTTP authentication
 		CString sHTTPPassword;					// for HTTP authentication
 		CString sX_SDS_AUTH_TOKEN;				// for HTTP authentication: after login this contains the auth token used on subsequent calls
+		list<ABORT_ENTRY> AbortList;			// list of abort entries
+		mutable CSimpleRWLock rwlAbortList;		// lock used for AbortList
 
 		CECSConnectionState()
 			: pECSConnection(nullptr)
@@ -1212,8 +1212,7 @@ private:
 	CString sProxyPassword;					// proxy server password
 	DWORD dwHttpsProtocol;					// bit field of acceptable protocols
 	bool bCheckShutdown;					// if set, then abort request if during service shutdown (default)
-	ECS_DISCONNECT_CB DisconnectCB;		// disconnect callback
-	list<ABORT_ENTRY> AbortList;			// list of abort entries
+	ECS_DISCONNECT_CB DisconnectCB;			// disconnect callback
 
 	// S3 settings
 	CString sS3KeyID;						// S3 Key ID
@@ -1277,13 +1276,14 @@ private:
 		}
 	};
 	static bool bInitialized;							// starts out false. If false, timeouts are very short. must call SetInitialized to get regular timeouts
-	static CThrottleTimerThread TimerThread;				// throttle timer thread
-	static map<CString,THROTTLE_REC> ThrottleMap;	// global map used by all CECSConnection objects, key is host name
+	static CThrottleTimerThread TimerThread;			// throttle timer thread
+	static map<CString,THROTTLE_REC> ThrottleMap;		// global map used by all CECSConnection objects, key is host name
 	static CCriticalSection csThrottleMap;				// critical section protecting ThrottleMap
-	static list<CECSConnection *> ECSConnectionList;		// list of all CECSConnection objects (protected by csThrottleMap)
+	static list<CECSConnection *> ECSConnectionList;	// list of all CECSConnection objects (protected by csThrottleMap)
 	static list<XML_DIR_LISTING_CONTEXT *> DirListList;	// listing of current dir listing operations
 	static CCriticalSection csDirListList;				// critical section protecting DirListList
 	static DWORD dwGlobalHttpsProtocol;					// bit field of acceptable protocols
+	static DWORD dwS3BucketListingMax;					// maxiumum number of items to return on a bucket listing (S3). Default = 1000 (cannot be larger than 1000)
 
 	static CString sAmzMetaPrefix;						// just a place to hold "x-amz-meta-"
 
@@ -1397,6 +1397,7 @@ public:
 	static void Init(void);
 	static S3_ERROR CECSConnection::ParseS3Timestamp(const CString& sS3Time, FILETIME& ftTime);
 	static void SetGlobalHttpsProtocol(DWORD dwGlobalHttpsProtocolParam);
+	static void SetS3BucketListingMax(DWORD dwS3BucketListingMaxParam);
 
 	static void SetInitialized(void);				// global initialized flag. must be called to set regular timeouts
 	void SetSecret(LPCTSTR pszSecret);		// set shared secret string in base64
