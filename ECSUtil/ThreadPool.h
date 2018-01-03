@@ -27,6 +27,11 @@
 // returns true if it should abort and not wait for all work items to finish
 typedef bool (*THREADPOOL_ABORT_CB)(void *pContext);
 
+// callback for SearchMessageBackModify
+// proc can set bDelete to delete the found object, bModify means it has been modified
+// returns true if the search should end
+typedef bool (*SEARCH_BACK_MODIFY_CB)(void *pMsg, bool& bDelete, bool& bModify, bool& bRewind, void *pContext);
+
 template <class MsgT>
 class CThreadPool;
 
@@ -206,7 +211,7 @@ private:
 	{
 		return MsgQueue.empty();
 	}
-	void UpdatePerf(UINT uLine, std::shared_ptr<MsgT> *pMsg, CThreadWork<MsgT> *pResetIdle, UINT uPriority, UINT uGrouping);
+	void UpdatePerf(UINT uLine, std::shared_ptr<MsgT> *pMsg, CThreadWork<MsgT> *pResetIdle, UINT uPriority, UINT uGrouping, DWORD dwDelay);
 	virtual bool CompareEntry(const MsgT& Msg1, const MsgT& Msg2, UINT uSearchType) const;
 	bool IfInGroup(UINT uGrouping) const;
 	DWORD GetNumThreadsInternal(DWORD *pdwWorkItems = nullptr, DWORD dwIgnoreCurrentThreadID = 0, bool bExclusive = false) const;
@@ -227,12 +232,13 @@ public:
 	DWORD GetMaxThreads(void) const;
 	void SetStackSize(DWORD dwStackSize);
 	void SetThreadPriority(int iThreadPriorityParam);
-	void SendMessageToPool(UINT uLine, std::shared_ptr<MsgT>& Msg, DWORD dwMaxQueueSize, UINT uPriority, const CSimpleWorkerThread *pThread, UINT uGrouping = THREAD_POOL_MSG_GROUPING_DONT_CARE, bool *pbNoBlock = nullptr);
+	void SendMessageToPool(UINT uLine, std::shared_ptr<MsgT>& Msg, DWORD dwMaxQueueSize, UINT uPriority, const CSimpleWorkerThread *pThread, UINT uGrouping = THREAD_POOL_MSG_GROUPING_DONT_CARE, bool *pbNoBlock = nullptr, DWORD dwDelay = 0);
 	void SendMessageToPoolDelayed(UINT uLine, DWORD dwDueTime, std::shared_ptr<MsgT>& Msg, UINT uPriority, UINT uGrouping = THREAD_POOL_MSG_GROUPING_DONT_CARE);
 	virtual bool DoProcess(const CSimpleWorkerThread *pThread, const MsgT& Msg) = 0;
 	void Terminate(void) throw();
 	void SetPerfCounter(CSimpleRWLock *prwlPerfParam, DWORD *pdwPerfNumThreadsParam, DWORD *pdwPerfQueueSizeParam, DWORD *pdwPerfQueueMaxParam, DWORD *pdwPerfQueueRateInParam, DWORD *pdwPerfQueueRateOutParam, DWORD *pdwPerfWorkItemsParam, DWORD *pdwPerfOverflowParam);
-	bool SearchMessage(const MsgT& MsgFind, MsgT *pPayloadRet, UINT uSearchType) const;
+	DWORD SearchMessageBackModify(const MsgT& MsgFind, UINT uSearchType, SEARCH_BACK_MODIFY_CB FoundProc, void *pContext);
+	bool SearchMessage(const MsgT& MsgFind, MsgT *pPayloadRet, UINT uSearchType, bool bInProcess = true) const;
 	bool SearchMessageKill(const MsgT& MsgFind, UINT uSearchType);
 	DWORD GetNumThreads(DWORD *pdwWorkItems = nullptr) const;
 	void DumpQueue(void *pContext) const;
@@ -328,6 +334,7 @@ bool CThreadWork<MsgT>::InitInstance()
 template <class MsgT>
 void CThreadWork<MsgT>::DoWork()
 {
+	DWORD dwWaitTime = 0;
 	ASSERT(pThreadPool != nullptr);
 	switch (dwEventRet)
 	{
@@ -353,6 +360,19 @@ void CThreadWork<MsgT>::DoWork()
 					uGrouping = pMsg->Control.uGrouping;
 					if (!pThreadPool->IfInGroup(pMsg->Control.uGrouping))
 						break;
+					if (!IfFTZero(pMsg->Control.ftDueTime))
+					{
+						ULARGE_INTEGER DueTime = FTtoULarge(pMsg->Control.ftDueTime);
+						FILETIME ftNow;
+						GetSystemTimeAsFileTime(&ftNow);
+						// figure out how long to wait
+						ULARGE_INTEGER Now = FTtoULarge(ftNow);
+						if (Now.QuadPart < DueTime.QuadPart)
+						{
+							dwWaitTime = (DWORD)(((DueTime.QuadPart - Now.QuadPart) * SECONDS(1)) / FT_SECONDS(1));
+							break;
+						}
+					}
 					pMsg->Control.bProcessing = true;
 					SetInUse();
 					// no need to update perf counters since popping the message and then
@@ -361,12 +381,12 @@ void CThreadWork<MsgT>::DoWork()
 			}
 			DWORD dwRealMaxThreads = pThreadPool->dwMaxNumThreads;
 			pThreadPool->AddThreads(&dwRealMaxThreads);
-			if (pThreadPool->pdwPerfQueueRateOut != nullptr)
+			bool bProcessed = pThreadPool->DoProcess(this, *(Msg.get()));
+			if (bProcessed && (pThreadPool->pdwPerfQueueRateOut != nullptr))
 			{
 				CSimpleRWLockAcquire lockSharedMem(pThreadPool->prwlPerf);
 				InterlockedIncrement(pThreadPool->pdwPerfQueueRateOut);
 			}
-			bool bProcessed = pThreadPool->DoProcess(this, *(Msg.get()));
 			{
 				// message processed, remove it from the queue
 				CRWLockAcquire lock(&pThreadPool->Pool.GetLock(), true);		// write lock
@@ -393,7 +413,7 @@ void CThreadWork<MsgT>::DoWork()
 				}
 			}
 			// first set entry idle, then update counters
-			pThreadPool->UpdatePerf(1, nullptr, this, 0, 0);
+			pThreadPool->UpdatePerf(1, nullptr, this, 0, 0, 0);
 			// now check if someone reduced the max allowed number of threads
 			// if we are over the limit, terminate this thread
 			if (pThreadPool->GetNumThreads() > dwRealMaxThreads)
@@ -401,6 +421,8 @@ void CThreadWork<MsgT>::DoWork()
 				KillThread();				// kill my thread
 				break;
 			}
+			if (!bProcessed)
+				break;
 		}
 		if (dwEventRet == WAIT_TIMEOUT)
 		{
@@ -427,6 +449,10 @@ void CThreadWork<MsgT>::DoWork()
 				pThreadPool->TransferFutureQueue(false);
 			}
 		}
+		if ((dwWaitTime > 0) && (dwWaitTime < SECONDS(5)))
+			SetCycleTime(dwWaitTime);
+		else
+			SetCycleTime(SECONDS(5));
 		break;
 	default:
 		ASSERT(false);
@@ -444,8 +470,8 @@ void CThreadWork<MsgT>::ExitInstance()
 	bInUse = false;
 	CoUninitialize();
 	// update the count of active threads. make it ignore this thread as it is going down
-	if (pThreadPool != NULL)
-		(void)pThreadPool->GetNumThreadsInternal(NULL, GetCurrentThreadId());
+	if (pThreadPool != nullptr)
+		(void)pThreadPool->GetNumThreadsInternal(nullptr, GetCurrentThreadId());
 }
 
 template <class MsgT>
@@ -557,7 +583,15 @@ void CThreadPool<MsgT>::SetThreadPriority(int iThreadPriorityParam)
 }
 
 template <class MsgT>
-void CThreadPool<MsgT>::SetPerfCounter(CSimpleRWLock *prwlPerfParam, DWORD *pdwPerfNumThreadsParam, DWORD *pdwPerfQueueSizeParam, DWORD *pdwPerfQueueMaxParam, DWORD *pdwPerfQueueRateInParam, DWORD *pdwPerfQueueRateOutParam, DWORD *pdwPerfWorkItemsParam, DWORD *pdwPerfOverflowParam)
+void CThreadPool<MsgT>::SetPerfCounter(
+	CSimpleRWLock *prwlPerfParam,
+	DWORD *pdwPerfNumThreadsParam,
+	DWORD *pdwPerfQueueSizeParam,
+	DWORD *pdwPerfQueueMaxParam,
+	DWORD *pdwPerfQueueRateInParam,
+	DWORD *pdwPerfQueueRateOutParam,
+	DWORD *pdwPerfWorkItemsParam,
+	DWORD *pdwPerfOverflowParam)
 {
 	if (prwlPerfParam == nullptr)
 		prwlPerf = &rwlPerfDummy;
@@ -694,7 +728,8 @@ void CThreadPool<MsgT>::SendMessageToPool(
 	UINT uPriority,							// message priority
 	const CSimpleWorkerThread *pThread,		// thread object, used to determine if thread is being shut down while waiting for dwMaxQueueSize
 	UINT uGrouping,							// group code
-	bool *pbNoBlock)						// if non-null, return without processing if it would block. return 'true' if it didn't process msg
+	bool *pbNoBlock,						// if non-null, return without processing if it would block. return 'true' if it didn't process msg
+	DWORD dwDelay)							// delay in millisec. this won't be processed until the delay is satisfied
 {
 	if ((pThread != nullptr) && (dwMaxQueueSize == 0))
 		dwMaxQueueSize = 10000;				// don't let it go to infinity
@@ -733,7 +768,7 @@ void CThreadPool<MsgT>::SendMessageToPool(
 		}
 	}
 	// push message and then update counts
-	UpdatePerf(uLine, &Msg, nullptr, uPriority, uGrouping);
+	UpdatePerf(uLine, &Msg, nullptr, uPriority, uGrouping, dwDelay);
 	AddThreads();
 }
 
@@ -799,19 +834,79 @@ void CThreadPool<MsgT>::AddThreads(DWORD *pdwRealMaxThreads)
 	}
 }
 
+// SearchMessageBackModify
+// search message list going backwards through the most recent entries looking for specific message
+// call callback if found, keeping write lock on the message queue
 template <class MsgT>
-bool CThreadPool<MsgT>::SearchMessage(const MsgT& MsgFind, MsgT *pPayloadRet, UINT uSearchType) const
+DWORD CThreadPool<MsgT>::SearchMessageBackModify(const MsgT& MsgFind, UINT uSearchType, SEARCH_BACK_MODIFY_CB FoundProc, void *pContext)
+{
+	bool bDone = false;
+	try
+	{
+		CRWLockAcquire lockPool(&Pool.GetLock(), false);		// always lock pool first, then msg if you need both locked
+		{
+			CRWLockAcquire lockMsg(&MsgQueue.GetLock(), true);
+			bool bRewind;							// a callback can request that we rewind to the start to do it all over
+			do
+			{
+				bRewind = false;							// a callback can request that we rewind to the start to do it all over
+				bDone = false;
+
+				for (CSharedQueue<CMsgEntry>::reverse_iterator itMsg = MsgQueue.rbegin(); !bDone && (itMsg != MsgQueue.rend()); )
+				{
+					bool bDelete = false;
+					if (!itMsg->Control.bProcessing)									// if it is at the head of the list and being processed, don't deal with it
+					{
+						if (CompareEntry(MsgFind, *itMsg->Payload, uSearchType))
+						{
+							bool bModify = false;
+							bool bDoRewind = false;
+							bDone = FoundProc(&(*itMsg->Payload), bDelete, bModify, bDoRewind, pContext);
+							if (bDoRewind)
+								bRewind = bDone = true;						// rewind implies done
+						}
+					}
+					if (bDelete)
+					{
+						MsgQueue.erase(--itMsg.base());
+						{
+							CSimpleRWLockAcquire lockSharedMem(prwlPerf);
+							DWORD dwCount = MsgQueue.GetCount();
+							if (pdwPerfQueueSize != nullptr)
+								*pdwPerfQueueSize = dwCount;
+							if ((pdwPerfQueueMax != nullptr) && (dwCount > *pdwPerfQueueMax))
+								*pdwPerfQueueMax = dwCount;
+						}
+					}
+					else
+						++itMsg;
+				}
+			} while (bRewind);
+		}
+	}
+	catch (const CErrorInfo& E)
+	{
+		return E.dwError;
+	}
+	return ERROR_SUCCESS;
+}
+
+template <class MsgT>
+bool CThreadPool<MsgT>::SearchMessage(const MsgT& MsgFind, MsgT *pPayloadRet, UINT uSearchType, bool bInProcess) const
 {
 	CRWLockAcquire lockPool(&Pool.GetLock(), false);		// always lock pool first, then msg if you need both locked
 	{
 		CRWLockAcquire lockMsg(&MsgQueue.GetLock(), false);
 		for (CSharedQueue<CMsgEntry>::const_iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); ++itMsg)
 		{
-			if (CompareEntry(MsgFind, *itMsg->Payload, uSearchType))
+			if (bInProcess || !itMsg->Control.bProcessing)
 			{
-				if (pPayloadRet != nullptr)
-					*pPayloadRet = *itMsg->Payload;
-				return true;
+				if (CompareEntry(MsgFind, *itMsg->Payload, uSearchType))
+				{
+					if (pPayloadRet != nullptr)
+						*pPayloadRet = *itMsg->Payload;
+					return true;
+				}
 			}
 		}
 	}
@@ -831,17 +926,20 @@ bool CThreadPool<MsgT>::SearchMessageKill(const MsgT& MsgFind, UINT uSearchType)
 			bRetry = false;
 			for (CSharedQueue<CMsgEntry>::iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); ++itMsg)
 			{
-				if (CompareEntry(MsgFind, *itMsg->Payload, uSearchType))
+				if (!itMsg->Control.bProcessing)									// if it is at the head of the list and being processed, don't deal with it
 				{
-					MsgQueue.erase(itMsg);
-					bFound = true;
-					bRetry = true;
-					if (pdwPerfQueueSize != nullptr)
+					if (CompareEntry(MsgFind, *itMsg->Payload, uSearchType))
 					{
-						CSimpleRWLockAcquire lockSharedMem(prwlPerf);
-						*pdwPerfQueueSize = MsgQueue.GetCount();
+						MsgQueue.erase(itMsg);
+						bFound = true;
+						bRetry = true;
+						if (pdwPerfQueueSize != nullptr)
+						{
+							CSimpleRWLockAcquire lockSharedMem(prwlPerf);
+							*pdwPerfQueueSize = MsgQueue.GetCount();
+						}
+						break;
 					}
-					break;
 				}
 			}
 		} while (bRetry);
@@ -885,13 +983,13 @@ void CThreadPool<MsgT>::DiscardPool() throw()
 	}
 	{
 		CSimpleRWLockAcquire lockSharedMem(prwlPerf);
-		if (pdwPerfNumThreads != NULL)
+		if (pdwPerfNumThreads != nullptr)
 			*pdwPerfNumThreads = 0;
-		if (pdwPerfQueueSize != NULL)
+		if (pdwPerfQueueSize != nullptr)
 			*pdwPerfQueueSize = 0;
-		if (pdwPerfQueueMax != NULL)
+		if (pdwPerfQueueMax != nullptr)
 			*pdwPerfQueueMax = 0;
-		if (pdwPerfWorkItems != NULL)
+		if (pdwPerfWorkItems != nullptr)
 			*pdwPerfWorkItems = 0;
 	}
 }
@@ -900,7 +998,7 @@ void CThreadPool<MsgT>::DiscardPool() throw()
 // if bAdd - adding entry to queue, so count add rate
 // if pResetIdle != nullptr, then, while locked, call SetIdle for that entry
 template <class MsgT>
-void CThreadPool<MsgT>::UpdatePerf(UINT uLine, std::shared_ptr<MsgT> *pMsg, CThreadWork<MsgT> *pResetIdle, UINT uPriority, UINT uGrouping)
+void CThreadPool<MsgT>::UpdatePerf(UINT uLine, std::shared_ptr<MsgT> *pMsg, CThreadWork<MsgT> *pResetIdle, UINT uPriority, UINT uGrouping, DWORD dwDelay)
 {
 	DWORD dwCount, dwWorkCount = 0;
 	// always get the pool lock first, then msg lock if you need both
@@ -922,6 +1020,12 @@ void CThreadPool<MsgT>::UpdatePerf(UINT uLine, std::shared_ptr<MsgT> *pMsg, CThr
 				Rec.Control.uLineNo = uLine;
 				Rec.Payload = *pMsg;
 				Rec.Control.uGrouping = uGrouping;
+				if (dwDelay != 0)
+				{
+					FILETIME ftNow;
+					GetSystemTimeAsFileTime(&ftNow);
+					Rec.Control.ftDueTime = ftNow + ((ULONGLONG)dwDelay * (FT_SECONDS(1) / SECONDS(1)));
+				}
 				bool bInserted = false;
 				for (CSharedQueue<CMsgEntry>::reverse_iterator itMsg = MsgQueue.rbegin(); itMsg != MsgQueue.rend(); itMsg++)
 				{
