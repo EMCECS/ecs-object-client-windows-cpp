@@ -493,7 +493,7 @@ static int DoTest(CString& sOutMessage)
 		Context.sTitle = L"Write";
 		list<CECSConnection::HEADER_STRUCT> MDList;
 		CECSConnection::HEADER_STRUCT MD_Rec;
-#ifndef unused
+#ifdef unused
 		MD_Rec.sHeader = _T("x-amz-meta-NewTag");
 		MD_Rec.sContents = _T("NewTagValue");
 		MDList.push_back(MD_Rec);
@@ -504,8 +504,8 @@ static int DoTest(CString& sOutMessage)
 		}
 		_tprintf(L"\r\n");
 #else
-		MD_Rec.sTag = _T("NewTag");
-		MD_Rec.sData = _T("NewTagValueMPU");
+		MD_Rec.sHeader = _T("x-amz-meta-NewTag");
+		MD_Rec.sContents = _T("NewTagValueMPU");
 		MDList.push_back(MD_Rec);
 		CECSConnection::S3_ERROR Error;
 		_tprintf(L"\nMPU Upload:\n");
