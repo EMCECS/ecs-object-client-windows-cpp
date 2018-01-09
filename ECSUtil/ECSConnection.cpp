@@ -2187,18 +2187,17 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 {
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
-	CString sOldPath(pszOldPath), sNewPath(pszNewPath);
-	CString sOldPathS3, sNewPathS3;								// translated paths to S3
+	CString sOldPathS3(pszOldPath), sNewPathS3(pszNewPath);
 	// first figure out if this an object or a folder
 	// if it ends in '\' it's a folder
-	if (sOldPath.IsEmpty() || sNewPath.IsEmpty())
+	if (sOldPathS3.IsEmpty() || sNewPathS3.IsEmpty())
 		return ERROR_INVALID_NAME;
 
-	if (sOldPath[sOldPath.GetLength() - 1] != L'\\')
+	if (sOldPathS3[sOldPathS3.GetLength() - 1] != L'\\')
 	{
 		deque<ACL_ENTRY> Acls;
 		// first get the ACL of the "before" object
-		S3_ERROR AclAtError = ReadACL(sOldPath, Acls, pszVersionId);
+		S3_ERROR AclAtError = ReadACL(sOldPathS3, Acls, pszVersionId);
 
 		// object - copy to new path and then delete the old object
 		InitHeader();
@@ -2209,6 +2208,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 		// this is because we don't know at this point if we need to do a multipart copy
 		// and multipart copy does not seem to support copying of the MD
 		// it is really complicated to do this again later on, so we'll just always do it here
+		ULONGLONG ullObjectSize = 0ULL;
 		{
 			InitHeader();
 			// read all the headers of the source file
@@ -2223,6 +2223,10 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 			{
 				if (!it->ContentList.empty())
 				{
+					if (it->sHeader.CompareNoCase(L"Content-Length") == 0)
+					{
+						ullObjectSize = _wcstoui64(it->ContentList.front(), nullptr, 10);
+					}
 					bool bFound = false;
 					for (list<HEADER_STRUCT>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
 					{
@@ -2258,11 +2262,11 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 				}
 			}
 		}
-		Error = CopyS3(sOldPathS3, sNewPathS3, pszVersionId, false, nullptr, &MDList);
+		Error = CopyS3(sOldPathS3, sNewPathS3, pszVersionId, false, &ullObjectSize, &MDList);
 		if (Error.IfError())
 			return Error;
 		if (!AclAtError.IfError())
-			(void)WriteACL(sNewPath, Acls);		// if this fails, don't fail the rename since it is mostly done
+			(void)WriteACL(sNewPathS3, Acls);		// if this fails, don't fail the rename since it is mostly done
 
 		if (!bCopy)
 		{
@@ -3525,7 +3529,10 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 			{
 				// add in all metadata
 				for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
-					AddHeader(itList->sHeader, itList->sContents);
+				{
+					if (!itList->sContents.IsEmpty() && (itList->sHeader.Find(sAmzMetaPrefix) == 0))
+						AddHeader(itList->sHeader, itList->sContents);
+				}
 			}
 			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath), nullptr, 0, RetData, &Req);
 			return Error;
