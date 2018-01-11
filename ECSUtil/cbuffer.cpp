@@ -127,9 +127,10 @@ void CBuffer::Grow(
 			DebugBreak();
 #endif
 		SIZE_T AllocLen = nNewSize + sizeof(CBufferData) + ALLOC_INCR_DEFAULT;
-		pInfo = (CBufferData *)HeapReAlloc(hBufferHeap, HEAP_ZERO_MEMORY, pInfo, AllocLen);
-		if (pInfo == nullptr)
+		void *pTmp = HeapReAlloc(hBufferHeap, HEAP_ZERO_MEMORY, pInfo, AllocLen);
+		if (pTmp == nullptr)
 			AfxThrowMemoryException();
+		pInfo = (CBufferData *)pTmp;
 		pInfo->m_nSize = nNewSize;
 		pInfo->m_nAllocSize = nNewSize + ALLOC_INCR_DEFAULT;
 		m_pData = (BYTE *)(pInfo + 1);
@@ -281,7 +282,8 @@ void CBuffer::Load(
 	if (nLen > 0)
 	{
 		ASSERT(m_pData != nullptr);
-		memcpy(m_pData, pSrc, nLen);
+		if (m_pData != nullptr)
+			memcpy(m_pData, pSrc, nLen);
 	}
 }
 
@@ -298,7 +300,8 @@ void CBuffer::Append(
 	if (GetBufSize() > 0)
 	{
 		ASSERT(m_pData != nullptr);
-		memcpy(m_pData + nOrigSize, pSrc, nLen);
+		if (m_pData != nullptr)
+			memcpy(m_pData + nOrigSize, pSrc, nLen);
 	}
 }
 
@@ -316,7 +319,8 @@ int CBuffer::Compare(const CBuffer& Buf) const
 	if ((iDiff == 0) && (nSize != 0))
 	{
 		ASSERT(m_pData != nullptr);
-		iDiff = memcmp(m_pData, Buf.m_pData, nSize);
+		if (m_pData != nullptr)
+			iDiff = memcmp(m_pData, Buf.m_pData, nSize);
 	}
 	return iDiff;
 }
