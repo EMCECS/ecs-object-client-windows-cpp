@@ -716,6 +716,7 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 	__in  LPVOID lpvStatusInformation,
 	__in  DWORD dwStatusInformationLength)
 {
+	(void)hInternet;
 	HTTP_CALLBACK_CONTEXT *pContext = (HTTP_CALLBACK_CONTEXT *)dwContext;
 	ASSERT(pContext != nullptr);
 	CSingleLock lock(&pContext->csContext, true);
@@ -1037,44 +1038,43 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 	if (State.IPListLocal.empty())
 		return false;
 	// first see if any of the entries are too old to be in there
-	{
-		CSingleLock csBad(&csBadIPMap, true);
-		FILETIME ftNow;
-		GetSystemTimeAsFileTime(&ftNow);
-		for (map<BAD_IP_KEY,BAD_IP_ENTRY>::iterator itMap=BadIPMap.begin() ; itMap!=BadIPMap.end() ; )
-		{
-			if (ftNow > (itMap->second.ftError + liBadIPAge))
-				itMap = BadIPMap.erase(itMap);
-			else
-				++itMap;
-		}
+	CSingleLock csBad(&csBadIPMap, true);
 
-		// insert new LoadBalMap record, or retrieve existing record
-		pair<map<CString, UINT>::iterator, bool> Ret = LoadBalMap.insert(make_pair(sHost, 0));
-		if (++Ret.first->second >= State.IPListLocal.size())
-			Ret.first->second = 0;
-		State.iIPList = Ret.first->second;
+	FILETIME ftNow;
+	GetSystemTimeAsFileTime(&ftNow);
+	for (map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); )
+	{
+		if (ftNow > (itMap->second.ftError + liBadIPAge))
+			itMap = BadIPMap.erase(itMap);
+		else
+			++itMap;
 	}
+
+	// insert new LoadBalMap record, or retrieve existing record
+	pair<map<CString, UINT>::iterator, bool> Ret = LoadBalMap.insert(make_pair(sHost, 0));
+	if (++Ret.first->second >= State.IPListLocal.size())
+		Ret.first->second = 0;
+	State.iIPList = Ret.first->second;
+
 	bool bBad;
 	UINT i;
-	for (i=0 ; i<State.IPListLocal.size() ; i++)
+	for (i = 0; i<State.IPListLocal.size(); i++)
 	{
 		bBad = false;
 		if (State.iIPList >= State.IPListLocal.size())
 			State.iIPList = 0;
-		{
-			CSingleLock lock(&csBadIPMap, true);
-			// check if this entry is BAD
-			if (BadIPMap.find(BAD_IP_KEY(sHost, State.IPListLocal[State.iIPList])) != BadIPMap.end())			//lint !e864 (Info -- Expression involving variable 'CECSConnection::BadIPMap' possibly depends on order of evaluation)
-				bBad = true;					// bad - move to the next
-		}
-		// check if we've already tried this one
+		// check if this entry is BAD
+		if (BadIPMap.find(BAD_IP_KEY(sHost, State.IPListLocal[State.iIPList])) != BadIPMap.end())			//lint !e864 (Info -- Expression involving variable 'CAtmosUtil::BadIPMap' possibly depends on order of evaluation)
+			bBad = true;					// bad - move to the next
+											// check if we've already tried this one
 		if (!bBad && (IPUsed.find(State.IPListLocal[State.iIPList]) != IPUsed.end()))				//lint !e864 (Info -- Expression involving variable 'IPUsed' possibly depends on order of evaluation)
 			bBad = true;
 		if (!bBad)
 			break;
 		++State.iIPList;					// try the next
 	}
+	// update the current IP pointer as it might have changed
+	Ret.first->second = State.iIPList;
 	return i < State.IPListLocal.size();
 }
 
@@ -1150,6 +1150,19 @@ void CECSConnection::LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed)
 	}
 }
 
+// IfMarkIPBad
+// test if this error should mark the IP address bad
+bool CECSConnection::IfMarkIPBad(DWORD dwError)
+{
+	if ((dwError >= WINHTTP_ERROR_BASE) && (dwError <= WINHTTP_ERROR_LAST))
+	{
+		if ((dwError != ERROR_WINHTTP_TIMEOUT)
+			&& (dwError != ERROR_WINHTTP_OPERATION_CANCELLED))
+			return true;
+	}
+	return false;
+}
+
 // SendRequest
 // complete the request and send it, and get the response
 // adds the following headers:
@@ -1169,7 +1182,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 {
 	CECSConnectionState& State(GetStateBuf());
 	bool bGotServerResponse = false;
-	CS3ErrorInfo Error;
+	S3_ERROR Error;
 	map<CString,BAD_IP_ENTRY> IPUsed;
 	try
 	{
@@ -1178,117 +1191,85 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			CSimpleRWLockAcquire lock(&rwlIPListHost);			// read lock
 			State.IPListLocal = IPListHost;
 		}
-		for (bool bFirst = true;;)
+		if (!GetNextECSIP(IPUsed))
 		{
+			TestAllIPBad();					// if first time through and there are no IPs it could be that they are all marked bad
 			if (!GetNextECSIP(IPUsed))
+				throw CS3ErrorInfo((DWORD)SEC_E_NO_IP_ADDRESSES);		// no IP addresses!
+		}
+		for (UINT i = 0; i < dwMaxRetryCount; i++)
+		{
+			bGotServerResponse = false;
+			// update the date header in case retries have made this time too far in the past
+			CString sDate(GetCanonicalTime());
+			AddHeader(L"Date", sDate);
+			Error = SendRequestInternal(pszMethod, pszResource, pData, dwDataLen, RetData, pHeaderReq, dwReceivedDataHint, dwBufOffset, &bGotServerResponse, pStreamSend, pStreamReceive, ullTotalLen);
+			if (!Error.IfError())
 			{
-				if (!bFirst)
-					break;
-				TestAllIPBad();					// if first time through and there are no IPs it could be that they are all marked bad
-				if (!GetNextECSIP(IPUsed))
-					throw CS3ErrorInfo((DWORD)SEC_E_NO_IP_ADDRESSES);		// no IP addresses!
+				// no error - but let's look a little closer
+				// we MUST have gotten to the server, AND there should be an HTTP error code returned which should be 20x
+				if (bGotServerResponse
+					&& ((Error.dwHttpError == 0)
+						|| ((Error.dwHttpError >= HTTP_STATUS_OK) && (Error.dwHttpError < HTTP_STATUS_AMBIGUOUS))))
+				{
+					if (!IPUsed.empty())
+						LogBadIPAddr(IPUsed);
+					return Error;							// success!
+				}
+				if (!bGotServerResponse)
+					Error.dwError = ERROR_HOST_UNREACHABLE;			// fake an error code if it was successful, but didn't reach Atmos
+				else
+					Error.dwError = (DWORD)HTTP_E_STATUS_UNEXPECTED;
 			}
-			bFirst = false;
-			for (UINT i = 0; i<dwMaxRetryCount; i++)
+			// don't retry if this is a stream operation
+			// we can't retry because the data stream would need to be reset
+			if ((pStreamSend != nullptr) || (pStreamReceive != nullptr))
+				throw CS3ErrorInfo(Error);
+			if (bGotServerResponse || (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE))
+				throw CS3ErrorInfo(Error);					// if we got through to the server, no need to retry
+			// if timeout, try reducing the max write size
+			if ((!bInitialized || bTestConnection) && (Error.dwError == ERROR_WINHTTP_TIMEOUT))
+				throw CS3ErrorInfo(Error);					// during initialization - don't retry. if it fails right away too bad
+			if (Error.dwError == ERROR_OPERATION_ABORTED)		// if aborted, don't retry.
+				return Error;
+			// if this is some TCP/IP type error, try marking the IP bad
+			if (IfMarkIPBad(Error.dwError))
 			{
-				bGotServerResponse = false;
-				Error = SendRequestInternal(pszMethod, pszResource, pData, dwDataLen, RetData, pHeaderReq, dwReceivedDataHint, dwBufOffset, &bGotServerResponse, pStreamSend, pStreamReceive, ullTotalLen);
-				if (!Error.IfError())
-				{
-					// no error - but let's look a little closer
-					// we MUST have gotten to the server, AND there should be an HTTP error code returned which should be 200
-					if (bGotServerResponse && (Error.Error.dwHttpError == HTTP_STATUS_OK))
-					{
-						if (!IPUsed.empty())
-							LogBadIPAddr(IPUsed);
-						return Error.Error;							// success!
-					}
-					if (!bGotServerResponse)
-						Error.dwError = ERROR_HOST_UNREACHABLE;			// fake an error code if it was successful, but didn't reach the server
-					else if (Error.Error.dwHttpError != HTTP_STATUS_OK)
-						Error.dwError = (DWORD)HTTP_E_STATUS_UNEXPECTED;
-					else
-						Error.dwError = ERROR_UNEXP_NET_ERR;			// should never get here
-				}
-				// don't retry if this is a stream operation
-				// we can't retry because the data stream would need to be reset
-				if ((pStreamSend != nullptr) || (pStreamReceive != nullptr))
-					throw CS3ErrorInfo(Error);
-				if (bGotServerResponse || (Error.Error.dwError == ERROR_WINHTTP_SECURE_FAILURE))
-					throw CS3ErrorInfo(Error);					// if we got through to the server, no need to retry
-				// if timeout, try reducing the max write size
-				if ((!bInitialized || bTestConnection) && (Error.Error.dwError == ERROR_WINHTTP_TIMEOUT))
-					throw CS3ErrorInfo(Error);					// during initialization - don't retry. if it fails right away too bad
-				if (Error.Error.dwError == ERROR_WINHTTP_TIMEOUT)
-				{
-					DWORD dwMaxWriteRequestSave = dwMaxWriteRequest;
-					DWORD dwWinHttpOptionReceiveResponseTimeoutSave = dwWinHttpOptionReceiveResponseTimeout;
-					if (CString(pszMethod).CompareNoCase(_T("PUT")) == 0)
-					{
-						if (dwMaxWriteRequest == 0)
-							dwMaxWriteRequest = MaxWriteRequest;
-						if (dwMaxWriteRequest == 0)
-							dwMaxWriteRequest = 0x10000;					// if 0, start out reducing it to 65k
-						else
-							dwMaxWriteRequest = dwMaxWriteRequest/2;
-						if (dwMaxWriteRequest < 8192)
-							dwMaxWriteRequest = 8192;
-					}
-					// add a little more time for waiting
-					if (dwWinHttpOptionReceiveResponseTimeout < SECONDS(60))
-						dwWinHttpOptionReceiveResponseTimeout += SECONDS(10);
-					// now propagate this to all current entries
-					if ((dwMaxWriteRequestSave != dwMaxWriteRequest)
-						|| (dwWinHttpOptionReceiveResponseTimeoutSave != dwWinHttpOptionReceiveResponseTimeout))
-					{
-						CSingleLock lock(&csThrottleMap, true);
-						list<CECSConnection *>::iterator itList;
-						for (itList = ECSConnectionList.begin() ; itList != ECSConnectionList.end() ; ++itList)
-						{
-							if ((*itList)->sHost == sHost)
-							{
-								(*itList)->dwWinHttpOptionReceiveResponseTimeout = dwWinHttpOptionReceiveResponseTimeout;
-								(*itList)->dwMaxWriteRequest = dwMaxWriteRequest;
-							}
-						}
-					}
-					else
-						break;
-				}
-				if (Error.Error.dwError == ERROR_OPERATION_ABORTED)		// if aborted, don't retry.
-					return Error.Error;
+				// save the error for the log message
+				pair<map<CString, BAD_IP_ENTRY>::iterator, bool> Ret = IPUsed.insert(make_pair(GetCurrentServerIP(), BAD_IP_ENTRY(Error)));
+				ASSERT(Ret.second);
 			}
-			// save the error for the log message
-			pair<map<CString,BAD_IP_ENTRY>::iterator,bool> Ret = IPUsed.insert(make_pair(GetCurrentServerIP(), BAD_IP_ENTRY(Error)));
-			ASSERT(Ret.second);
 			// try another IP address in the list
+			if (!GetNextECSIP(IPUsed))
+				break;
 		}
 	}
 	catch (const CS3ErrorInfo& E)
 	{
-		Error = E;
+		Error = E.Error;
 	}
 	// must be some kind of comm error, call the "disconnect" callback
 	if (Error.IfError() && (DisconnectCB != nullptr))
 	{
 		if ((!bGotServerResponse
-				&& (Error.Error.dwError != ERROR_WINHTTP_INVALID_SERVER_RESPONSE))
-			|| (Error.Error.S3Error == S3_ERROR_InvalidAccessKeyId)
-			|| (Error.Error.S3Error == S3_ERROR_RequestTimeTooSkewed))
+				&& (Error.dwError != ERROR_WINHTTP_INVALID_SERVER_RESPONSE))
+			|| (Error.S3Error == S3_ERROR_InvalidAccessKeyId)
+			|| (Error.S3Error == S3_ERROR_RequestTimeTooSkewed))
 		{
-			if (Error.Error.dwError != ERROR_OPERATION_ABORTED)
+			if (Error.dwError != ERROR_OPERATION_ABORTED)
 			{
-				Error.sAdditionalInfo = CString(pszMethod) + _T("|") + pszResource;
-				DisconnectCB(this, &Error, nullptr);
+				CS3ErrorInfo ErrorInfo(Error);
+				ErrorInfo.sAdditionalInfo = CString(pszMethod) + L"|" + pszResource;
+				DisconnectCB(this, &ErrorInfo, nullptr);
 			}
 		}
 	}
-	if (!Error.Error.IfError() && !IPUsed.empty())
+	if (!Error.IfError() && !IPUsed.empty())
 	{
 		// got through but had problems with at least one IP address
 		LogBadIPAddr(IPUsed);
 	}
-	return Error.Error;
+	return Error;
 }
 
 struct XML_ECS_ERROR_CONTEXT
@@ -1430,7 +1411,7 @@ static bool TestAbortStatic(void *pContext)
 // complete the request and send it, and get the response
 // adds the following headers:
 //	if dwDatalen != 0: content-length: <dwDataLen>
-CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
+CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	LPCTSTR pszMethod,
 	LPCTSTR pszResource,
 	const void *pData,
@@ -2018,7 +1999,7 @@ CECSConnection::CS3ErrorInfo CECSConnection::SendRequestInternal(
 		State.CloseRequest((E.Error.dwError == ERROR_WINHTTP_SECURE_FAILURE) && TST_BIT(State.dwSecureError, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA));
 		State.Session.pValue->bKillWhenDone = true;
 		State.Session.ReleaseSession();
-		return E;
+		return E.Error;
 	}
 	State.CloseRequest();
 	State.Session.ReleaseSession();
@@ -2262,7 +2243,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 				}
 			}
 		}
-		Error = CopyS3(sOldPathS3, sNewPathS3, pszVersionId, false, &ullObjectSize, &MDList);
+		Error = CopyS3(sOldPathS3, sNewPathS3, pszVersionId, false, ullObjectSize, &MDList);
 		if (Error.IfError())
 			return Error;
 		if (!AclAtError.IfError())
@@ -3489,7 +3470,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 	LPCTSTR pszTargetPath,		// S3 path of target object
 	LPCTSTR pszVersionId,		// nonNULL: version ID to copy
 	bool bCopyMD,				// true - copy metadata, false - replace
-	ULONGLONG *pullObjSize,		// optional - if object size supplied it doesn't have to query it
+	ULONGLONG ullObjSize,		// optional - if object size supplied it doesn't have to query it
 	const list<HEADER_STRUCT> *pMDList)	// list of metadata to apply to object
 {
 	const ULONGLONG MULTIPART_SIZE = GIGABYTES(1ULL);		// each part will be 1GB
@@ -3497,24 +3478,12 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 	S3_ERROR Error;
 	CBuffer RetData;
 	list<HEADER_REQ> Req;
-	ULONGLONG ullObjSize = 0;
 	bool bMultiPartInitiated = false;
 	list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>> PartList;
 	S3_UPLOAD_PART_INFO MultiPartInfo;
 
 	try
 	{
-		InitHeader();
-		if (pullObjSize != nullptr)
-			ullObjSize = *pullObjSize;
-		else
-		{
-			S3_SYSTEM_METADATA Properties;
-			Error = ReadProperties(pszSrcPath, Properties, pszVersionId);
-			if (Error.IfError())
-				return Error;
-			ullObjSize = Properties.llSize;
-		}
 		InitHeader();
 		// if object is < 5GB, a single copy will do it.
 		// now construct the new metadata list

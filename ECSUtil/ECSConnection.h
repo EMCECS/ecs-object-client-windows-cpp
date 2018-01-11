@@ -648,7 +648,7 @@ public:
 		}
 		bool IfNotFound(void) const
 		{
-			return ((dwError == HTTP_E_STATUS_NOT_FOUND)
+			return ((dwError == (DWORD)HTTP_E_STATUS_NOT_FOUND)
 				|| (S3Error == S3_ERROR_NoSuchKey)
 				|| (dwHttpError == HTTP_STATUS_NOT_FOUND));
 		}
@@ -1370,11 +1370,12 @@ private:
 	void InitHeader(void);
 	void AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride = true);
 	void SetTimeouts(const CInternetHandle& hRequest);
-	CS3ErrorInfo SendRequestInternal(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq, DWORD dwReceivedDataHint, DWORD dwBufOffset, bool *pbGotServerResponse, STREAM_CONTEXT *pStreamSend, STREAM_CONTEXT *pStreamReceive, ULONGLONG ullTotalLen);
+	S3_ERROR SendRequestInternal(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq, DWORD dwReceivedDataHint, DWORD dwBufOffset, bool *pbGotServerResponse, STREAM_CONTEXT *pStreamSend, STREAM_CONTEXT *pStreamReceive, ULONGLONG ullTotalLen);
 	LPCTSTR GetCurrentServerIP(void);
 	void TestAllIPBad(void);
 	bool GetNextECSIP(map<CString, BAD_IP_ENTRY>& IPUsed);
 	void LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed);
+	bool IfMarkIPBad(DWORD dwError);
 	void PrepareCmd(void);
 	void CleanupCmd(void);
 	bool WaitComplete(DWORD dwCallbackExpected);
@@ -1388,7 +1389,7 @@ private:
 	void KillHostSessions(void);
 	void DeleteS3Send(void);
 	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
-	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG *pullObjSize, const list<HEADER_STRUCT> *pMDList);
+	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG ullObjSize, const list<HEADER_STRUCT> *pMDList);
 
 public:
 	CECSConnection();
@@ -1502,7 +1503,7 @@ public:
 
 ECSUTIL_EXT_API extern std::wostream& operator<<(std::wostream& os, const CECSConnection::S3_SYSTEM_METADATA& Rec);
 
-class CECSConnectionAbortBase
+class ECSUTIL_EXT_CLASS CECSConnectionAbortBase
 {
 private:
 	const bool *pbAbort;			// pointer to abort bool
