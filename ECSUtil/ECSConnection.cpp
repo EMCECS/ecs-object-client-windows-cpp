@@ -5605,7 +5605,6 @@ HRESULT XmlS3GetMDSearchFieldsCB(const CString& sXmlPath, void *pContext, IXmlRe
 CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(S3_METADATA_SEARCH_FIELDS& MDFields)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CBoolSet ECSExtension(&State.bECSExtension);				// set this flag, and reset it on exit
 	S3_ERROR Error;
 	try
 	{
@@ -5702,7 +5701,6 @@ HRESULT XmlS3GetMDSearchFieldsBucketCB(const CString& sXmlPath, void *pContext, 
 CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(LPCTSTR pszBucket, S3_METADATA_SEARCH_FIELDS_BUCKET& MDFieldBucket)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CBoolSet ECSExtension(&State.bECSExtension);				// set this flag, and reset it on exit
 	S3_ERROR Error;
 	try
 	{
@@ -5862,7 +5860,6 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 	S3_METADATA_SEARCH_RESULT& MDSearchResult)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CBoolSet ECSExtension(&State.bECSExtension);				// set this flag, and reset it on exit
 	S3_ERROR Error;
 	try
 	{
@@ -6101,7 +6098,6 @@ HRESULT XmlS3EndpointInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader
 CECSConnection::S3_ERROR CECSConnection::DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CBoolSet ECSExtension(&State.bECSExtension);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;

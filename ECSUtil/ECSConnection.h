@@ -1085,9 +1085,6 @@ private:
 		CInternetHandle hRequest;				// request handle
 		bool bCallbackRegistered;
 		bool bS3Admin;							// admin API
-		bool bCaseSensitive;					// disable case insensitive support
-		bool bOverrideLowerCase;				// if set, use the paths exactly as presented, despite the current lower case settings
-		bool bECSExtension;						// if set, ECS extension and don't worry about getting x-amz-request-id back
 		map<CString,HEADER_STRUCT> Headers;
 		UINT iIPList;							// index into IPList showing currently used
 		deque<CString> IPListLocal;				// local copy of IPListHost to be used only for this request
@@ -1118,9 +1115,6 @@ private:
 			, hRequest(nullptr)
 			, bCallbackRegistered(false)
 			, bS3Admin(false)
-			, bCaseSensitive(false)
-			, bOverrideLowerCase(false)
-			, bECSExtension(false)
 			, iIPList(0)
 			, dwCurrentThread(0)
 			, dwProxyAuthScheme(0)
@@ -1146,9 +1140,6 @@ private:
 			, hRequest(nullptr)
 			, bCallbackRegistered(false)
 			, bS3Admin(false)
-			, bCaseSensitive(false)
-			, bOverrideLowerCase(false)
-			, bECSExtension(false)
 			, iIPList(0)
 			, dwCurrentThread(0)
 			, dwProxyAuthScheme(0)
