@@ -180,21 +180,22 @@ CECSConnection::CECSConnectionState& CECSConnection::GetStateBuf(DWORD dwThreadI
 {
 	if (dwThreadID == 0)
 		dwThreadID = GetCurrentThreadId();
+
+	CSimpleRWLockAcquire lock(&StateList.rwlStateMap, false);			// read lock
+																		// this will either insert it or if it already exists, return the existing entry for this thread
+	map<DWORD, unique_ptr<CECSConnectionState>>::iterator itState = StateList.StateMap.find(dwThreadID);
+	if (itState == StateList.StateMap.end())
 	{
-		CSingleLock lock(&Events.csStateMap, true);
-		// this will either insert it or if it already exists, return the existing entry for this thread
-		map<DWORD, shared_ptr<CECSConnectionState>>::iterator itState = Events.StateMap.find(dwThreadID);
-		if (itState == Events.StateMap.end())
-		{
-			shared_ptr<CECSConnectionState> NewState = make_shared<CECSConnectionState>();
-			pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = Events.StateMap.emplace(make_pair(dwThreadID, NewState));
-			ASSERT(ret.second);
+		lock.Unlock();
+		lock.Lock(true);									// get write lock
+		pair<map<DWORD, unique_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_unique<CECSConnectionState>()));
+		if (ret.second)
 			ret.first->second->pECSConnection = this;
-			return *ret.first->second;
-		}
-		ASSERT(itState->second->pECSConnection == this);
-		return *itState->second;
+		ASSERT(ret.first->second->pECSConnection == this);
+		return *ret.first->second;
 	}
+	ASSERT(itState->second->pECSConnection == this);
+	return *itState->second;
 }
 
 void CECSConnection::PrepareCmd()
@@ -387,9 +388,9 @@ void CECSConnection::CThrottleTimerThread::DoWork()
 		{
 			if ((*itList)->sHost == itMap->first)
 			{
-				CSingleLock lockStateMap(&(*itList)->Events.csStateMap, true);
-				map<DWORD,shared_ptr<CECSConnectionState>>::iterator itStateMap;
-				for (itStateMap = (*itList)->Events.StateMap.begin(); itStateMap != (*itList)->Events.StateMap.end(); ++itStateMap)
+				CSimpleRWLockAcquire lockStateMap(&(*itList)->StateList.rwlStateMap, false);
+				map<DWORD,unique_ptr<CECSConnectionState>>::iterator itStateMap;
+				for (itStateMap = (*itList)->StateList.StateMap.begin(); itStateMap != (*itList)->StateList.StateMap.end(); ++itStateMap)
 					VERIFY(itStateMap->second->evThrottle.SetEvent());
 			}
 		}
@@ -830,6 +831,7 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 		{
 			ASSERT(dwStatusInformationLength == sizeof(HINTERNET));
 			HINTERNET hIntHandle = *((HINTERNET *)lpvStatusInformation);
+			(void)hIntHandle;
 			pContext->bHandleCreated = true;
 		}
 		break;

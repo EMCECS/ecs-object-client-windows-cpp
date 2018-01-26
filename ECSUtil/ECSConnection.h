@@ -1166,8 +1166,8 @@ private:
 
 	struct CECSConnectionStateCS
 	{
-		mutable CCriticalSection csStateMap;
-		mutable map<DWORD, shared_ptr<CECSConnectionState>> StateMap;
+		mutable CSimpleRWLock rwlStateMap;		// lock for StateMap
+		mutable map<DWORD, unique_ptr<CECSConnectionState>> StateMap;
 
 		CECSConnectionStateCS()
 		{
@@ -1209,7 +1209,7 @@ private:
 	CString sS3KeyID;						// S3 Key ID
 	CString sS3Region;						// S3 region (ie us-east-1)
 
-	CECSConnectionStateCS Events;				// a place to put fields that can't be assigned
+	CECSConnectionStateCS StateList;		// a place to put fields that can't be assigned
 
 	// timeout values
 	DWORD dwWinHttpOptionConnectRetries;
