@@ -415,6 +415,7 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetPort(wPort);
 	Conn.SetHost(_T("ECS Test Drive"));
 	Conn.SetUserAgent(_T("TestApp/1.0"));
+	Conn.SetRetries(10, SECONDS(2), SECONDS(4));
 
 	// get the list of buckets
 	CECSConnection::S3_SERVICE_INFO ServiceInfo;

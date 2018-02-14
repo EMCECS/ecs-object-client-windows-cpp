@@ -1220,10 +1220,6 @@ private:
 	DWORD dwLongestTimeout;					// use this to determine the longest time to wait for any one command to finish
 	DWORD dwBadIPAddrAge;					// how long a bad IP entry in the host entry will stay bad before being put back into service (seconds)
 
-	DWORD dwMaxRetryCount;					// max retries for HTTP command
-	DWORD dwPauseBetweenRetries;			// pause between retries (millisec)
-	DWORD dwPauseAfter500Error;				// pause between retries after HTTP 500 error (millisec)
-
 	DWORD dwMaxWriteRequest;				// if non-zero, this specifies the maximum write request. larger requests should be broken into smaller ones
 
 	DWORD dwHttpSecurityFlags;				// global default for security flags (see WinHttpSetOption, WINHTTP_OPTION_SECURITY_FLAGS)
@@ -1278,6 +1274,10 @@ private:
 	static CCriticalSection csDirListList;				// critical section protecting DirListList
 	static DWORD dwGlobalHttpsProtocol;					// bit field of acceptable protocols
 	static DWORD dwS3BucketListingMax;					// maxiumum number of items to return on a bucket listing (S3). Default = 1000 (cannot be larger than 1000)
+
+	static DWORD dwMaxRetryCount;						// max retries for HTTP command
+	static DWORD dwPauseBetweenRetries;					// pause between retries (millisec)
+	static DWORD dwPauseAfter500Error;					// pause between retries after HTTP 500 error (millisec)
 
 	static CString sAmzMetaPrefix;						// just a place to hold "x-amz-meta-"
 
@@ -1393,6 +1393,7 @@ public:
 	static S3_ERROR CECSConnection::ParseS3Timestamp(const CString& sS3Time, FILETIME& ftTime);
 	static void SetGlobalHttpsProtocol(DWORD dwGlobalHttpsProtocolParam);
 	static void SetS3BucketListingMax(DWORD dwS3BucketListingMaxParam);
+	static void SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam = 500, DWORD dwPauseAfter500ErrorParam = 500);
 
 	static void SetInitialized(void);				// global initialized flag. must be called to set regular timeouts
 	void SetSecret(LPCTSTR pszSecret);		// set shared secret string in base64
@@ -1429,7 +1430,6 @@ public:
 		DWORD dwWinHttpOptionSendTimeoutParam,
 		DWORD dwBadIPAddrAge);
 	CString GetHost(void) const;
-	void SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam = 100, DWORD dwPauseAfter500ErrorParam = 100);
 	void SetMaxWriteRequest(DWORD dwMaxWriteRequestParam);
 	static void SetMaxWriteRequestAll(DWORD dwMaxWriteRequestParam);
 	void SetDisableSecureLog(bool bDisable = true);

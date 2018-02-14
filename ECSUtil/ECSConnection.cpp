@@ -58,6 +58,10 @@ map<CECSConnection::SESSION_MAP_KEY, CECSConnection::SESSION_MAP_VALUE> CECSConn
 long CECSConnection::lSessionKeyValue;
 CString CECSConnection::sAmzMetaPrefix(TEXT("x-amz-meta-"));						// just a place to hold "x-amz-meta-"
 
+DWORD CECSConnection::dwMaxRetryCount(MaxRetryCount);				// max retries for HTTP command
+DWORD CECSConnection::dwPauseBetweenRetries(500);					// pause between retries (millisec)
+DWORD CECSConnection::dwPauseAfter500Error(500);					// pause between retries after HTTP 500 error (millisec)
+
 class CSignQuerySet
 {
 	static CSimpleRWLock lwrSignQuerySet;
@@ -421,9 +425,6 @@ CECSConnection::CECSConnection()
 	, dwWinHttpOptionSendTimeout(0)
 	, dwLongestTimeout(0)
 	, dwBadIPAddrAge(0)
-	, dwMaxRetryCount(MaxRetryCount)
-	, dwPauseBetweenRetries(100)
-	, dwPauseAfter500Error(100)
 	, dwMaxWriteRequest(MaxWriteRequest)
 	, dwHttpSecurityFlags(0)
 {
