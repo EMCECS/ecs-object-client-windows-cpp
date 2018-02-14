@@ -5678,7 +5678,12 @@ HRESULT XmlS3GetMDSearchFieldsBucketCB(const CString& sXmlPath, void *pContext, 
 	switch (NodeType)
 	{
 	case XmlNodeType_Text:
-		if (sXmlPath.CompareNoCase(XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_NAME) == 0)
+		if (sXmlPath.CompareNoCase(XML_S3_METADATA_SEARCH_FIELDS_BUCKET_SEARCHENABLED) == 0)
+		{
+			if ((psValue != NULL) && !psValue->IsEmpty())
+				pInfo->pMDFieldBucket->bSearchEnabled = psValue->CompareNoCase(L"true") == 0;
+		}
+		else if (sXmlPath.CompareNoCase(XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_NAME) == 0)
 		{
 			if ((psValue != nullptr) && !psValue->IsEmpty())
 				pInfo->Rec.sName = *psValue;
