@@ -1220,7 +1220,10 @@ private:
 	DWORD dwLongestTimeout;					// use this to determine the longest time to wait for any one command to finish
 	DWORD dwBadIPAddrAge;					// how long a bad IP entry in the host entry will stay bad before being put back into service (seconds)
 
-	DWORD dwMaxRetryCount;
+	DWORD dwMaxRetryCount;					// max retries for HTTP command
+	DWORD dwPauseBetweenRetries;			// pause between retries (millisec)
+	DWORD dwPauseAfter500Error;				// pause between retries after HTTP 500 error (millisec)
+
 	DWORD dwMaxWriteRequest;				// if non-zero, this specifies the maximum write request. larger requests should be broken into smaller ones
 
 	DWORD dwHttpSecurityFlags;				// global default for security flags (see WinHttpSetOption, WINHTTP_OPTION_SECURITY_FLAGS)
@@ -1426,7 +1429,7 @@ public:
 		DWORD dwWinHttpOptionSendTimeoutParam,
 		DWORD dwBadIPAddrAge);
 	CString GetHost(void) const;
-	void SetRetries(DWORD dwMaxRetryCountParam);
+	void SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam = 100, DWORD dwPauseAfter500ErrorParam = 100);
 	void SetMaxWriteRequest(DWORD dwMaxWriteRequestParam);
 	static void SetMaxWriteRequestAll(DWORD dwMaxWriteRequestParam);
 	void SetDisableSecureLog(bool bDisable = true);

@@ -422,6 +422,8 @@ CECSConnection::CECSConnection()
 	, dwLongestTimeout(0)
 	, dwBadIPAddrAge(0)
 	, dwMaxRetryCount(MaxRetryCount)
+	, dwPauseBetweenRetries(100)
+	, dwPauseAfter500Error(100)
 	, dwMaxWriteRequest(MaxWriteRequest)
 	, dwHttpSecurityFlags(0)
 {
@@ -1227,8 +1229,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			// we can't retry because the data stream would need to be reset
 			if ((pStreamSend != nullptr) || (pStreamReceive != nullptr))
 				throw CS3ErrorInfo(Error);
-			if (bGotServerResponse || (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE))
+			if ((Error.dwHttpError != HTTP_STATUS_SERVER_ERROR)
+				&& (bGotServerResponse || (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)))
+			{
 				throw CS3ErrorInfo(Error);					// if we got through to the server, no need to retry
+			}
 			// if timeout, try reducing the max write size
 			if ((!bInitialized || bTestConnection) && (Error.dwError == ERROR_WINHTTP_TIMEOUT))
 				throw CS3ErrorInfo(Error);					// during initialization - don't retry. if it fails right away too bad
@@ -1244,6 +1249,13 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			// try another IP address in the list
 			if (!GetNextECSIP(IPUsed))
 				break;
+			if (Error.dwHttpError == HTTP_STATUS_SERVER_ERROR)
+			{
+				// if ECS is busy, wait a bit and try again. hopefully on a different node
+				Sleep(dwPauseAfter500Error);
+			}
+			else
+				Sleep(dwPauseBetweenRetries);
 		}
 	}
 	catch (const CS3ErrorInfo& E)
@@ -4000,12 +4012,14 @@ void CECSConnection::SetTimeouts(
 	dwBadIPAddrAge = dwBadIPAddrAgeParam;
 }
 
-void CECSConnection::SetRetries(DWORD dwMaxRetryCountParam)
+void CECSConnection::SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam, DWORD dwPauseAfter500ErrorParam)
 {
 	if (dwMaxRetryCountParam == 0)
 		dwMaxRetryCount = MaxRetryCount;
 	else
 		dwMaxRetryCount = dwMaxRetryCountParam;
+	dwPauseBetweenRetries = dwPauseBetweenRetriesParam;
+	dwPauseAfter500Error = dwPauseAfter500ErrorParam;
 }
 
 void CECSConnection::SetMaxWriteRequest(DWORD dwMaxWriteRequestParam)
