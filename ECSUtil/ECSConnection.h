@@ -250,14 +250,18 @@ public:
 		CString sRuleID;									// user assigned rule ID
 		CString sPath;										// optional subpath to apply rule (relative to bucket)
 		bool bEnabled;										// enabled or disabled
+		bool bExpiredDeleteMarkers;							// set: expired delete markers are deleted
 		DWORD dwDays;										// number of days until expiration (current objects)
 		DWORD dwNoncurrentDays;								// number of days (for non-current objects) until expiration
+		DWORD dwAbortIncompleteMultipartUploadDays;			// number of days to abort incomplete uploads
 		FILETIME ftDate;									// date of expiration (current objects)
 
 		S3_LIFECYCLE_RULE()
 			: bEnabled(false)
+			, bExpiredDeleteMarkers(false)
 			, dwDays(0)
 			, dwNoncurrentDays(0)
+			, dwAbortIncompleteMultipartUploadDays(0)
 		{
 			ZeroFT(ftDate);
 		}
@@ -266,13 +270,15 @@ public:
 			sRuleID.Empty();
 			sPath.Empty();
 			bEnabled = false;
+			bExpiredDeleteMarkers = false;
 			dwDays = 0;
 			dwNoncurrentDays = 0;
+			dwAbortIncompleteMultipartUploadDays = 0;
 			ZeroFT(ftDate);
 		}
 		bool IsEmpty(void)
 		{
-			return sRuleID.IsEmpty() || ((dwDays == 0) && (dwNoncurrentDays == 0) && IfFTZero(ftDate));
+			return sRuleID.IsEmpty() || ((dwDays == 0) && (dwNoncurrentDays == 0) && IfFTZero(ftDate) && (bExpiredDeleteMarkers == 0));
 		}
 		bool operator < (const S3_LIFECYCLE_RULE& rec) const
 		{

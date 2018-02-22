@@ -6200,6 +6200,14 @@ HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReade
 			{
 				pInfo->LastRule.dwNoncurrentDays = _ttoi(FROM_UNICODE(*psValue));
 			}
+			else if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_ABORTUPLOAD_DAYS) == 0)
+			{
+				pInfo->LastRule.dwAbortIncompleteMultipartUploadDays = _wtoi(*psValue);
+			}
+			else if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_EXPIRE_DELETE_MARKER) == 0)
+			{
+				pInfo->LastRule.bExpiredDeleteMarkers = psValue->CompareNoCase(L"true") == 0;
+			}
 		}
 		break;
 
@@ -6322,7 +6330,6 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
-			if (!IfFTZero(it->ftDate) || (it->dwDays != 0))
 			{
 				if (FAILED(pWriter->WriteStartElement(nullptr, L"Expiration", nullptr)))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -6336,11 +6343,9 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 					if (FAILED(pWriter->WriteFullEndElement()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 				}
-				else
+				else if (it->dwDays != 0)
 				{
 					// specify # of days
-					if (it->dwDays == 0)
-						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 					if (FAILED(pWriter->WriteStartElement(nullptr, L"Days", nullptr)))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 					if (FAILED(pWriter->WriteString(TO_UNICODE(FmtNum(it->dwDays)))))
@@ -6348,6 +6353,13 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 					if (FAILED(pWriter->WriteFullEndElement()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 				}
+				if (FAILED(pWriter->WriteStartElement(NULL, L"ExpiredObjectDeleteMarker", NULL)))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+				if (FAILED(pWriter->WriteString(it->bExpiredDeleteMarkers ? L"true" : L"false")))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+				if (FAILED(pWriter->WriteFullEndElement()))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+
 				if (FAILED(pWriter->WriteFullEndElement()))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			}
@@ -6368,6 +6380,25 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 				if (FAILED(pWriter->WriteFullEndElement()))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			}
+
+			if (it->dwAbortIncompleteMultipartUploadDays != 0)
+			{
+				// abort incomplete multipart uploads
+				if (FAILED(pWriter->WriteStartElement(NULL, L"AbortIncompleteMultipartUpload", NULL)))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+
+				// specify # of days
+				if (FAILED(pWriter->WriteStartElement(NULL, L"DaysAfterInitiation", NULL)))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+				if (FAILED(pWriter->WriteString(FmtNum(it->dwAbortIncompleteMultipartUploadDays))))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+				if (FAILED(pWriter->WriteFullEndElement()))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+
+				if (FAILED(pWriter->WriteFullEndElement()))
+					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+			}
+
 			// End "Rule" clause
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
