@@ -14,6 +14,8 @@
  */
 
 #include "exportdef.h"
+#include <WinNT.h>
+#include <bcrypt.h>
 
 #pragma once
 
