@@ -1071,9 +1071,9 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 		// check if this entry is BAD
 		if (BadIPMap.find(BAD_IP_KEY(sHost, State.IPListLocal[State.iIPList])) != BadIPMap.end())			//lint !e864 (Info -- Expression involving variable 'CAtmosUtil::BadIPMap' possibly depends on order of evaluation)
 			bBad = true;					// bad - move to the next
-											// check if we've already tried this one
-		if (!bBad && (IPUsed.find(State.IPListLocal[State.iIPList]) != IPUsed.end()))				//lint !e864 (Info -- Expression involving variable 'IPUsed' possibly depends on order of evaluation)
-			bBad = true;
+		// check if we've already tried this one
+	//	if (!bBad && (IPUsed.find(State.IPListLocal[State.iIPList]) != IPUsed.end()))				//lint !e864 (Info -- Expression involving variable 'IPUsed' possibly depends on order of evaluation)
+	//		bBad = true;
 		if (!bBad)
 			break;
 		++State.iIPList;					// try the next
@@ -1230,7 +1230,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			// we can't retry because the data stream would need to be reset
 			if ((pStreamSend != nullptr) || (pStreamReceive != nullptr))
 				throw CS3ErrorInfo(Error);
-			if ((Error.dwHttpError != HTTP_STATUS_SERVER_ERROR)
+			if ((Error.dwHttpError < HTTP_STATUS_SERVER_ERROR)
 				&& (bGotServerResponse || (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)))
 			{
 				throw CS3ErrorInfo(Error);					// if we got through to the server, no need to retry
