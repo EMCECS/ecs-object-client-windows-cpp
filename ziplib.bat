@@ -1,0 +1,1 @@
+7z.exe a -tzip ecs-object-client-windows-cpp.zip -r -x!*.user -x!*.aps -x!*.opendb -x!*.db README.md LICENSE.txt ECSUtil\*
