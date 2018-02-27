@@ -6353,13 +6353,15 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 					if (FAILED(pWriter->WriteFullEndElement()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 				}
-				if (FAILED(pWriter->WriteStartElement(NULL, L"ExpiredObjectDeleteMarker", NULL)))
-					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-				if (FAILED(pWriter->WriteString(it->bExpiredDeleteMarkers ? L"true" : L"false")))
-					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-				if (FAILED(pWriter->WriteFullEndElement()))
-					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-
+				if (it->bExpiredDeleteMarkers)
+				{
+					if (FAILED(pWriter->WriteStartElement(NULL, L"ExpiredObjectDeleteMarker", NULL)))
+						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+					if (FAILED(pWriter->WriteString(L"true")))
+						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+					if (FAILED(pWriter->WriteFullEndElement()))
+						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
+				}
 				if (FAILED(pWriter->WriteFullEndElement()))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			}
