@@ -2114,17 +2114,20 @@ void CECSConnection::SetPort(INTERNET_PORT PortParam)
 
 void CECSConnection::SetProxy(bool bUseDefaultProxyParam, LPCTSTR pszProxy, DWORD dwPort, LPCTSTR pszProxyUser, LPCTSTR pszProxyPassword)
 {
-	if ((sProxy != pszProxy)
+	CString sProxyParam(pszProxy);
+	CString sProxyUserParam(pszProxyUser);
+	CString sProxyPasswordParam(pszProxyPassword);
+	if ((sProxy != sProxyParam)
 		|| (dwProxyPort != dwPort)
-		|| (sProxyUser != pszProxyUser)
-		|| (sProxyPassword != pszProxyPassword)
+		|| (sProxyUser != sProxyUserParam)
+		|| (sProxyPassword != sProxyPasswordParam)
 		|| (bUseDefaultProxyParam != bUseDefaultProxy))
 	{
 		bUseDefaultProxy = bUseDefaultProxyParam;
-		sProxy = pszProxy;
+		sProxy = sProxyParam;
 		dwProxyPort = dwPort;
-		sProxyUser = pszProxyUser;
-		sProxyPassword = pszProxyPassword;
+		sProxyUser = sProxyUserParam;
+		sProxyPassword = sProxyPasswordParam;
 		KillHostSessions();
 	}
 }
