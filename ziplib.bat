@@ -1,1 +1,1 @@
-7z.exe a -tzip ecs-object-client-windows-cpp.zip -r -x!*.user -x!*.aps -x!*.opendb -x!*.db README.md LICENSE.txt ECSUtil\*
+7z.exe a -tzip ecs-object-client-windows-cpp.zip -r -x!*.user -x!*.aps -x!*.opendb -x!*.db -x!Debug -x!"Debug Lib" -x!"Debug Lib Static" -x!lint -x!objDebug -x!"objDebug Lib" -x!"objDebug Lib Static" -x!objRelease -x!"objRelease Lib" -x!"objRelease Lib Static" -x!Release -x!"Release Lib" -x!"Release Lib Static" -x!ziplib.bat -x!.git -x!.vs -x!.gitignore *

@@ -15,3 +15,7 @@ objDebug Lib
 objRelease Lib
 Release Lib
 /ECSUtil/*.aps
+/Debug Lib Static
+/Release Lib Static
+/objDebug Lib Static
+/objRelease Lib Static
