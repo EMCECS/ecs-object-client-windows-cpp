@@ -273,6 +273,12 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>set version resource in DLL from source file</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug Lib|Win32'">
     <ClCompile>
@@ -354,6 +360,12 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>set version resource in DLL from source file</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug Lib|x64'">
     <ClCompile>
@@ -432,6 +444,12 @@
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>set version resource in DLL from source file</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release Lib|Win32'">
     <ClCompile>
@@ -522,6 +540,12 @@
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+    <PostBuildEvent>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>set version resource in DLL from source file</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release Lib|x64'">
     <ClCompile>

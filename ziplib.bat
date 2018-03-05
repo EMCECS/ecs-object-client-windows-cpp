@@ -1,1 +1,5 @@
-7z.exe a -tzip ecs-object-client-windows-cpp.zip -r -x!*.user -x!*.aps -x!*.opendb -x!*.db -x!Debug -x!"Debug Lib" -x!"Debug Lib Static" -x!lint -x!objDebug -x!"objDebug Lib" -x!"objDebug Lib Static" -x!objRelease -x!"objRelease Lib" -x!"objRelease Lib Static" -x!Release -x!"Release Lib" -x!"Release Lib Static" -x!ziplib.bat -x!.git -x!.vs -x!.gitignore *
+@echo off
+copy /y ziplibtemplate.bat ziplibtemplatetemp.bat
+bin\setversion.exe /getversion "#define ECSUTIL_VERSION" ECSUtil\ECSGlobal.h /setversionfile ~VERSION~ ziplibtemplatetemp.bat
+call ziplibtemplatetemp.bat
+del ziplibtemplatetemp.bat
