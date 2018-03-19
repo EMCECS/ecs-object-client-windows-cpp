@@ -5070,6 +5070,21 @@ CECSConnection::S3_ERROR CECSConnection::S3PutBucketVersioning(LPCTSTR pszBucket
 	return Error;
 }
 
+// SetHTTPSecurityFlags
+// Sets the security flags for the connection.It can be a combination of these values (OR'ed):
+//
+// SECURITY_FLAG_IGNORE_CERT_CN_INVALID
+// Allows an invalid common name in a certificate; that is, the server name specified
+// by the application does not match the common name in the certificate.
+//
+// SECURITY_FLAG_IGNORE_CERT_DATE_INVALID
+// Allows an invalid certificate date, that is, an expired or not- yet - effective certificate.
+//
+// SECURITY_FLAG_IGNORE_UNKNOWN_CA
+// Allows an invalid certificate authority.
+//
+// SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE
+// Allows the identity of a server to be established with a non - server certificate(for example, a client certificate).
 void CECSConnection::SetHTTPSecurityFlags(DWORD dwHTTPSecurityFlagsParam)
 {
 	dwHttpSecurityFlags = dwHTTPSecurityFlagsParam;
