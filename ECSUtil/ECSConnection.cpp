@@ -4062,12 +4062,6 @@ void CECSConnection::SetDisableSecureLog(bool bDisable)
 	State.bDisableSecureLog = bDisable;
 }
 
-void CECSConnection::SetDisableUserSupport(bool bDisable)
-{
-	CECSConnectionState& State(GetStateBuf());
-	State.bDisableUserSupport = bDisable;
-}
-
 void CECSConnection::GetCertInfo(ECS_CERT_INFO& Rec)
 {
 	CECSConnectionState& State(GetStateBuf());

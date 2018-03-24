@@ -1102,10 +1102,7 @@ private:
 		DWORD dwAuthScheme;						
 		DWORD dwSecureError;					// explanation for SSL errors (WINHTTP_CALLBACK_STATUS_FLAG_...)
 		bool bDisableSecureLog;					// if set, don't log security errors in the callback
-		bool bDisableUserSupport;				// don't redirect to a different user based on path
-		bool bUseFolderObject;					// if set (default), and S3, and if folder is referenced, add the folder object to the path (S3_FOLDER_FILE_NAME)
 		ECS_CERT_INFO CertInfo;				// holds certificate info if it is from an unknown CA
-		CString sLastNormalizedPath;			// saved from last normalized path operation
 		list<S3_DELETE_ENTRY> S3DeletePathList;	// accumulated list of objects to delete. used during DeleteS3
 		ULONGLONG ullReadBytes;					// keep track of number of received bytes in a stream receive
 		DWORD dwSecurityFlagsAdd;				// flags to add to security options from default
@@ -1127,8 +1124,6 @@ private:
 			, dwAuthScheme(0)
 			, dwSecureError(0)
 			, bDisableSecureLog(false)
-			, bDisableUserSupport(false)
-			, bUseFolderObject(true)
 			, ullReadBytes(0ULL)
 			, dwSecurityFlagsAdd(0)
 			, dwSecurityFlagsSub(0)
@@ -1152,8 +1147,6 @@ private:
 			, dwAuthScheme(0)
 			, dwSecureError(0)
 			, bDisableSecureLog(false)
-			, bDisableUserSupport(false)
-			, bUseFolderObject(true)
 			, ullReadBytes(0ULL)
 			, dwSecurityFlagsAdd(0)
 			, dwSecurityFlagsSub(0)
@@ -1439,7 +1432,6 @@ public:
 	void SetMaxWriteRequest(DWORD dwMaxWriteRequestParam);
 	static void SetMaxWriteRequestAll(DWORD dwMaxWriteRequestParam);
 	void SetDisableSecureLog(bool bDisable = true);
-	void SetDisableUserSupport(bool bDisable = true);
 	void GetCertInfo(ECS_CERT_INFO& Rec);
 	DWORD GetSecureError(void);
 	static void RemoveACLDups(deque<CECSConnection::ACL_ENTRY>& UserAcls);
