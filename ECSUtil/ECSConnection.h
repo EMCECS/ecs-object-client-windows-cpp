@@ -1393,6 +1393,8 @@ public:
 	static void SetGlobalHttpsProtocol(DWORD dwGlobalHttpsProtocolParam);
 	static void SetS3BucketListingMax(DWORD dwS3BucketListingMaxParam);
 	static void SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam = 500, DWORD dwPauseAfter500ErrorParam = 500);
+	static DWORD CECSConnection::SetRootCertificate(const ECS_CERT_INFO& CertInfo, DWORD dwCertOpenFlags = CERT_STORE_OPEN_EXISTING_FLAG | CERT_SYSTEM_STORE_LOCAL_MACHINE, LPCTSTR pszStoreName = _T("Root"));
+	static CString CECSConnection::GetSecureErrorText(DWORD dwSecureError);
 
 	static void SetInitialized(void);				// global initialized flag. must be called to set regular timeouts
 	void SetSecret(LPCTSTR pszSecret);		// set shared secret string in base64

@@ -2011,7 +2011,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			pConstStreamSend->UpdateProgressCB(-pConstStreamSend->iAccProgress, pConstStreamSend->pContext);
 			pStreamSend->iAccProgress = 0;
 		}
-		State.CloseRequest((E.Error.dwError == ERROR_WINHTTP_SECURE_FAILURE) && TST_BIT(State.dwSecureError, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA));
+		State.CloseRequest(E.Error.dwError == ERROR_WINHTTP_SECURE_FAILURE);
 		State.Session.pValue->bKillWhenDone = true;
 		State.Session.ReleaseSession();
 		return E.Error;
@@ -6573,4 +6573,64 @@ void CECSConnection::S3_ERROR::SetError(void)
 		dwError = (DWORD)HTTP_E_STATUS_UNEXPECTED;
 	else
 		dwError = it->second;
+}
+
+// SetRootCertificate
+// pass in a serialized SLL certificate
+// set it in the trusted root area of the certificate store
+// returns error code
+DWORD CECSConnection::SetRootCertificate(
+	const ECS_CERT_INFO& CertInfo,
+	DWORD dwCertOpenFlags,
+	LPCTSTR pszStoreName)					// Such as L"My" or L"Root"
+{
+	DWORD dwError;
+	// open a certificate store
+	HCERTSTORE hCertStore = CertOpenStore(CERT_STORE_PROV_SYSTEM,
+		0,
+		0,
+		dwCertOpenFlags,
+		pszStoreName);
+	if (hCertStore == NULL)
+		return GetLastError();
+
+	// add the certificate
+	if (!CertAddSerializedElementToStore(hCertStore, CertInfo.SerializedCert.GetData(), CertInfo.SerializedCert.GetBufSize(),
+		CERT_STORE_ADD_REPLACE_EXISTING, 0, CERT_STORE_CERTIFICATE_CONTEXT_FLAG, NULL, NULL))
+	{
+		dwError = GetLastError();
+		(void)CertCloseStore(hCertStore, 0);
+		return dwError;
+	}
+
+	// close the store
+	if (!CertCloseStore(hCertStore, 0))
+		return GetLastError();
+	return ERROR_SUCCESS;
+}
+
+struct SECURE_ERROR_TEXT
+{
+	DWORD dwWinHttpErrorMask;
+	LPCTSTR pszErrorText;
+} ErrorArray[] =
+{
+	{ WINHTTP_CALLBACK_STATUS_FLAG_CERT_REV_FAILED, _T("Certification revocation checking has been enabled, but the revocation check failed to verify whether a certificate has been revoked. The server used to check for revocation might be unreachable.\r\n") },
+	{ WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CERT, _T("SSL certificate is invalid.\r\n") },
+	{ WINHTTP_CALLBACK_STATUS_FLAG_CERT_REVOKED, _T("SSL certificate was revoked.\r\n") },
+	{ WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA, _T("The function is unfamiliar with the Certificate Authority that generated the server's certificate.\r\n") },
+	{ WINHTTP_CALLBACK_STATUS_FLAG_CERT_CN_INVALID, _T("SSL certificate common name (host name field) is incorrect, for example, if you entered www.microsoft.com and the common name on the certificate says www.msn.com.\r\n") },
+	{ WINHTTP_CALLBACK_STATUS_FLAG_CERT_DATE_INVALID, _T("SSL certificate date that was received from the server is bad. The certificate is expired.\r\n") },
+	{ WINHTTP_CALLBACK_STATUS_FLAG_SECURITY_CHANNEL_ERROR, _T("The application experienced an internal error loading the SSL libraries.\r\n") },
+};
+
+CString CECSConnection::GetSecureErrorText(DWORD dwSecureError)
+{
+	CString sMsg;
+	for (UINT i = 0; i < _countof(ErrorArray); i++)
+	{
+		if (TST_BIT(dwSecureError, ErrorArray[i].dwWinHttpErrorMask))
+			sMsg += ErrorArray[i].pszErrorText;
+	}
+	return sMsg;
 }
