@@ -1207,7 +1207,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			bGotServerResponse = false;
 			// update the date header in case retries have made this time too far in the past
 			CString sDate(GetCanonicalTime());
-			AddHeader(L"Date", sDate);
+			AddHeader(_T("Date"), sDate);
 			Error = SendRequestInternal(pszMethod, pszResource, pData, dwDataLen, RetData, pHeaderReq, dwReceivedDataHint, dwBufOffset, &bGotServerResponse, pStreamSend, pStreamReceive, ullTotalLen);
 			if (!Error.IfError())
 			{
@@ -1274,7 +1274,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			if (Error.dwError != ERROR_OPERATION_ABORTED)
 			{
 				CS3ErrorInfo ErrorInfo(Error);
-				ErrorInfo.sAdditionalInfo = CString(pszMethod) + L"|" + pszResource;
+				ErrorInfo.sAdditionalInfo = CString(pszMethod) + _T("|") + pszResource;
 				DisconnectCB(this, &ErrorInfo, nullptr);
 			}
 		}
@@ -2222,9 +2222,9 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 			{
 				if (!it->ContentList.empty())
 				{
-					if (it->sHeader.CompareNoCase(L"Content-Length") == 0)
+					if (it->sHeader.CompareNoCase(_T("Content-Length")) == 0)
 					{
-						ullObjectSize = _wcstoui64(it->ContentList.front(), nullptr, 10);
+						ullObjectSize = _tcstoui64(it->ContentList.front(), nullptr, 10);
 					}
 					bool bFound = false;
 					for (list<HEADER_STRUCT>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
@@ -3051,7 +3051,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				else
 					sResource += _T("?delimiter=/");
 				if (bSingle || ((dwS3BucketListingMax >= 10) && (dwS3BucketListingMax < 1000)))
-					sResource += CString(L"&max-keys=") + (bSingle ? L"10" : (LPCTSTR)FmtNum(dwS3BucketListingMax));
+					sResource += CString(_T("&max-keys=")) + (bSingle ? _T("10") : (LPCTSTR)FmtNum(dwS3BucketListingMax));
 				if (!sPrefix.IsEmpty())
 					sResource += _T("&prefix=") + sPrefix;
 				if (!State.sEmcToken.IsEmpty())
@@ -5547,15 +5547,15 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 	return Error;
 }
 
-CECSConnection::E_MD_SEARCH_TYPE CECSConnection::TranslateSearchFieldType(LPCTSTR pszType)
+CECSConnection::E_MD_SEARCH_TYPE CECSConnection::TranslateSearchFieldType(LPCWSTR pszType)
 {
-	if (lstrcmpi(pszType, L"String") == 0)
+	if (lstrcmpiW(pszType, L"String") == 0)
 		return E_MD_SEARCH_TYPE::String;
-	if (lstrcmpi(pszType, L"Integer") == 0)
+	if (lstrcmpiW(pszType, L"Integer") == 0)
 		return E_MD_SEARCH_TYPE::Integer;
-	if (lstrcmpi(pszType, L"Decimal") == 0)
+	if (lstrcmpiW(pszType, L"Decimal") == 0)
 		return E_MD_SEARCH_TYPE::Decimal;
-	if (lstrcmpi(pszType, L"Datetime") == 0)
+	if (lstrcmpiW(pszType, L"Datetime") == 0)
 		return E_MD_SEARCH_TYPE::Datetime;
 	return E_MD_SEARCH_TYPE::Unknown;
 }
@@ -5566,14 +5566,14 @@ struct XML_S3_METADATA_SEARCH_FIELDS_CONTEXT
 	CECSConnection::S3_METADATA_SEARCH_ENTRY Rec;
 };
 
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_ATTRIBUTES_ATTRIBUTE = L"//MetadataSearchList/OptionalAttributes/Attribute";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_ATTRIBUTES_ATTRIBUTE_NAME = L"//MetadataSearchList/OptionalAttributes/Attribute/Name";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_ATTRIBUTES_ATTRIBUTE_DATATYPE = L"//MetadataSearchList/OptionalAttributes/Attribute/Datatype";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY = L"//MetadataSearchList/IndexableKeys/Key";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY_NAME = L"//MetadataSearchList/IndexableKeys/Key/Name";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY_DATATYPE = L"//MetadataSearchList/IndexableKeys/Key/Datatype";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_ATTRIBUTES_ATTRIBUTE = L"//MetadataSearchList/OptionalAttributes/Attribute";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_ATTRIBUTES_ATTRIBUTE_NAME = L"//MetadataSearchList/OptionalAttributes/Attribute/Name";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_ATTRIBUTES_ATTRIBUTE_DATATYPE = L"//MetadataSearchList/OptionalAttributes/Attribute/Datatype";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY = L"//MetadataSearchList/IndexableKeys/Key";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY_NAME = L"//MetadataSearchList/IndexableKeys/Key/Name";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY_DATATYPE = L"//MetadataSearchList/IndexableKeys/Key/Datatype";
 
-HRESULT XmlS3GetMDSearchFieldsCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3GetMDSearchFieldsCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5639,8 +5639,8 @@ CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(S3_METADATA_SEARCH_
 	{
 		CBuffer RetData;
 		InitHeader();
-		CString sResource(L"/?searchmetadata");
-		Error = SendRequest(L"GET", sResource, nullptr, 0, RetData);
+		CString sResource(_T("/?searchmetadata"));
+		Error = SendRequest(_T("GET"), sResource, nullptr, 0, RetData);
 		if (!RetData.IsEmpty())
 		{
 			XML_S3_METADATA_SEARCH_FIELDS_CONTEXT Context;
@@ -5655,8 +5655,8 @@ CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(S3_METADATA_SEARCH_
 			// maybe there is a man-in-middle attack?
 			Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 			Error.S3Error = S3_ERROR_MalformedXML;
-			Error.sS3Code = L"MalformedXML";
-			Error.sS3RequestID = L"GET";
+			Error.sS3Code = _T("MalformedXML");
+			Error.sS3RequestID = _T("GET");
 			Error.sS3Resource = sResource;
 		}
 	}
@@ -5674,12 +5674,12 @@ struct XML_S3_METADATA_SEARCH_FIELDS_BUCKET_CONTEXT
 };
 
 
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_SEARCHENABLED = L"//MetadataSearchList/MetadataSearchEnabled";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY = L"//MetadataSearchList/IndexableKeys/Key";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_NAME = L"//MetadataSearchList/IndexableKeys/Key/Name";
-const TCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_DATATYPE = L"//MetadataSearchList/IndexableKeys/Key/Datatype";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_SEARCHENABLED = L"//MetadataSearchList/MetadataSearchEnabled";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY = L"//MetadataSearchList/IndexableKeys/Key";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_NAME = L"//MetadataSearchList/IndexableKeys/Key/Name";
+const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_DATATYPE = L"//MetadataSearchList/IndexableKeys/Key/Datatype";
 
-HRESULT XmlS3GetMDSearchFieldsBucketCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3GetMDSearchFieldsBucketCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5740,8 +5740,8 @@ CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(LPCTSTR pszBucket, 
 	{
 		CBuffer RetData;
 		InitHeader();
-		CString sResource = CString(L"/") + pszBucket + L"/?searchmetadata";
-		Error = SendRequest(L"GET", sResource, nullptr, 0, RetData);
+		CString sResource = CString(_T("/")) + pszBucket + _T("/?searchmetadata");
+		Error = SendRequest(_T("GET"), sResource, nullptr, 0, RetData);
 		if (!RetData.IsEmpty())
 		{
 			XML_S3_METADATA_SEARCH_FIELDS_BUCKET_CONTEXT Context;
@@ -5756,8 +5756,8 @@ CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(LPCTSTR pszBucket, 
 			// maybe there is a man-in-middle attack?
 			Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 			Error.S3Error = S3_ERROR_MalformedXML;
-			Error.sS3Code = L"MalformedXML";
-			Error.sS3RequestID = L"GET";
+			Error.sS3Code = _T("MalformedXML");
+			Error.sS3RequestID = _T("GET");
 			Error.sS3Resource = sResource;
 		}
 	}
@@ -5782,20 +5782,20 @@ struct XML_S3_SEARCH_MD_CONTEXT
 	{}
 };
 
-const TCHAR * const XML_S3_SEARCH_MD_NAME = L"//BucketQueryResult/Name";
-const TCHAR * const XML_S3_SEARCH_MD_NEXTMARKER = L"//BucketQueryResult/NextMarker";
-const TCHAR * const XML_S3_SEARCH_MD_ISTRUNCATED = L"//BucketQueryResult/IsTruncated";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT = L"//BucketQueryResult/ObjectMatches/object";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_NAME = L"//BucketQueryResult/ObjectMatches/object/objectName";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_ID = L"//BucketQueryResult/ObjectMatches/object/objectId";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_VERSIONID = L"//BucketQueryResult/ObjectMatches/object/versionId";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS = L"//BucketQueryResult/ObjectMatches/object/queryMds";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_TYPE = L"//BucketQueryResult/ObjectMatches/object/queryMds/type";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP_KEY = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry/key";
-const TCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP_VALUE = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry/value";
+const WCHAR * const XML_S3_SEARCH_MD_NAME = L"//BucketQueryResult/Name";
+const WCHAR * const XML_S3_SEARCH_MD_NEXTMARKER = L"//BucketQueryResult/NextMarker";
+const WCHAR * const XML_S3_SEARCH_MD_ISTRUNCATED = L"//BucketQueryResult/IsTruncated";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT = L"//BucketQueryResult/ObjectMatches/object";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_NAME = L"//BucketQueryResult/ObjectMatches/object/objectName";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_ID = L"//BucketQueryResult/ObjectMatches/object/objectId";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_VERSIONID = L"//BucketQueryResult/ObjectMatches/object/versionId";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS = L"//BucketQueryResult/ObjectMatches/object/queryMds";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_TYPE = L"//BucketQueryResult/ObjectMatches/object/queryMds/type";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP_KEY = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry/key";
+const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP_VALUE = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry/value";
 
-HRESULT XmlS3SearchMDCB(const CString& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CString *psValue)
+HRESULT XmlS3SearchMDCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5906,10 +5906,10 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 		// check for literal string that has to match a unicode metadata field
 		for (;;)
 		{
-			int iOpen = sExpr.Find(L"`");
+			int iOpen = sExpr.Find(_T("`"));
 			if (iOpen < 0)
 				break;
-			int iClose = sExpr.Find(L"`", iOpen + 1);
+			int iClose = sExpr.Find(_T("`"), iOpen + 1);
 			if (iClose < 0)
 				break;
 			// got both open and close quotes
@@ -5930,20 +5930,20 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 			CString sNewStr(sExpr.Left(iOpen) + L'"' + sStr + L'"' + sExpr.Mid(iClose + 1));
 			sExpr = sNewStr;
 		}
-		CString sResource = CString(L"/") + Params.sBucket + L"/?query=" + sExpr;
+		CString sResource = CString(_T("/")) + Params.sBucket + _T("/?query=") + sExpr;
 		if (!Params.sAttributes.IsEmpty())
-			sResource += L"&attributes=" + Params.sAttributes;
+			sResource += _T("&attributes=") + Params.sAttributes;
 		if (!Params.sSorted.IsEmpty())
-			sResource += L"&sorted=" + Params.sSorted;
+			sResource += _T("&sorted=") + Params.sSorted;
 		if (Params.bOlderVersions)
-			sResource += CString(L"&include-older-versions=") + (Params.bOlderVersions ? L"true" : L"false");
+			sResource += CString(_T("&include-older-versions=")) + (Params.bOlderVersions ? _T("true") : _T("false"));
 		CString sMarker;
 		for (;;)
 		{
 			CString sMarkerResource;
 			if (!sMarker.IsEmpty())
-				sMarkerResource = L"&marker=" + sMarker;
-			Error = SendRequest(L"GET", sResource + sMarkerResource, nullptr, 0, RetData);
+				sMarkerResource = _T("&marker=") + sMarker;
+			Error = SendRequest(_T("GET"), sResource + sMarkerResource, nullptr, 0, RetData);
 			if (Error.IfError())
 				return Error;
 			if (!RetData.IsEmpty())
@@ -5954,7 +5954,7 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 				if (FAILED(hr))
 					return hr;
 				sMarker = Context.sMarker;
-				if (sMarker == L"NO MORE PAGES")
+				if (sMarker == _T("NO MORE PAGES"))
 					break;
 				if (sMarker.IsEmpty())
 					break;
@@ -5965,8 +5965,8 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 				// maybe there is a man-in-middle attack?
 				Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
 				Error.S3Error = S3_ERROR_MalformedXML;
-				Error.sS3Code = L"MalformedXML";
-				Error.sS3RequestID = L"GET";
+				Error.sS3Code = _T("MalformedXML");
+				Error.sS3RequestID = _T("GET");
 				Error.sS3Resource = sResource;
 				return Error;
 			}
@@ -6032,7 +6032,7 @@ HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRead
 			}
 			else if (sXmlPath.CompareNoCase(XML_DT_QUERY_VERSION_0_SHIPPED_DATA_RANGE) == 0)
 			{
-				pResponse->pResponse->DataRangeShippingDetails.push_back(*psValue);
+				pResponse->pResponse->DataRangeShippingDetails.push_back(FROM_UNICODE(*psValue));
 			}
 		}
 		break;
@@ -6051,9 +6051,9 @@ CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTST
 	CString sResource;
 	sResource.Format(_T("/diagnostic/object/checkRepoReplicationStatus?poolname=%s.%s&objectname=%s"), pszNamespace, pszBucket, pszObject);
 	if (bShowValue)
-		sResource += L"&showvalue=true";
+		sResource += _T("&showvalue=true");
 	if (pszRandom != nullptr)
-		sResource += CString(L"&random=") + pszRandom;
+		sResource += CString(_T("&random=")) + pszRandom;
 	SetPort(9101);
 	InitHeader();
 	S3_ERROR Error = SendRequest(_T("GET"), sResource, nullptr, 0, RetData, &Req);
@@ -6404,7 +6404,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 				// specify # of days
 				if (FAILED(pWriter->WriteStartElement(NULL, L"DaysAfterInitiation", NULL)))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-				if (FAILED(pWriter->WriteString(FmtNum(it->dwAbortIncompleteMultipartUploadDays))))
+				if (FAILED(pWriter->WriteString(TO_UNICODE(FmtNum(it->dwAbortIncompleteMultipartUploadDays)))))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 				if (FAILED(pWriter->WriteFullEndElement()))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -6481,7 +6481,7 @@ bool CECSConnection::S3_METADATA_SEARCH_PARAMS::operator!=(const S3_METADATA_SEA
 
 CString CECSConnection::S3_METADATA_SEARCH_PARAMS::Format(void) const
 {
-	return sBucket + L": " + sExpression;
+	return sBucket + _T(": ") + sExpression;
 }
 
 // ReadSystemMetadata
@@ -6513,22 +6513,26 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 		Properties.Empty();
 		for (list<HEADER_REQ>::const_iterator it = pReq->begin(); it != pReq->end(); ++it)
 		{
-			if ((it->sHeader.CompareNoCase(L"Last-Modified") == 0) && !it->ContentList.empty())
+			if ((it->sHeader.CompareNoCase(_T("Last-Modified")) == 0) && !it->ContentList.empty())
 			{
 				Properties.ftLastMod = ParseCanonicalTime(it->ContentList.front());
 			}
-			else if ((it->sHeader.CompareNoCase(L"ETag") == 0) && !it->ContentList.empty())
+			else if ((it->sHeader.CompareNoCase(_T("ETag")) == 0) && !it->ContentList.empty())
 			{
 				Properties.sETag = it->ContentList.front();
 			}
-			else if ((it->sHeader.CompareNoCase(L"Content-Length") == 0) && !it->ContentList.empty())
+			else if ((it->sHeader.CompareNoCase(_T("Content-Length")) == 0) && !it->ContentList.empty())
 			{
+#ifdef _UNICODE
 				wistringstream In;
+#else
+				istringstream In;
+#endif
 				In.str((LPCTSTR)it->ContentList.front());
 				In >> Properties.llSize;
 				if (In.fail())
 				{
-					Error.sDetails = L"Content-Length=" + it->ContentList.front();
+					Error.sDetails = _T("Content-Length=") + it->ContentList.front();
 					Error.dwError = ERROR_INVALID_DATA;
 					return Error;
 				}

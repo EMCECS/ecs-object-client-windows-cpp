@@ -127,7 +127,7 @@ public:
 		Decimal,
 		String
 	};
-	static E_MD_SEARCH_TYPE TranslateSearchFieldType(LPCTSTR pszType);
+	static E_MD_SEARCH_TYPE TranslateSearchFieldType(LPCWSTR pszType);
 	enum class E_MD_SEARCH_FIELD
 	{
 		Unknown,
