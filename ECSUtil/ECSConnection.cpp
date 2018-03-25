@@ -744,43 +744,11 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 	{
 	case WINHTTP_CALLBACK_STATUS_SECURE_FAILURE:
 		{
-			ASSERT((dwStatusInformationLength == 4) && (lpvStatusInformation != nullptr));
-			if ((dwStatusInformationLength == 4) && (lpvStatusInformation != nullptr))
+			ASSERT((dwStatusInformationLength == sizeof(DWORD)) && (lpvStatusInformation != nullptr));
+			if ((dwStatusInformationLength == sizeof(DWORD)) && (lpvStatusInformation != nullptr))
 			{
 				DWORD dwStatus = *((DWORD *)lpvStatusInformation);
 				pContext->dwSecureError |= dwStatus;
-				if (!pContext->bDisableSecureLog)
-				{
-					CString sMsg;
-					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_REV_FAILED))
-						sMsg += _T("Certification revocation checking has been enabled, but the revocation check failed to verify whether a certificate has been revoked. The server used to check for revocation might be unreachable.\r\n");
-					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CERT))
-						sMsg += _T("SSL certificate is invalid.\r\n");
-					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_REVOKED))
-						sMsg += _T("SSL certificate was revoked.\r\n");
-					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA))
-						sMsg += _T("The function is unfamiliar with the Certificate Authority that generated the server's certificate.\r\n");
-					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_CN_INVALID))
-						sMsg += _T("SSL certificate common name (host name field) is incorrect, for example, if you entered www.microsoft.com and the common name on the certificate says www.msn.com.\r\n");
-					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_CERT_DATE_INVALID))
-						sMsg += _T("SSL certificate date that was received from the server is bad. The certificate is expired.\r\n");
-					if (TST_BIT(dwStatus, WINHTTP_CALLBACK_STATUS_FLAG_SECURITY_CHANNEL_ERROR))
-						sMsg += _T("The application experienced an internal error loading the SSL libraries.\r\n");
-					if (!sMsg.IsEmpty())
-					{
-						bool bDisconnected = false;
-						// check if the host is currently disconnected. if it is, suppress the error log
-						if (pContext->pHost != nullptr)
-						{
-							if (pContext->pHost->DisconnectCB != nullptr)
-							{
-								pContext->pHost->DisconnectCB(pContext->pHost, nullptr, &bDisconnected);
-							}
-						}
-						if (!bDisconnected)
-							LogMessage(_T(__FILE__), __LINE__, _T("%1"), ERROR_WINHTTP_SECURE_FAILURE, (LPCTSTR)sMsg);
-					}
-				}
 			}
 		}
 		break;

@@ -423,6 +423,13 @@ static int DoTest(CString& sOutMessage)
 	if (Error.IfError())
 	{
 		_tprintf(_T("S3ServiceInformation error: %s\n"), (LPCTSTR)Error.Format());
+		if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
+		{
+			DWORD dwSecureError = Conn.GetSecureError();
+			CECSConnection::ECS_CERT_INFO CertInfo;
+			Conn.GetCertInfo(CertInfo);
+			_tprintf(_T("SSL Error: %s\nCert Name: %s\nCert Subject: %s\n"), (LPCTSTR)Conn.GetSecureErrorText(dwSecureError), (LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject);
+		}
 		return 1;
 	}
 	// dump service info
