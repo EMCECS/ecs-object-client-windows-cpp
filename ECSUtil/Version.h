@@ -15,6 +15,6 @@
 
 #pragma once
 
-#define ECSUTIL_COPYRIGHT _T("Copyright © 2017 Dell Inc. or its subsidiaries.")
+#define ECSUTIL_COPYRIGHT _T("Copyright © 2018 Dell Inc. or its subsidiaries.")
 
-#define ECSUTIL_VERSION _T("1.0.0.1")
+#define ECSUTIL_VERSION "0.9.0.2"

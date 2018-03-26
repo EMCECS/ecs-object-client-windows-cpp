@@ -274,7 +274,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <PostBuildEvent>
-      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\Version.h" $(OutDir)ECSUtil.dll</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>set version resource in DLL from source file</Message>
@@ -361,7 +361,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <PostBuildEvent>
-      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\Version.h" $(OutDir)ECSUtil.dll</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>set version resource in DLL from source file</Message>
@@ -445,7 +445,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <PostBuildEvent>
-      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\Version.h" $(OutDir)ECSUtil.dll</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>set version resource in DLL from source file</Message>
@@ -541,7 +541,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <PostBuildEvent>
-      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\ECSGlobal.h" $(OutDir)ECSUtil.dll</Command>
+      <Command>$(SolutionDir)bin\setversion.exe /getversion "#define ECSUTIL_VERSION" "$(SolutionDir)ECSUtil\Version.h" $(OutDir)ECSUtil.dll</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>set version resource in DLL from source file</Message>
