@@ -21,7 +21,6 @@
 #include "FileSupport.h"
 #include "SimpleWorkerThread.h"
 
-#define ECSUTIL_VERSION "0.9.0.1"
 
 void ECSUTIL_EXT_API ECSInitLib(DWORD dwGarbageCollectInterval = MINUTES(1));
 void ECSUTIL_EXT_API ECSTermLib(void);
