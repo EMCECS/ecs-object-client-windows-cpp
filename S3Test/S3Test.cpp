@@ -428,7 +428,26 @@ static int DoTest(CString& sOutMessage)
 			DWORD dwSecureError = Conn.GetSecureError();
 			CECSConnection::ECS_CERT_INFO CertInfo;
 			Conn.GetCertInfo(CertInfo);
-			_tprintf(_T("SSL Error: %s\nCert Name: %s\nCert Subject: %s\n"), (LPCTSTR)Conn.GetSecureErrorText(dwSecureError), (LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject);
+			_tprintf(_T("SSL Error: %s\n\nCert Name:\n%s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
+				(LPCTSTR)Conn.GetSecureErrorText(dwSecureError), (LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject,
+				(LPCTSTR)CertInfo.sCertSubjectAltName);
+			if ((dwSecureError & WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA) != 0)
+			{
+				wchar_t InArray[10];
+				size_t SizeRead = 0;
+				_tprintf(L"Install Certificate?\n");
+				errno_t err = _cgetws_s(InArray, &SizeRead);
+				CString sInArray(InArray);
+				sInArray.MakeLower();
+				if (sInArray.Left(1) == L"y")
+				{
+					DWORD dwErr = CECSConnection::SetRootCertificate(CertInfo);
+					if (dwErr == ERROR_SUCCESS)
+						_tprintf(L"Certificate installed\n");
+					else
+						_tprintf(L"Error installing certificate: %d\n", dwErr);
+				}
+			}
 		}
 		return 1;
 	}

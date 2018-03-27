@@ -894,50 +894,8 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 			// if unknown CA, get details about the certificate and get the certificate itself
 			// we can present the details to the user for validation, and install the certificate
 			// in the root store so this certificate will be accepted in the future
-			CERT_CONTEXT *pCert;
-			DWORD dwCertError;
-			DWORD dwLen = sizeof pCert;
-			if (!WinHttpQueryOption(hRequest, WINHTTP_OPTION_SERVER_CERT_CONTEXT, &pCert, &dwLen))
-			{
-				dwCertError = GetLastError();
-				if (!bDisableSecureLog)
-					LogMessage(_T(__FILE__), __LINE__, _T("Error getting certificate context"), dwCertError);
-			}
-			else
-			{
-				TCHAR NameBuf[1024];
-				(void)CertGetNameString(pCert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, NameBuf, _countof(NameBuf));
-				CertInfo.sCertName = NameBuf;
-				DWORD dwStrLen;
-				LPTSTR pszSubject = CertInfo.sCertSubject.GetBuffer(dwStrLen = CertNameToStr(pCert->dwCertEncodingType, &(pCert->pCertInfo->Subject), CERT_X500_NAME_STR | CERT_NAME_STR_CRLF_FLAG, nullptr, 0) + 2);
-				(void)CertNameToStr(pCert->dwCertEncodingType, &(pCert->pCertInfo->Subject), CERT_X500_NAME_STR | CERT_NAME_STR_CRLF_FLAG, pszSubject, dwStrLen);
-				CertInfo.sCertSubject.ReleaseBuffer();
- 
-				// Find out how much memory to allocate for the serialized element.
-				DWORD dwElementLen = 0;
-				if (!CertSerializeCertificateStoreElement(pCert, 0, nullptr, &dwElementLen))
-				{
-					dwCertError = GetLastError();
-					if (!bDisableSecureLog)
-						LogMessage(_T(__FILE__), __LINE__, _T("CertSerializeCertificateStoreElement error"), dwCertError);
-				}
-				else
-				{
-					CertInfo.SerializedCert.SetBufSize(dwElementLen);
-					if (!CertSerializeCertificateStoreElement(pCert, 0, CertInfo.SerializedCert.GetData(), &dwElementLen))
-					{
-						dwCertError = GetLastError();
-						if (!bDisableSecureLog)
-							LogMessage(_T(__FILE__), __LINE__, _T("CertSerializeCertificateStoreElement error"), dwCertError);
-						CertInfo.SerializedCert.Empty();
-					}
-					else
-					{
-						CertInfo.SerializedCert.SetBufSize(dwElementLen);				// it might have gotten smaller. make sure we have the exact size
-					}
-				}
-				(void)CertFreeCertificateContext(pCert);
-			}
+			if (pECSConnection != nullptr)
+				(void)pECSConnection->CECSConnection::RetrieveServerCertificate(CertInfo);
 		}
 		if (bCallbackRegistered)
 			if (pECSConnection != nullptr)
@@ -6601,4 +6559,43 @@ CString CECSConnection::GetSecureErrorText(DWORD dwSecureError)
 			sMsg += ErrorArray[i].pszErrorText;
 	}
 	return sMsg;
+}
+
+DWORD CECSConnection::RetrieveServerCertificate(ECS_CERT_INFO& CertInfo)
+{
+	CECSConnectionState& State(GetStateBuf());
+	CERT_CONTEXT *pCert;
+	DWORD dwLen = sizeof pCert;
+	if (!WinHttpQueryOption(State.hRequest, WINHTTP_OPTION_SERVER_CERT_CONTEXT, &pCert, &dwLen))
+		return GetLastError();
+	TCHAR NameBuf[1024];
+	(void)CertGetNameString(pCert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, NameBuf, _countof(NameBuf));
+	CertInfo.sCertName = NameBuf;
+	DWORD dwStrLen;
+	LPTSTR pszSubject = CertInfo.sCertSubject.GetBuffer(dwStrLen = CertNameToStr(pCert->dwCertEncodingType, &(pCert->pCertInfo->Subject), CERT_X500_NAME_STR | CERT_NAME_STR_CRLF_FLAG, nullptr, 0) + 2);
+	(void)CertNameToStr(pCert->dwCertEncodingType, &(pCert->pCertInfo->Subject), CERT_X500_NAME_STR | CERT_NAME_STR_CRLF_FLAG, pszSubject, dwStrLen);
+	CertInfo.sCertSubject.ReleaseBuffer();
+
+	// get subject alternate name (SAN) if available
+	PCERT_EXTENSION pCertExt = CertFindExtension(szOID_SUBJECT_ALT_NAME2, pCert->pCertInfo->cExtension, pCert->pCertInfo->rgExtension);
+	if (pCertExt != nullptr)
+	{
+		DWORD dwNameBuf = _countof(NameBuf);
+		if (CryptFormatObject(pCert->dwCertEncodingType, 0, CRYPT_FORMAT_STR_MULTI_LINE, nullptr, szOID_ISSUER_ALT_NAME2, pCertExt->Value.pbData,
+			pCertExt->Value.cbData, NameBuf, &dwNameBuf))
+		{
+			CertInfo.sCertSubjectAltName = NameBuf;
+		}
+	}
+
+	// Find out how much memory to allocate for the serialized element.
+	DWORD dwElementLen = 0;
+	if (!CertSerializeCertificateStoreElement(pCert, 0, nullptr, &dwElementLen))
+		return GetLastError();
+	CertInfo.SerializedCert.SetBufSize(dwElementLen);
+	if (!CertSerializeCertificateStoreElement(pCert, 0, CertInfo.SerializedCert.GetData(), &dwElementLen))
+		return GetLastError();
+	CertInfo.SerializedCert.SetBufSize(dwElementLen);				// it might have gotten smaller. make sure we have the exact size
+	(void)CertFreeCertificateContext(pCert);
+	return ERROR_SUCCESS;
 }

@@ -738,7 +738,8 @@ public:
 	struct ECSUTIL_EXT_CLASS ECS_CERT_INFO
 	{
 		CString sCertName;								// if certificate error, these fields contain info from the server cert
-		CString sCertSubject;
+		CString sCertSubject;							// Certificate Subject
+		CString sCertSubjectAltName;					// Subject Alternative Names (SAN) extension if available
 		CBuffer SerializedCert;							// if self-signed cert, this contains the certificate from the server
 	};
 
@@ -1442,6 +1443,7 @@ public:
 	bool TestAbort(void);
 	static bool ValidateS3BucketName(LPCTSTR pszBucketName);
 	void SetHTTPSecurityFlags(DWORD dwHTTPSecurityFlagsParam);
+	DWORD RetrieveServerCertificate(ECS_CERT_INFO& CertInfo);
 
 	S3_ERROR SendRequest(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq = nullptr, DWORD dwReceivedDataHint = 0, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamSend = nullptr, STREAM_CONTEXT *pStreamReceive = nullptr, ULONGLONG ullTotalLen = 0ULL);
 
