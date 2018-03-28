@@ -445,11 +445,29 @@ void CECSConnection::SetS3BucketListingMax(DWORD dwS3BucketListingMaxParam)
 	dwS3BucketListingMax = dwS3BucketListingMaxParam;
 }
 
+// sets protocol flags for all connections
+// protocol parameter combination (OR) of the following defines:
+//	WINHTTP_FLAG_SECURE_PROTOCOL_SSL2
+//	WINHTTP_FLAG_SECURE_PROTOCOL_SSL3
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2
+// for example:
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2
 void CECSConnection::SetGlobalHttpsProtocol(DWORD dwGlobalHttpsProtocolParam)
 {
 	dwGlobalHttpsProtocol = dwGlobalHttpsProtocolParam;
 }
 
+// sets protocol flags for specific connection
+// protocol parameter combination (OR) of the following defines:
+//	WINHTTP_FLAG_SECURE_PROTOCOL_SSL2
+//	WINHTTP_FLAG_SECURE_PROTOCOL_SSL3
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2
+// for example:
+//	WINHTTP_FLAG_SECURE_PROTOCOL_TLS1 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2
 void CECSConnection::SetHttpsProtocol(DWORD dwHttpsProtocolParam)
 {
 	dwHttpsProtocol = dwHttpsProtocolParam;
