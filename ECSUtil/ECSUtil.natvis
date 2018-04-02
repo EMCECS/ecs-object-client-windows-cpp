@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+
+  <Type Name="CECSConnection::S3_ERROR">
+    <DisplayString>{{ dwError={dwError}, dwHttpError={dwHttpError}, S3Error={S3Error} }}</DisplayString>
+    <Expand>
+      <Item Name="[dwError]">dwError</Item>
+      <Item Name="[dwHttpError]">dwHttpError</Item>
+      <Item Name="[S3Error]">S3Error</Item>
+      <Item Name="[sS3Code]">sS3Code</Item>
+      <Item Name="[sS3Resource]">sS3Resource</Item>
+      <Item Name="[sS3RequestID]">sS3RequestID</Item>
+      <Item Name="[sDetails]">sDetails</Item>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>
