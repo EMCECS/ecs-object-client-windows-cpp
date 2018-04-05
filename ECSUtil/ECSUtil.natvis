@@ -1,6 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
+  <Type Name="_SYSTEMTIME">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_SystemTime"></DisplayString>
+  </Type>
+
+  <Type Name="_FILETIME">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_FileTime"></DisplayString>
+  </Type>
+
+  <Type Name="ATL::COleDateTime">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_COleDateTime"></DisplayString>
+  </Type>
+
+  <Type Name="ATL::COleDateTimeSpan">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_COleDateTimeSpan"></DisplayString>
+  </Type>
 
   <Type Name="CECSConnection::S3_ERROR">
     <DisplayString>{{ dwError={dwError}, dwHttpError={dwHttpError}, S3Error={S3Error} }}</DisplayString>
