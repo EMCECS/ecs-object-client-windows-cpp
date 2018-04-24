@@ -51,6 +51,9 @@ _T("   /dtquery <namespace> <bucket> <object> DT Query for object\n");
 
 
 const TCHAR * const CMD_OPTION_ENDPOINT = _T("/endpoint");
+const TCHAR * const CMD_OPTION_ENDPOINT2 = _T("/endpoint2");
+const TCHAR * const CMD_OPTION_ENDPOINT3 = _T("/endpoint3");
+const TCHAR * const CMD_OPTION_ENDPOINT4 = _T("/endpoint4");
 const TCHAR * const CMD_OPTION_PORT = _T("/port");
 const TCHAR * const CMD_OPTION_USER = _T("/user");
 const TCHAR * const CMD_OPTION_SECRET = _T("/secret");
@@ -69,7 +72,7 @@ const TCHAR * const CMD_OPTION_HELP3 = _T("/?");
 
 WSADATA WsaData;
 
-CString sEndPoint;
+CString sEndPoint, sEndPoint2, sEndPoint3, sEndPoint4;
 CString sUser;
 CString sSecret;
 CString sDirPath;
@@ -160,6 +163,36 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 				return false;
 			}
 			sEndPoint = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_ENDPOINT2) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sEndPoint2 = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_ENDPOINT3) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sEndPoint3 = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_ENDPOINT4) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sEndPoint4 = *itParam;
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_USER) == 0)
 		{
@@ -408,6 +441,12 @@ static int DoTest(CString& sOutMessage)
 	}
 	deque<CString> IPList;
 	IPList.push_back(sEndPoint);
+	if (!sEndPoint2.IsEmpty())
+		IPList.push_back(sEndPoint2);
+	if (!sEndPoint3.IsEmpty())
+		IPList.push_back(sEndPoint3);
+	if (!sEndPoint4.IsEmpty())
+		IPList.push_back(sEndPoint4);
 	Conn.SetIPList(IPList);
 	Conn.SetS3KeyID(sUser);
 	Conn.SetSecret(sSecret);
@@ -621,5 +660,7 @@ static int DoTest(CString& sOutMessage)
 			Response.bStatus ? _T("true") : _T("false"), Response.ullTotalDataSize, Response.ullShippedDataSize,
 			Response.uShippedDataPercentage);
 	}
+	CString sBadIPMap(Conn.DumpBadIPMap());
+	_tprintf(_T("\nBad IP Map:\n%s\n"), (LPCTSTR)sBadIPMap);
 	return 0;
 }
