@@ -820,29 +820,13 @@ public:
 
 public:
 	struct XML_DIR_LISTING_CONTEXT;
-	struct LISTING_CONTEXT_MONITOR
-	{
-		CEvent evUpdate;
-		DWORD dwNumProcessed;
-		list<XML_DIR_LISTING_CONTEXT *>::iterator itDirList;
-
-		LISTING_CONTEXT_MONITOR()
-			: dwNumProcessed(0)
-		{
-		}
-	};
 
 	struct XML_DIR_LISTING_CONTEXT
 	{
 		// parameters from listing
 		CString sPathIn;
+		CString sObjName;				// optional object name to add to prefix
 
-		bool bNeedMetadata;
-		bool bDontTranslateLongname;
-
-		bool bGotSysMetadata;
-		bool bGotType;
-		bool bValid;					// don't latch onto this record until this is true
 		bool bGotRootElement;			// sanity check. we need to see the root element to verify that the XML looks good
 		bool bSingle;					// just get some entries. not all
 		bool bS3Versions;				// S3 version listing
@@ -850,44 +834,33 @@ public:
 		DirEntryList_t *pDirList;
 		CCriticalSection csDirList;
 		CECSConnection::DIR_ENTRY Rec;
-		CString sLastMetaName;
-		CString sLastMetaValue;
 		LPCTSTR pszSearchName;
 		CString *psRetSearchName;
 
-		list<LISTING_CONTEXT_MONITOR *> DirMonitorList;
-
-		bool bDone;
 		S3_ERROR Error;
 
 		// S3 fields
 		bool bIsTruncated;
 		CString sPrefix;					// the prefix received from the command results
+		CString sPrefixNoObj;				// if pszObjName was specified, this is the prefix minus the object name
 		CString sS3NextMarker;				// passed to marker in next request
 		CString sS3NextKeyMarker;			// passed to key-marker in next request
 		CString sS3NextVersionIdMarker;		// passed to version-id-marker in next request
 
 		XML_DIR_LISTING_CONTEXT()
-			: bNeedMetadata(false)
-			, bDontTranslateLongname(false)
-			, bGotSysMetadata(false)
-			, bGotType(false)
-			, bValid(false)
-			, bGotRootElement(false)
+			: bGotRootElement(false)
 			, bSingle(false)
 			, bS3Versions(false)
 			, bGotKey(false)
 			, pDirList(nullptr)
 			, pszSearchName(nullptr)
 			, psRetSearchName(nullptr)
-			, bDone(false)
 			, bIsTruncated(false)
 		{
 		}
 
 		void EmptyRec()
 		{
-			bGotType = false;
 			Rec.sName.Empty();
 			Rec.Properties.Empty();
 		}
@@ -1209,7 +1182,7 @@ private:
 	CString sS3KeyID;						// S3 Key ID
 	CString sS3Region;						// S3 region (ie us-east-1)
 
-	CECSConnectionStateCS StateList;		// a place to put fields that can't be assigned
+	CECSConnectionStateCS StateList;		// this is in a substruct because we don't want the state list to be assigned or copied
 
 	// timeout values
 	DWORD dwWinHttpOptionConnectRetries;
@@ -1378,7 +1351,7 @@ private:
 	DWORD ChooseAuthScheme(DWORD dwSupportedSchemes);
 	CString FormatAuthScheme(void);
 	// internal version of DirListing allowing it to search for a single file/dir and not return the whole list
-	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention);
+	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName);
 	CString signS3ShareableURL(const CString& sResource, const CString& sExpire);
 	void KillHostSessions(void);
 	void DeleteS3Send(void);
@@ -1444,15 +1417,16 @@ public:
 	static bool ValidateS3BucketName(LPCTSTR pszBucketName);
 	void SetHTTPSecurityFlags(DWORD dwHTTPSecurityFlagsParam);
 	DWORD RetrieveServerCertificate(ECS_CERT_INFO& CertInfo);
+	static CString DumpBadIPMap(void);
 
 	S3_ERROR SendRequest(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq = nullptr, DWORD dwReceivedDataHint = 0, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamSend = nullptr, STREAM_CONTEXT *pStreamReceive = nullptr, ULONGLONG ullTotalLen = 0ULL);
 
 	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<HEADER_STRUCT> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, list <HEADER_REQ> *pReq = nullptr);
-	S3_ERROR DeleteS3(LPCTSTR pszPath);
+	S3_ERROR DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId = nullptr);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
-	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr);
-	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList);
+	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr, LPCTSTR pszObjName = nullptr);
+	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName = nullptr);
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
 	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data);
 	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr);

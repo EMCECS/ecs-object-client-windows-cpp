@@ -948,15 +948,18 @@ void CECSConnection::InitHeader(void)
 void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride)
 {
 	CECSConnectionState& State(GetStateBuf());
-	CString sLabelLower(pszHeaderLabel);
+	CString sHeaderLabel(pszHeaderLabel);
+	sHeaderLabel.TrimLeft();
+	sHeaderLabel.TrimRight();
+	CString sLabelLower(sHeaderLabel);
 	sLabelLower.MakeLower();
 	HEADER_STRUCT Hdr;
-	Hdr.sHeader = pszHeaderLabel;
+	Hdr.sHeader = sHeaderLabel;
 	Hdr.sContents = pszHeaderText;
-	pair<map<CString, HEADER_STRUCT>::iterator,bool> ret = State.Headers.insert(make_pair(sLabelLower, Hdr));
+	pair<map<CString, HEADER_STRUCT>::iterator, bool> ret = State.Headers.insert(make_pair(sLabelLower, Hdr));
 	if (!ret.second && bOverride)
 	{
-		ret.first->second.sHeader = pszHeaderLabel;
+		ret.first->second.sHeader = sHeaderLabel;
 		ret.first->second.sContents = pszHeaderText;
 	}
 }
@@ -1082,6 +1085,8 @@ void CECSConnection::LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed)
 	CSingleLock csBad(&csBadIPMap, true);
 	FILETIME ftNow;
 
+	if (bTestConnection)				// only mark an IP bad if there is only 1 IP in the list
+		return;
 	BAD_IP_ENTRY Entry;
 	GetSystemTimeAsFileTime(&ftNow);
 	for (map<CString,BAD_IP_ENTRY>::const_iterator itUsed=IPUsed.begin() ; itUsed != IPUsed.end() ; ++itUsed)
@@ -1097,6 +1102,7 @@ void CECSConnection::LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed)
 					itUsed->second.ErrorInfo.Error.dwError, (LPCTSTR)GetHost(), (LPCTSTR)itUsed->second.ErrorInfo.Format(), (LPCTSTR)itUsed->first, GetCurrentServerIP());
 		}
 	}
+	TestAllIPBad();
 }
 
 // IfMarkIPBad
@@ -1105,8 +1111,7 @@ bool CECSConnection::IfMarkIPBad(DWORD dwError)
 {
 	if ((dwError >= WINHTTP_ERROR_BASE) && (dwError <= WINHTTP_ERROR_LAST))
 	{
-		if ((dwError != ERROR_WINHTTP_TIMEOUT)
-			&& (dwError != ERROR_WINHTTP_OPERATION_CANCELLED))
+		if (dwError != ERROR_WINHTTP_OPERATION_CANCELLED)
 			return true;
 	}
 	return false;
@@ -1133,8 +1138,12 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 	bool bGotServerResponse = false;
 	S3_ERROR Error;
 	map<CString,BAD_IP_ENTRY> IPUsed;
+	CString sResource(pszResource);
+	list<HEADER_REQ> SaveHeaderReq;
 	try
 	{
+		if (pHeaderReq != nullptr)
+			SaveHeaderReq = *pHeaderReq;					// save in case of retries
 		// first get a local copy of the IPList for use by this request
 		{
 			CSimpleRWLockAcquire lock(&rwlIPListHost);			// read lock
@@ -1152,7 +1161,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			// update the date header in case retries have made this time too far in the past
 			CString sDate(GetCanonicalTime());
 			AddHeader(_T("Date"), sDate);
-			Error = SendRequestInternal(pszMethod, pszResource, pData, dwDataLen, RetData, pHeaderReq, dwReceivedDataHint, dwBufOffset, &bGotServerResponse, pStreamSend, pStreamReceive, ullTotalLen);
+			Error = SendRequestInternal(pszMethod, sResource, pData, dwDataLen, RetData, pHeaderReq, dwReceivedDataHint, dwBufOffset, &bGotServerResponse, pStreamSend, pStreamReceive, ullTotalLen);
 			if (!Error.IfError())
 			{
 				// no error - but let's look a little closer
@@ -1173,7 +1182,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			// don't retry if this is a stream operation
 			// we can't retry because the data stream would need to be reset
 			if ((pStreamSend != nullptr) || (pStreamReceive != nullptr))
-				throw CS3ErrorInfo(Error);
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			if ((Error.dwHttpError < HTTP_STATUS_SERVER_ERROR)
 				&& (bGotServerResponse || (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)))
 			{
@@ -1194,6 +1203,9 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			// try another IP address in the list
 			if (!GetNextECSIP(IPUsed))
 				break;
+			// restore pHeaderReq in case it had changed with the failed request
+			if (pHeaderReq != nullptr)
+				*pHeaderReq = SaveHeaderReq;
 			if (Error.dwHttpError == HTTP_STATUS_SERVER_ERROR)
 			{
 				// if ECS is busy, wait a bit and try again. hopefully on a different node
@@ -1208,17 +1220,18 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 		Error = E.Error;
 	}
 	// must be some kind of comm error, call the "disconnect" callback
-	if (Error.IfError() && (DisconnectCB != nullptr))
+	if (Error.IfError() && (DisconnectCB != NULL) && !bTestConnection)
 	{
-		if ((!bGotServerResponse
-				&& (Error.dwError != ERROR_WINHTTP_INVALID_SERVER_RESPONSE))
+		if (!bGotServerResponse
 			|| (Error.S3Error == S3_ERROR_InvalidAccessKeyId)
 			|| (Error.S3Error == S3_ERROR_RequestTimeTooSkewed))
 		{
-			if (Error.dwError != ERROR_OPERATION_ABORTED)
+			if ((Error.dwError != ERROR_OPERATION_ABORTED)
+				&& (Error.dwError != ERROR_WINHTTP_INVALID_SERVER_RESPONSE)
+				&& (Error.dwError != ERROR_WINHTTP_CONNECTION_ERROR))
 			{
 				CS3ErrorInfo ErrorInfo(Error);
-				ErrorInfo.sAdditionalInfo = CString(pszMethod) + _T("|") + pszResource;
+				ErrorInfo.sAdditionalInfo = CString(pszMethod) + _T("|") + sResource;
 				DisconnectCB(this, &ErrorInfo, nullptr);
 			}
 		}
@@ -2225,10 +2238,10 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath)
+CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId)
 {
 	list<CECSConnection::S3_DELETE_ENTRY> PathList;
-	PathList.push_back(CECSConnection::S3_DELETE_ENTRY(pszPath));
+	PathList.push_back(CECSConnection::S3_DELETE_ENTRY(pszPath, pszVersionId));
 	return DeleteS3(PathList);
 }
 
@@ -2649,7 +2662,9 @@ HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXml
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_Prefix) == 0)
 			{
-				pInfo->sPrefix = FROM_UNICODE(*psValue);
+				pInfo->sPrefix = pInfo->sPrefixNoObj = FROM_UNICODE(*psValue);
+				if (!pInfo->sObjName.IsEmpty() && (pInfo->sPrefixNoObj.Right(pInfo->sObjName.GetLength()) == pInfo->sObjName))
+					(void)pInfo->sPrefixNoObj.Delete(pInfo->sPrefixNoObj.GetLength() - pInfo->sObjName.GetLength(), pInfo->sObjName.GetLength());
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_IsTruncated) == 0)
 			{
@@ -2669,9 +2684,9 @@ HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXml
 				pInfo->bGotKey = true;
 				pInfo->Rec.bDir = false;
 				pInfo->Rec.sName = FROM_UNICODE(*psValue);
-				ASSERT(pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0);
-				if (pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0)
-					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
+				ASSERT(pInfo->sPrefixNoObj.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefixNoObj.GetLength())) == 0);
+				if (pInfo->sPrefixNoObj.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefixNoObj.GetLength())) == 0)
+					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
 				if (!pInfo->Rec.sName.IsEmpty())
 				{
 					if (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/')
@@ -2721,9 +2736,9 @@ HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXml
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_VERSIONS_CommonPrefixes_Prefix) == 0)
 			{
 				pInfo->Rec.sName = FROM_UNICODE(*psValue);
-				if (pInfo->sPrefix == pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength()))
+				if (pInfo->sPrefixNoObj == psValue->Left(pInfo->sPrefixNoObj.GetLength()))
 				{
-					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
+					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
 					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/'))
 						(void)pInfo->Rec.sName.Delete(pInfo->Rec.sName.GetLength() - 1);
 				}
@@ -2831,7 +2846,9 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 		{
 			if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_Prefix) == 0)
 			{
-				pInfo->sPrefix = FROM_UNICODE(*psValue);
+				pInfo->sPrefix = pInfo->sPrefixNoObj = FROM_UNICODE(*psValue);
+				if (!pInfo->sObjName.IsEmpty() && (pInfo->sPrefixNoObj.Right(pInfo->sObjName.GetLength()) == pInfo->sObjName))
+					(void)pInfo->sPrefixNoObj.Delete(pInfo->sPrefixNoObj.GetLength() - pInfo->sObjName.GetLength(), pInfo->sObjName.GetLength());
 			}
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_IsTruncated) == 0)
 			{
@@ -2846,9 +2863,9 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 				pInfo->bGotKey = true;
 				pInfo->Rec.bDir = false;
 				pInfo->Rec.sName = FROM_UNICODE(*psValue);
-				ASSERT(pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0);
-				if (pInfo->sPrefix.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength())) == 0)
-					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
+				ASSERT(pInfo->sPrefixNoObj.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefixNoObj.GetLength())) == 0);
+				if (pInfo->sPrefixNoObj.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefixNoObj.GetLength())) == 0)
+					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
 				if (!pInfo->Rec.sName.IsEmpty())
 				{
 					if (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/')
@@ -2883,9 +2900,9 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 			else if (sXmlPath.CompareNoCase(XML_S3_DIR_LISTING_CommonPrefixes_Prefix) == 0)
 			{
 				pInfo->Rec.sName = FROM_UNICODE(*psValue);
-				if (pInfo->sPrefix == pInfo->Rec.sName.Left(pInfo->sPrefix.GetLength()))
+				if (pInfo->sPrefixNoObj == psValue->Left(pInfo->sPrefixNoObj.GetLength()))
 				{
-					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefix.GetLength());
+					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
 					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/'))
 						(void)pInfo->Rec.sName.Delete(pInfo->Rec.sName.GetLength() - 1);
 				}
@@ -2946,7 +2963,8 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	CString& sRetSearchName,
 	bool bS3Versions,
 	bool bSingle,							// if true, don't keep going back for more files. we just want to know if there are SOME
-	DWORD *pdwGetECSRetention)				// if non-nullptr, check for ECS bucket retention. return retention period
+	DWORD *pdwGetECSRetention,				// if non-nullptr, check for ECS bucket retention. return retention period
+	LPCTSTR pszObjName)
 {
 	CECSConnectionState& State(GetStateBuf());
 	S3_ERROR Error;
@@ -2958,10 +2976,10 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	try
 	{
 		Context.sPathIn = pszPathIn;
+		Context.sObjName = pszObjName;
 		Context.pszSearchName = pszSearchName;
 		Context.psRetSearchName = &sRetSearchName;
 		Context.pDirList = &DirList;
-		Context.bValid = false;
 		Context.bS3Versions = bS3Versions;
 		Context.bSingle = bSingle;
 		{
@@ -2985,8 +3003,9 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					sBucket = Context.sPathIn;
 				else
 				{
+					CString sObjName(pszObjName);
 					sBucket = Context.sPathIn.Left(iSlash);					// don't include terminating slash
-					sPrefix = Context.sPathIn.Mid(iSlash + 1);
+					sPrefix = Context.sPathIn.Mid(iSlash + 1) + sObjName;
 					sPrefix = UriEncode(sPrefix, true);
 				}
 				sResource = sBucket + _T("/");
@@ -3063,7 +3082,6 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				}
 				{
 					CSingleLock lockDir(&Context.csDirList, true);
-					Context.bGotSysMetadata = true;						// with S3, it always returns metadata
 					HRESULT hr = ScanXml(&RetData, &Context, procXmlDirListingCB);
 					if (FAILED(hr))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, hr);
@@ -3095,35 +3113,6 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				Error.S3Error = S3_ERROR_MalformedXML;
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			}
-			{
-				CSingleLock lockDirList(&csDirListList, true);
-				for (list<LISTING_CONTEXT_MONITOR *>::iterator itMon = Context.DirMonitorList.begin()
-					; itMon != Context.DirMonitorList.end() ; ++itMon)
-				{
-					VERIFY((*itMon)->evUpdate.SetEvent());
-				}
-				// if we are searching for a name and we found one, we can get out now
-				// no need to keep reading names (if this is a long dir)
-				if ((Context.pszSearchName != nullptr) && !Context.psRetSearchName->IsEmpty())
-				{
-					// we can stop only if there are no other threads hanging on our output
-					if (Context.DirMonitorList.empty())
-					{
-						// no other threads are waiting on us!
-						// we need to remove us from the list now to prevent another thread from attaching to us
-						list<XML_DIR_LISTING_CONTEXT *>::iterator itList;
-						for (itList=DirListList.begin() ; itList!=DirListList.end() ; ++itList)
-						{
-							if (*itList == &Context)
-							{
-								(void)DirListList.erase(itList);
-								break;
-							}
-						}
-						break;
-					}
-				}
-			}
 		} while (!State.sEmcToken.IsEmpty() && !bSingle);
 		DirList.sort();
 	}
@@ -3138,16 +3127,16 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, DWORD *pdwGetECSRetention)
+CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pdwGetECSRetention);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pdwGetECSRetention, pszObjName);
 }
 
-CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList)
+CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr, pszObjName);
 }
 
 CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
@@ -6617,3 +6606,22 @@ DWORD CECSConnection::RetrieveServerCertificate(ECS_CERT_INFO& CertInfo)
 	(void)CertFreeCertificateContext(pCert);
 	return ERROR_SUCCESS;
 }
+
+CString CECSConnection::DumpBadIPMap(void)
+{
+	CSingleLock csBad(&csBadIPMap, true);
+	CString sEntry, sMsg;
+
+	for (map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); ++itMap)
+	{
+		sEntry = L"Host: " + itMap->first.sHostName;
+		sEntry.Format(L"Host: %s\r\nIP: %s\r\nTime: %s\r\nError: %s\r\n\r\n",
+			(LPCTSTR)itMap->first.sHostName,
+			(LPCTSTR)itMap->first.sIP,
+			(LPCTSTR)DateTimeStr(&itMap->second.ftError, true, true, true, false, true, true),
+			(LPCTSTR)itMap->second.ErrorInfo.Format());
+		sMsg += sEntry;
+	}
+	return sMsg;
+}
+
