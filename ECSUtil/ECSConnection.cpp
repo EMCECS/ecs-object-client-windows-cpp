@@ -1944,6 +1944,12 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				}
 			}
 		}
+		// verify that RetData is NUL terminated
+		// it will always be 8 bit characters
+		DWORD dwRetDataLen = RetData.GetBufSize();
+		RetData.SetBufSize(dwRetDataLen + 1);
+		RetData.SetAt(dwRetDataLen, 0);
+		RetData.SetBufSize(dwRetDataLen);			// this won't reallocate the buffer, so it will now always be NUL terminated
 		// if error, get error detail from XML response
 		if ((Error.dwHttpError >= 400) && !RetData.IsEmpty())
 		{
@@ -4749,14 +4755,14 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartList(LPCTSTR pszBucketName, 
 
 	Context.pMultiPartList = &MultiPartList;
 	InitHeader();
-	CString sResource(CString(_T("/")) + pszBucketName + _T("/?uploads&delimiter=/"));
+	CString sResource(CString(_T("/")) + pszBucketName + _T("/?uploads"));
 	for (;;)
 	{
 		CString sTempResource(sResource);
 		if (!Context.sNextKeyMarker.IsEmpty())
-			sTempResource += _T("&") + UriEncode(Context.sNextKeyMarker, true);
+			sTempResource += _T("&key-marker=") + UriEncode(Context.sNextKeyMarker, true);
 		if (!Context.sNextUploadIdMarker.IsEmpty())
-			sTempResource += _T("&") + Context.sNextUploadIdMarker;
+			sTempResource += _T("&upload-id-marker=") + Context.sNextUploadIdMarker;
 		Error = SendRequest(_T("GET"), sTempResource, nullptr, 0, RetData);
 		if (Error.IfError())
 			return Error;
