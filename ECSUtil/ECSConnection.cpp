@@ -1111,7 +1111,8 @@ bool CECSConnection::IfMarkIPBad(DWORD dwError)
 {
 	if ((dwError >= WINHTTP_ERROR_BASE) && (dwError <= WINHTTP_ERROR_LAST))
 	{
-		if (dwError != ERROR_WINHTTP_OPERATION_CANCELLED)
+		if ((dwError != ERROR_WINHTTP_OPERATION_CANCELLED)
+			&& (dwError != ERROR_WINHTTP_INVALID_SERVER_RESPONSE))
 			return true;
 	}
 	return false;
