@@ -19,6 +19,7 @@
 
 #include "Logging.h"
 #include "NTERRTXT.H"
+#include "fmtnum.h"
 
 static ECSUTIL_LOG_MESSAGE_PROTO *pLogMessageCB = nullptr;
 
@@ -65,6 +66,7 @@ void DebugF(LPCTSTR format, ...)
 			sMsg += TEXT('\n');
 		}
 	}
+	sMsg = TEXT("[TID:") + FmtNum(GetCurrentThreadId()) + TEXT("] ") + sMsg;
 	OutputDebugString(sMsg);
 	va_end(marker);              /* Reset variable arguments.      */
 }
