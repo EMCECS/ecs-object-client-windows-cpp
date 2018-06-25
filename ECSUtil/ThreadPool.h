@@ -782,7 +782,7 @@ void CThreadPool<MsgT>::SendMessageToPoolDelayed(UINT uLine, DWORD dwDueTime, st
 	Rec.Control.uLineNo = uLine;
 	Rec.Payload = Msg;
 	Rec.Control.uGrouping = uGrouping;
-	Rec.Control.ftDueTime = ftNow + dwDueTime;
+	Rec.Control.ftDueTime = ftNow + dwDueTime * (FT_SECOND / SECONDS(1));
 	{
 		CRWLockAcquire lock(&MsgQueue.GetLock(), true);		// write lock
 		FutureMsgQueue.push_back(Rec);
