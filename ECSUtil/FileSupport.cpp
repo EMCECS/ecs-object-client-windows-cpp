@@ -271,7 +271,6 @@ void CS3ReadThread::DoWork()
 	pConn->RegisterShutdownCB(TestShutdownThread, this);
 	Error = pConn->Read(sECSPath, lwLen, lwOffset, RetData, 0UL, &ReadContext, pRcvHeaders, &ullReturnedLength);
 	pConn->UnregisterShutdownCB(TestShutdownThread, this);
-	KillThread();
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -440,7 +439,6 @@ void CS3WriteThread::DoWork()
 	pConn->RegisterShutdownCB(TestShutdownThread, this);
 	Error = pConn->Create(sECSPath, nullptr, 0UL, pMDList, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
 	pConn->UnregisterShutdownCB(TestShutdownThread, this);
-	KillThread();
 }
 
 //////////////////////////////////////////////////////////////////////////////
