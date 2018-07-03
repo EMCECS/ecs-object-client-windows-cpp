@@ -267,10 +267,13 @@ CECSConnection::S3_ERROR S3Read(
 
 void CS3ReadThread::DoWork()
 {
-	CBuffer RetData;
-	pConn->RegisterShutdownCB(TestShutdownThread, this);
-	Error = pConn->Read(sECSPath, lwLen, lwOffset, RetData, 0UL, &ReadContext, pRcvHeaders, &ullReturnedLength);
-	pConn->UnregisterShutdownCB(TestShutdownThread, this);
+	if (dwEventRet == WAIT_OBJECT_0)
+	{
+		CBuffer RetData;
+		pConn->RegisterShutdownCB(TestShutdownThread, this);
+		Error = pConn->Read(sECSPath, lwLen, lwOffset, RetData, 0UL, &ReadContext, pRcvHeaders, &ullReturnedLength);
+		pConn->UnregisterShutdownCB(TestShutdownThread, this);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -288,11 +291,13 @@ struct CS3WriteThread : public CSimpleWorkerThread
 	CCngAES_GCM Hash;					// optional MD5 hash
 	bool bGotHash;						// set if MD5 hash is complete
 	const list<CECSConnection::HEADER_STRUCT> *pMDList;	// optional metadata to send to object
+	CEvent evWriteComplete;				// set when worker thread is finished writing to S3
 
 	CS3WriteThread()
 		: pConn(nullptr)
 		, bGotHash(false)
 		, pMDList(nullptr)
+		, evWriteComplete(FALSE, TRUE)
 	{
 		FileSize.QuadPart = 0;
 	}
@@ -420,8 +425,20 @@ CECSConnection::S3_ERROR S3Write(
 			liOffset.QuadPart += dwBytesRead;
 			WriteThread.WriteContext.StreamData.push_back(WriteRec, dwMaxQueueSize, TestShutdownThread, &WriteThread);
 		}
+		// wait for the worker thread to finish the S3 command
+		for (;;)
+		{
+			dwError = WaitForSingleObject(WriteThread.evWriteComplete.m_hObject, SECONDS(2));
+			if (dwError == WAIT_OBJECT_0)
+				break;
+			if (dwError != WAIT_TIMEOUT)
+				throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
+			// check for thread exit (but not if we are waiting for the handle to close)
+			if (Conn.TestAbort())
+				throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_OPERATION_ABORTED);
+		}
 		// now wait for the worker thread to terminate to get its error code
-		WriteThread.KillThreadWait(true);			// don't kill it - just wait for it to die
+		WriteThread.KillThreadWait();			// kill background thread
 	}
 	catch (const CErrorInfo& E)
 	{
@@ -433,12 +450,16 @@ CECSConnection::S3_ERROR S3Write(
 
 void CS3WriteThread::DoWork()
 {
-	CBuffer HashData;
-	if (bGotHash)
-		Hash.GetHashData(HashData);
-	pConn->RegisterShutdownCB(TestShutdownThread, this);
-	Error = pConn->Create(sECSPath, nullptr, 0UL, pMDList, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
-	pConn->UnregisterShutdownCB(TestShutdownThread, this);
+	if (dwEventRet == WAIT_OBJECT_0)
+	{
+		CBuffer HashData;
+		if (bGotHash)
+			Hash.GetHashData(HashData);
+		pConn->RegisterShutdownCB(TestShutdownThread, this);
+		Error = pConn->Create(sECSPath, nullptr, 0UL, pMDList, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
+		pConn->UnregisterShutdownCB(TestShutdownThread, this);
+		VERIFY(evWriteComplete.SetEvent());							// notify parent thread that we're done here
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
