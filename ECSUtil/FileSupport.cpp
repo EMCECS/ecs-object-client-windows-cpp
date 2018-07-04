@@ -146,6 +146,7 @@ struct CS3ReadThread : public CSimpleWorkerThread
 													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
 	list<CECSConnection::HEADER_REQ> *pRcvHeaders;	// optional return all headers
 	ULONGLONG ullReturnedLength;		// returned length from Read
+	bool bWorkerDone;					// set so it only runs once
 
 	CS3ReadThread()
 		: pConn(nullptr)
@@ -154,6 +155,7 @@ struct CS3ReadThread : public CSimpleWorkerThread
 		, lwOffset(0ULL)
 		, pRcvHeaders(nullptr)
 		, ullReturnedLength(0ULL)
+		, bWorkerDone(false)
 	{}
 	~CS3ReadThread()
 	{
@@ -267,12 +269,13 @@ CECSConnection::S3_ERROR S3Read(
 
 void CS3ReadThread::DoWork()
 {
-	if (dwEventRet == WAIT_OBJECT_0)
+	if (!bWorkerDone && (dwEventRet == WAIT_OBJECT_0))
 	{
 		CBuffer RetData;
 		pConn->RegisterShutdownCB(TestShutdownThread, this);
 		Error = pConn->Read(sECSPath, lwLen, lwOffset, RetData, 0UL, &ReadContext, pRcvHeaders, &ullReturnedLength);
 		pConn->UnregisterShutdownCB(TestShutdownThread, this);
+		bWorkerDone = true;
 	}
 }
 
@@ -290,12 +293,14 @@ struct CS3WriteThread : public CSimpleWorkerThread
 	LARGE_INTEGER FileSize;
 	CCngAES_GCM Hash;					// optional MD5 hash
 	bool bGotHash;						// set if MD5 hash is complete
+	bool bWorkerDone;					// set so it only runs once
 	const list<CECSConnection::HEADER_STRUCT> *pMDList;	// optional metadata to send to object
 	CEvent evWriteComplete;				// set when worker thread is finished writing to S3
 
 	CS3WriteThread()
 		: pConn(nullptr)
 		, bGotHash(false)
+		, bWorkerDone(false)
 		, pMDList(nullptr)
 		, evWriteComplete(FALSE, TRUE)
 	{
@@ -450,7 +455,7 @@ CECSConnection::S3_ERROR S3Write(
 
 void CS3WriteThread::DoWork()
 {
-	if (dwEventRet == WAIT_OBJECT_0)
+	if (!bWorkerDone && (dwEventRet == WAIT_OBJECT_0))
 	{
 		CBuffer HashData;
 		if (bGotHash)
@@ -459,6 +464,7 @@ void CS3WriteThread::DoWork()
 		Error = pConn->Create(sECSPath, nullptr, 0UL, pMDList, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
 		pConn->UnregisterShutdownCB(TestShutdownThread, this);
 		VERIFY(evWriteComplete.SetEvent());							// notify parent thread that we're done here
+		bWorkerDone = true;
 	}
 }
 

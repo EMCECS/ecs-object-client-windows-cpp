@@ -1199,7 +1199,6 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			{
 				// save the error for the log message
 				pair<map<CString, BAD_IP_ENTRY>::iterator, bool> Ret = IPUsed.insert(make_pair(GetCurrentServerIP(), BAD_IP_ENTRY(Error)));
-				ASSERT(Ret.second);
 			}
 			// try another IP address in the list
 			if (!GetNextECSIP(IPUsed))
