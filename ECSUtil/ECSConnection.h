@@ -622,6 +622,7 @@ public:
 	{
 		DWORD dwError;					// WIN32 error
 		DWORD dwHttpError;				// HTTP error
+		DWORD dwSecureError;			// if HTTPS error, additional info
 		E_S3_ERROR_TYPE S3Error;		// S3 error
 		CString sS3Code;				// S3: error code
 		CString sS3Resource;			// S3: resource associated with the error
@@ -631,6 +632,7 @@ public:
 		S3_ERROR_BASE(DWORD dwErrorParam = ERROR_SUCCESS)
 			: dwError(dwErrorParam)
 			, dwHttpError(0)
+			, dwSecureError(0)
 			, S3Error(S3_ERROR_SUCCESS)
 		{}
 
@@ -1065,6 +1067,7 @@ private:
 		CInternetHandle hRequest;				// request handle
 		bool bCallbackRegistered;
 		bool bS3Admin;							// admin API
+		bool bSaveCertInfo;						// save the certificate info whether there is an error or not
 		map<CString,HEADER_STRUCT> Headers;
 		UINT iIPList;							// index into IPList showing currently used
 		deque<CString> IPListLocal;				// local copy of IPListHost to be used only for this request
@@ -1092,6 +1095,7 @@ private:
 			, hRequest(nullptr)
 			, bCallbackRegistered(false)
 			, bS3Admin(false)
+			, bSaveCertInfo(false)
 			, iIPList(0)
 			, dwCurrentThread(0)
 			, dwProxyAuthScheme(0)
@@ -1409,6 +1413,7 @@ public:
 	static void SetMaxWriteRequestAll(DWORD dwMaxWriteRequestParam);
 	void SetDisableSecureLog(bool bDisable = true);
 	void GetCertInfo(ECS_CERT_INFO& Rec);
+	void SetSaveCertInfo(bool bSave);
 	DWORD GetSecureError(void);
 	static void RemoveACLDups(deque<CECSConnection::ACL_ENTRY>& UserAcls);
 	bool IfValidMetadataTag(LPCTSTR pszMDString);

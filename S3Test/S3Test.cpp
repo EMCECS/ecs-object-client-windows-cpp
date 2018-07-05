@@ -65,6 +65,8 @@ const TCHAR * const CMD_OPTION_DELETE = _T("/delete");
 const TCHAR * const CMD_OPTION_READ = _T("/read");
 const TCHAR * const CMD_OPTION_WRITE = _T("/write");
 const TCHAR * const CMD_OPTION_READMETA = _T("/readmeta");
+const TCHAR * const CMD_OPTION_CERT = _T("/cert");
+const TCHAR * const CMD_OPTION_SETCERT = _T("/setcert");
 const TCHAR * const CMD_OPTION_DTQUERY = _T("/dtquery");
 const TCHAR * const CMD_OPTION_HELP1 = _T("--help");
 const TCHAR * const CMD_OPTION_HELP2 = _T("-h");
@@ -89,6 +91,8 @@ CString sDTQueryBucket;
 CString sDTQueryObject;
 
 bool bHttps = true;
+bool bCert = false;
+bool bSetCert = false;
 INTERNET_PORT wPort = 9021;
 
 bool bShuttingDown = false;
@@ -304,6 +308,14 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 			}
 			sReadMetaECSPath = *itParam;
 		}
+		else if (itParam->CompareNoCase(CMD_OPTION_CERT) == 0)
+		{
+			bCert = true;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_SETCERT) == 0)
+		{
+			bSetCert = true;
+		}
 		else if (itParam->CompareNoCase(CMD_OPTION_DTQUERY) == 0)
 		{
 			++itParam;
@@ -421,6 +433,7 @@ static int DoTest(CString& sOutMessage)
 	(void)SetConsoleCtrlHandler(ConsoleShutdownHandler, TRUE);
 
 	CECSConnection Conn;
+	CECSConnection::ECS_CERT_INFO CertInfo;
 	// register an "abort pointer" if bShuttingDown gets set to true, the current request will be aborted
 	Conn.RegisterAbortPtr(&bShuttingDown);
 	CECSConnection::S3_ERROR Error;
@@ -458,6 +471,10 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetHttpsProtocol(WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2);
 
 	// get the list of buckets
+	if (bCert || bSetCert)
+	{
+		Conn.SetSaveCertInfo(true);
+	}
 	CECSConnection::S3_SERVICE_INFO ServiceInfo;
 	Error = Conn.S3ServiceInformation(ServiceInfo);
 	if (Error.IfError())
@@ -466,11 +483,9 @@ static int DoTest(CString& sOutMessage)
 		if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
 		{
 			DWORD dwSecureError = Conn.GetSecureError();
-			CECSConnection::ECS_CERT_INFO CertInfo;
 			Conn.GetCertInfo(CertInfo);
-			_tprintf(_T("SSL Error: %s\n\nCert Name:\n%s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
-				(LPCTSTR)Conn.GetSecureErrorText(dwSecureError), (LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject,
-				(LPCTSTR)CertInfo.sCertSubjectAltName);
+			_tprintf(_T("Cert Name:\n%s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
+				(LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject, (LPCTSTR)CertInfo.sCertSubjectAltName);
 			if ((dwSecureError & WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA) != 0)
 			{
 				wchar_t InArray[10];
@@ -490,6 +505,31 @@ static int DoTest(CString& sOutMessage)
 			}
 		}
 		return 1;
+	}
+	// check if we should dump the certificate info
+	if (bCert || bSetCert)
+	{
+		Conn.SetSaveCertInfo(false);
+		Conn.GetCertInfo(CertInfo);
+		_tprintf(_T("Cert Name:\n%s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
+			(LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject, (LPCTSTR)CertInfo.sCertSubjectAltName);
+		if (bSetCert)
+		{
+			wchar_t InArray[10];
+			size_t SizeRead = 0;
+			_tprintf(L"Install Certificate?\n");
+			errno_t err = _cgetws_s(InArray, &SizeRead);
+			CString sInArray(InArray);
+			sInArray.MakeLower();
+			if (sInArray.Left(1) == L"y")
+			{
+				DWORD dwErr = CECSConnection::SetRootCertificate(CertInfo);
+				if (dwErr == ERROR_SUCCESS)
+					_tprintf(L"Certificate installed\n");
+				else
+					_tprintf(L"Error installing certificate: %s\n", (LPCTSTR)GetNTErrorText(dwErr));
+			}
+		}
 	}
 	// dump service info
 	_tprintf(_T("OwnerID: %s, Name: %s\n"), (LPCTSTR)ServiceInfo.sOwnerID, (LPCTSTR)ServiceInfo.sOwnerDisplayName);

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <!-- Place this file and the AddIn-DLL to this folder: %USERPROFILE%\My Documents\Visual Studio 2012\Visualizers\ -->
+  
+  <Type Name="_SYSTEMTIME">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_SystemTime"></DisplayString>
+  </Type>
+
+  <Type Name="_FILETIME">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_FileTime"></DisplayString>
+  </Type>
+
+  <Type Name="ATL::COleDateTime">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_COleDateTime"></DisplayString>
+  </Type>
+
+  <Type Name="ATL::COleDateTimeSpan">
+    <DisplayString LegacyAddin="NatvisAddIn.dll" Export="AddIn_COleDateTimeSpan"></DisplayString>
+  </Type>
+
+  <Type Name="CQueue&lt;*&gt;">
+    <AlternativeType Name="CMTQueue&lt;*&gt;" />
+    <DisplayString>{{ size={num_entries} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]">num_entries</Item>
+      <Item Name="[capacity]">num_alloc</Item>
+      <IndexListItems>
+        <Size>num_entries</Size>
+        <ValueNode>*(q_list[$i])</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+
+  <Type Name="CFlagArrayTemplate&lt;*,0&gt;">
+    <DisplayString>{{ size={num_flags} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]">num_flags</Item>
+      <Item Name="[capacity]">array_size * 8</Item>
+      <IndexListItems>
+        <Size>num_flags</Size>
+        <ValueNode>(bool)((array[$i / 8] &gt;&gt; ($i % 8)) &amp; 1)</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+
+  <Type Name="CBuffer">
+    <DisplayString Condition="m_pData == 0">empty</DisplayString>
+    <DisplayString Condition="m_pData != 0">{{ size={(((CBufferData*)m_pData)-1)->m_nSize} }}</DisplayString>
+    <Expand>
+      <Item Condition="m_pData != 0" Name="[size]">(((CBufferData*)m_pData)-1)->m_nSize</Item>
+      <Item Condition="m_pData != 0" Name="[capacity]">(((CBufferData*)m_pData)-1)->m_nAllocSize</Item>
+      <Item Condition="m_pData != 0" Name="[refs]">(((CBufferData*)m_pData)-1)->m_nRefs</Item>
+      <Item Condition="m_pData != 0" Name="[ptr]">m_pData</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="CWideString">
+    <DisplayString Condition="m_pData == 0">empty</DisplayString>
+    <DisplayString Condition="m_pData != 0">{{ {(wchar_t *)m_pData,su} }}</DisplayString>
+    <Expand>
+      <Item Condition="m_pData != 0" Name="[size]">(((CBufferData*)m_pData)-1)->m_nSize</Item>
+      <Item Condition="m_pData != 0" Name="[capacity]">(((CBufferData*)m_pData)-1)->m_nAllocSize</Item>
+      <Item Condition="m_pData != 0" Name="[refs]">(((CBufferData*)m_pData)-1)->m_nRefs</Item>
+      <Item Condition="m_pData != 0" Name="[ptr]">m_pData</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="CAtmosUtil::ATMOS_ERROR">
+    <DisplayString>{{ dwError={dwError}, dwHttpError={dwHttpError}, AtmosError={AtmosError} }}</DisplayString>
+    <Expand>
+      <Item Name="[dwError]">dwError</Item>
+      <Item Name="[dwHttpError]">dwHttpError</Item>
+      <Item Name="[dwSecureError]">dwSecureError</Item>
+      <Item Name="[AtmosError]">AtmosError</Item>
+      <Item Name="[sAtmosMessage]">sAtmosMessage</Item>
+      <Item Name="[sS3Code]">sS3Code</Item>
+      <Item Name="[sS3Resource]">sS3Resource</Item>
+      <Item Name="[sS3RequestID]">sS3RequestID</Item>
+      <Item Name="[sDetails]">sDetails</Item>
+      <Item Name="[HostType]">HostType</Item>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

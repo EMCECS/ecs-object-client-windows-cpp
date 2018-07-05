@@ -907,7 +907,7 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 	// Close any request handle.
 	if (hRequest.IfOpen())
 	{
-		if (bSaveCert)
+		if (bSaveCert || bSaveCertInfo)
 		{
 			// if unknown CA, get details about the certificate and get the certificate itself
 			// we can present the details to the user for validation, and install the certificate
@@ -1974,10 +1974,13 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			pConstStreamSend->UpdateProgressCB(-pConstStreamSend->iAccProgress, pConstStreamSend->pContext);
 			pStreamSend->iAccProgress = 0;
 		}
-		State.CloseRequest(E.Error.dwError == ERROR_WINHTTP_SECURE_FAILURE);
+		Error = E.Error;
+		if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
+			Error.dwSecureError = State.dwSecureError;
+		State.CloseRequest(Error.dwError == ERROR_WINHTTP_SECURE_FAILURE);
 		State.Session.pValue->bKillWhenDone = true;
 		State.Session.ReleaseSession();
-		return E.Error;
+		return Error;
 	}
 	State.CloseRequest();
 	State.Session.ReleaseSession();
@@ -3181,6 +3184,12 @@ CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 			sMsg += sLineEnd;
 		sMsg += _T("S3 RequestID: ") + sS3RequestID;
 	}
+	if (dwSecureError != 0)
+	{
+		if (!sMsg.IsEmpty())
+			sMsg += sLineEnd;
+		sMsg += _T("Secure Error: ") + GetSecureErrorText(dwSecureError);
+	}
 	if (!sDetails.IsEmpty())
 	{
 		if (!sMsg.IsEmpty())
@@ -4005,6 +4014,12 @@ void CECSConnection::GetCertInfo(ECS_CERT_INFO& Rec)
 {
 	CECSConnectionState& State(GetStateBuf());
 	Rec = State.CertInfo;
+}
+
+void CECSConnection::SetSaveCertInfo(bool bSave)
+{
+	CECSConnectionState& State(GetStateBuf());
+	State.bSaveCertInfo = bSave;
 }
 
 DWORD CECSConnection::ChooseAuthScheme(DWORD dwSupportedSchemes)
