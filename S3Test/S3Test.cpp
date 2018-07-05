@@ -47,6 +47,8 @@ _T("   /delete <ECSpath>                   Delete ECS object\n")
 _T("   /read <localfile> <ECSpath>         Read ECS object into file\n")
 _T("   /write <localfile> <ECSpath>        Write ECS object from file\n")
 _T("   /readmeta <ECSpath>                 Read all metadata from object\n")
+_T("   /cert                               Display certificate even if connect successful\n")
+_T("   /setcert                            Prompt user to install certificate\n")
 _T("   /dtquery <namespace> <bucket> <object> DT Query for object\n");
 
 
