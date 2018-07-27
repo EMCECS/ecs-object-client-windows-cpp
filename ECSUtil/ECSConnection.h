@@ -397,7 +397,10 @@ public:
 		{}
 		int Compare(const S3_DELETE_ENTRY& rec) const
 		{
-			return sKey.Compare(rec.sKey);
+			int iDiff = sKey.Compare(rec.sKey);
+			if (iDiff != 0)
+				return iDiff;
+			return sVersionId.Compare(rec.sVersionId);
 		}
 		bool operator == (const S3_DELETE_ENTRY& rec) const
 		{
