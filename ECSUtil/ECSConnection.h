@@ -32,6 +32,19 @@ const UINT MaxWriteRequestThrottle = 8192;
 const UINT MaxS3DeleteObjects = 1000;				// maximum number of objects to delete in one command (S3)
 const UINT MaxStreamQueueSize = 30;					// maximum size of stream queue. if there is a mismatch between the queue feed and consumer, you don't want it to grow too big
 
+
+// ECS x-emc-mtime header shows the time as a number
+// it is like a Unix time_t except it is in millisec resolution
+// convert to UTC FILETIME
+inline FILETIME ECSmtimeToFileTime(ULONGLONG mtime)
+{
+	FILETIME ftTime;
+	ULONGLONG ull = (mtime * 10000ULL) + 116444736000000000ULL;
+	ftTime.dwLowDateTime = (DWORD)ull;
+	ftTime.dwHighDateTime = ull >> 32;
+	return ftTime;
+}
+
 class CInternetHandle
 {
 private:
