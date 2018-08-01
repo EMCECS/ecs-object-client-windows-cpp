@@ -49,7 +49,9 @@ _T("   /write <localfile> <ECSpath>        Write ECS object from file\n")
 _T("   /readmeta <ECSpath>                 Read all metadata from object\n")
 _T("   /cert                               Display certificate even if connect successful\n")
 _T("   /setcert                            Prompt user to install certificate\n")
-_T("   /dtquery <namespace> <bucket> <object> DT Query for object\n");
+_T("   /dtquery <namespace> <bucket> <object> DT Query for object\n")
+_T("   /createbucket <bucket>              Create ECS bucket\n")
+_T("   /retention <seconds>                Used with /createbucket to set bucket-level retention\n");
 
 
 const TCHAR * const CMD_OPTION_ENDPOINT = _T("/endpoint");
@@ -70,6 +72,8 @@ const TCHAR * const CMD_OPTION_READMETA = _T("/readmeta");
 const TCHAR * const CMD_OPTION_CERT = _T("/cert");
 const TCHAR * const CMD_OPTION_SETCERT = _T("/setcert");
 const TCHAR * const CMD_OPTION_DTQUERY = _T("/dtquery");
+const TCHAR * const CMD_OPTION_CREATE_BUCKET = _T("/createbucket");
+const TCHAR * const CMD_OPTION_RETENTION = _T("/retention");
 const TCHAR * const CMD_OPTION_HELP1 = _T("--help");
 const TCHAR * const CMD_OPTION_HELP2 = _T("-h");
 const TCHAR * const CMD_OPTION_HELP3 = _T("/?");
@@ -91,11 +95,13 @@ CString sDeleteECSPath;
 CString sDTQueryNamespace;
 CString sDTQueryBucket;
 CString sDTQueryObject;
+CString sCreateBucket;
 
 bool bHttps = true;
 bool bCert = false;
 bool bSetCert = false;
 INTERNET_PORT wPort = 9021;
+ULONGLONG ullRetention = 0ULL;					// retention in seconds
 
 bool bShuttingDown = false;
 
@@ -352,6 +358,26 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 			}
 			sDeleteECSPath = *itParam;
 		}
+		else if (itParam->CompareNoCase(CMD_OPTION_CREATE_BUCKET) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sCreateBucket = *itParam;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_RETENTION) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			ullRetention = _wtoll(*itParam);
+		}
 		else if (itParam->CompareNoCase(CMD_OPTION_HELP1) == 0 ||
 			itParam->CompareNoCase(CMD_OPTION_HELP2) == 0 ||
 			itParam->CompareNoCase(CMD_OPTION_HELP3) == 0 ||
@@ -556,6 +582,20 @@ static int DoTest(CString& sOutMessage)
 		_tprintf(_T("  Endpoint: %s\n"), (LPCTSTR)*itList);
 	}
 
+	// create a bucket?
+	if (!sCreateBucket.IsEmpty())
+	{
+		list<CECSConnection::HEADER_STRUCT> MDList;
+		if (ullRetention != 0ULL)
+			MDList.push_back(CECSConnection::HEADER_STRUCT(L"x-emc-retention-period", FmtNum(ullRetention)));
+		Error = Conn.CreateS3Bucket(sCreateBucket, &MDList);
+		if (Error.IfError())
+		{
+			_tprintf(_T("CreateS3Bucket error: %s\n"), (LPCTSTR)Error.Format());
+			return 1;
+		}
+		_tprintf(_T("CreateS3Bucket: %s created, retention: %I64u seconds\n"), (LPCTSTR)sCreateBucket, ullRetention);
+	}
 	if (!sCreateECSPath.IsEmpty() && !sCreateLocalPath.IsEmpty())
 	{
 		CHandle hFile(CreateFile(sCreateLocalPath, FILE_GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));

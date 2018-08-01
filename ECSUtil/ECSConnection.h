@@ -1456,7 +1456,7 @@ public:
 	S3_ERROR ReadACL(LPCTSTR pszPath, deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	S3_ERROR WriteACL(LPCTSTR pszPath, const deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	CString GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExpire);
-	S3_ERROR CreateS3Bucket(LPCTSTR pszBucketName);
+	S3_ERROR CreateS3Bucket(LPCTSTR pszBucketName, const list<CECSConnection::HEADER_STRUCT> *pMDList = nullptr);
 	S3_ERROR DeleteS3Bucket(LPCTSTR pszBucketName);
 	S3_ERROR S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning);
 	S3_ERROR S3PutBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING Versioning);

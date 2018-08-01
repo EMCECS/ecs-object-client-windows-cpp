@@ -3166,6 +3166,12 @@ CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 			sMsg += sLineEnd;
 		sMsg += _T("Http: ") + sHttpMsg;
 	}
+	if (S3Error != S3_ERROR_SUCCESS)
+	{
+		CString sErrorText;
+		if (S3ErrorInfo(S3Error, nullptr, &sErrorText))
+			sMsg += L"S3Error = " + sErrorText + sLineEnd;
+	}
 	if (!sS3Code.IsEmpty())
 	{
 		if (!sMsg.IsEmpty())
@@ -4349,7 +4355,9 @@ bool CECSConnection::ValidateS3BucketName(LPCTSTR pszBucketName)
 	return true;
 }
 
-CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
+CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
+	LPCTSTR pszBucketName,
+	const list<CECSConnection::HEADER_STRUCT> *pMDList)
 {
 	CBuffer RetData;
 	S3_ERROR Error;
@@ -4419,7 +4427,11 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(LPCTSTR pszBucketName)
 			XmlUTF8_east.SetBufSize((DWORD)strlen(XmlUTF8_east));
 			XmlUTF8 = XmlUTF8_east;
 		}
-
+		if (pMDList != nullptr)
+		{
+			for (list<CECSConnection::HEADER_STRUCT>::const_iterator itMD = pMDList->begin(); itMD != pMDList->end(); ++itMD)
+				AddHeader(itMD->sHeader, itMD->sContents);
+		}
 		Error = SendRequest(_T("PUT"), CString(_T("/")) + pszBucketName + _T("/"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
