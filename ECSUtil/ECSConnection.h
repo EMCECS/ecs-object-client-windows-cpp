@@ -141,6 +141,7 @@ public:
 		String
 	};
 	static E_MD_SEARCH_TYPE TranslateSearchFieldType(LPCWSTR pszType);
+	static CString TranslateSearchFieldType(E_MD_SEARCH_TYPE Type);
 	enum class E_MD_SEARCH_FIELD
 	{
 		Unknown,
@@ -242,6 +243,24 @@ public:
 	{
 		CString sBucket;
 		deque<S3_METADATA_SEARCH_RESULT_OBJECT_MATCH> ObjectMatchList;
+	};
+
+	struct S3_BUCKET_INDEX_ENTRY
+	{
+		CString sFieldName;				// either system metadata (ObjectName, Owner, ...) or user metadata (x-amz-meta-??)
+		E_MD_SEARCH_TYPE Type;			// type: string, integer, decimal, datetime
+		S3_BUCKET_INDEX_ENTRY()
+			: Type(E_MD_SEARCH_TYPE::Unknown)
+		{}
+	};
+
+	struct S3_BUCKET_OPTIONS
+	{
+		DWORD dwRetention;									// retention time in seconds
+		list<S3_BUCKET_INDEX_ENTRY> IndexFieldList;			// fields to index to enable metadata search
+		S3_BUCKET_OPTIONS()
+			: dwRetention(0)
+		{}
 	};
 
 	struct ECSUTIL_EXT_CLASS S3_MPU_COMPLETE_INFO
@@ -1272,6 +1291,8 @@ private:
 	static DWORD dwPauseBetweenRetries;					// pause between retries (millisec)
 	static DWORD dwPauseAfter500Error;					// pause between retries after HTTP 500 error (millisec)
 
+public:
+	static set<CString> SystemMDSet;					// set of system metadata fields that can be indexed
 	static CString sAmzMetaPrefix;						// just a place to hold "x-amz-meta-"
 
 private:
@@ -1456,7 +1477,7 @@ public:
 	S3_ERROR ReadACL(LPCTSTR pszPath, deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	S3_ERROR WriteACL(LPCTSTR pszPath, const deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	CString GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExpire);
-	S3_ERROR CreateS3Bucket(LPCTSTR pszBucketName, const list<CECSConnection::HEADER_STRUCT> *pMDList = nullptr);
+	S3_ERROR CreateS3Bucket(LPCTSTR pszBucketName, const S3_BUCKET_OPTIONS *pOptions = nullptr, const list<CECSConnection::HEADER_STRUCT> *pMDList = nullptr);
 	S3_ERROR DeleteS3Bucket(LPCTSTR pszBucketName);
 	S3_ERROR S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning);
 	S3_ERROR S3PutBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING Versioning);

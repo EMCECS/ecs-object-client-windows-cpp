@@ -57,10 +57,25 @@ CCriticalSection CECSConnection::csSessionMap;
 map<CECSConnection::SESSION_MAP_KEY, CECSConnection::SESSION_MAP_VALUE> CECSConnection::SessionMap;			// protected by rwlSessionMap
 long CECSConnection::lSessionKeyValue;
 CString CECSConnection::sAmzMetaPrefix(TEXT("x-amz-meta-"));						// just a place to hold "x-amz-meta-"
+set<CString> CECSConnection::SystemMDSet;					// set of system metadata fields that can be indexed
 
 DWORD CECSConnection::dwMaxRetryCount(MaxRetryCount);				// max retries for HTTP command
 DWORD CECSConnection::dwPauseBetweenRetries(500);					// pause between retries (millisec)
 DWORD CECSConnection::dwPauseAfter500Error(500);					// pause between retries after HTTP 500 error (millisec)
+
+static WCHAR *SystemMDInit[] =
+{
+	L"ObjectName",
+	L"Owner",
+	L"Size",
+	L"CreateTime",
+	L"LastModified",
+	L"ContentType",
+	L"Expiration",
+	L"ContentEncoding",
+	L"Expires",
+	L"Retention"
+};
 
 class CSignQuerySet
 {
@@ -437,6 +452,9 @@ void CECSConnection::Init()
 	SignQuerySet.Init();
 	for (UINT i = 0; i < _countof(HttpErrorInitArray); i++)
 		(void)HttpErrorMap.insert(make_pair(HttpErrorInitArray[i].dwHTTPErrorCode, HttpErrorInitArray[i].dwErrorCode));
+	for (UINT i = 0; i < _countof(SystemMDInit); ++i)
+		(void)SystemMDSet.insert(SystemMDInit[i]);
+
 	bInitialized = true;
 };
 
@@ -4357,6 +4375,7 @@ bool CECSConnection::ValidateS3BucketName(LPCTSTR pszBucketName)
 
 CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 	LPCTSTR pszBucketName,
+	const S3_BUCKET_OPTIONS *pOptions,
 	const list<CECSConnection::HEADER_STRUCT> *pMDList)
 {
 	CBuffer RetData;
@@ -4386,6 +4405,42 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 		}
 		InitHeader();
 		AddHeader(_T("Content-Length"), _T("0"));
+		if (pOptions != nullptr)
+		{
+			if (pOptions->dwRetention != 0)
+				AddHeader(L"x-emc-retention-period", FmtNum(pOptions->dwRetention));
+			CString sIndexFields;
+			for (list<CECSConnection::S3_BUCKET_INDEX_ENTRY>::const_iterator it = pOptions->IndexFieldList.begin();
+				it != pOptions->IndexFieldList.end(); ++it)
+			{
+				if (SystemMDSet.find(it->sFieldName) != SystemMDSet.end())
+				{
+					if (!sIndexFields.IsEmpty())
+						sIndexFields += L",";
+					sIndexFields += it->sFieldName;
+				}
+				else
+				{
+					if ((it->sFieldName.Left(sAmzMetaPrefix.GetLength()) == sAmzMetaPrefix)		// it must start with x-amz-meta-
+						&& (it->sFieldName.GetLength() > sAmzMetaPrefix.GetLength())			// has to be more than just x-amz-meta-
+						&& (it->Type != E_MD_SEARCH_TYPE::Unknown))								// a type is needed
+					{
+						if (!sIndexFields.IsEmpty())
+							sIndexFields += L",";
+						sIndexFields += it->sFieldName + L";" + TranslateSearchFieldType(it->Type);
+					}
+					else
+					{
+						Error.S3Error = S3_ERROR_MetadataSearchNotEnabled;
+						Error.dwHttpError = HTTP_STATUS_BAD_REQUEST;
+						Error.sDetails = L"Invalid search field: " + it->sFieldName + L" Type: " + TranslateSearchFieldType(it->Type);
+						return Error;
+					}
+				}
+			}
+			if (!sIndexFields.IsEmpty())
+				AddHeader(L"x-emc-metadata-search", sIndexFields);
+		}
 
 		// set location constraint if any other region except for us-east-1
 		CAnsiString XmlUTF8;
@@ -5524,6 +5579,19 @@ CECSConnection::E_MD_SEARCH_TYPE CECSConnection::TranslateSearchFieldType(LPCWST
 	if (lstrcmpiW(pszType, L"Datetime") == 0)
 		return E_MD_SEARCH_TYPE::Datetime;
 	return E_MD_SEARCH_TYPE::Unknown;
+}
+
+CString CECSConnection::TranslateSearchFieldType(E_MD_SEARCH_TYPE Type)
+{
+	if (Type == E_MD_SEARCH_TYPE::String)
+		return L"String";
+	if (Type == E_MD_SEARCH_TYPE::Integer)
+		return L"Integer";
+	if (Type == E_MD_SEARCH_TYPE::Decimal)
+		return L"Decimal";
+	if (Type == E_MD_SEARCH_TYPE::Datetime)
+		return L"Datetime";
+	return L"Unknown";
 }
 
 struct XML_S3_METADATA_SEARCH_FIELDS_CONTEXT

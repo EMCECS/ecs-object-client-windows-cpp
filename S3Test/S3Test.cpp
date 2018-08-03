@@ -101,7 +101,7 @@ bool bHttps = true;
 bool bCert = false;
 bool bSetCert = false;
 INTERNET_PORT wPort = 9021;
-ULONGLONG ullRetention = 0ULL;					// retention in seconds
+DWORD dwRetention = 0;					// retention in seconds
 
 bool bShuttingDown = false;
 
@@ -376,7 +376,7 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 				sOutMessage = USAGE;
 				return false;
 			}
-			ullRetention = _wtoll(*itParam);
+			dwRetention = _wtol(*itParam);
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_HELP1) == 0 ||
 			itParam->CompareNoCase(CMD_OPTION_HELP2) == 0 ||
@@ -585,16 +585,16 @@ static int DoTest(CString& sOutMessage)
 	// create a bucket?
 	if (!sCreateBucket.IsEmpty())
 	{
-		list<CECSConnection::HEADER_STRUCT> MDList;
-		if (ullRetention != 0ULL)
-			MDList.push_back(CECSConnection::HEADER_STRUCT(L"x-emc-retention-period", FmtNum(ullRetention)));
-		Error = Conn.CreateS3Bucket(sCreateBucket, &MDList);
+		CECSConnection::S3_BUCKET_OPTIONS BucketOptions;
+		if (dwRetention != 0)
+			BucketOptions.dwRetention = dwRetention;
+		Error = Conn.CreateS3Bucket(sCreateBucket, &BucketOptions);
 		if (Error.IfError())
 		{
 			_tprintf(_T("CreateS3Bucket error: %s\n"), (LPCTSTR)Error.Format());
 			return 1;
 		}
-		_tprintf(_T("CreateS3Bucket: %s created, retention: %I64u seconds\n"), (LPCTSTR)sCreateBucket, ullRetention);
+		_tprintf(_T("CreateS3Bucket: %s created, retention: %u seconds\n"), (LPCTSTR)sCreateBucket, dwRetention);
 	}
 	if (!sCreateECSPath.IsEmpty() && !sCreateLocalPath.IsEmpty())
 	{
