@@ -256,10 +256,14 @@ public:
 
 	struct S3_BUCKET_OPTIONS
 	{
+		bool bEnableFS;										// file system enabled bucket
+		bool bTempSiteOutage;								// allow access during TSO
 		DWORD dwRetention;									// retention time in seconds
 		list<S3_BUCKET_INDEX_ENTRY> IndexFieldList;			// fields to index to enable metadata search
 		S3_BUCKET_OPTIONS()
-			: dwRetention(0)
+			: bEnableFS(false)
+			, bTempSiteOutage(true)
+			, dwRetention(0)
 		{}
 	};
 

@@ -4409,6 +4409,8 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 		{
 			if (pOptions->dwRetention != 0)
 				AddHeader(L"x-emc-retention-period", FmtNum(pOptions->dwRetention));
+			AddHeader(L"x-emc-file-system-access-enabled", pOptions->bEnableFS ? L"true" : L"false");
+			AddHeader(L"x-emc-is-stale-allowed", pOptions->bTempSiteOutage ? L"true" : L"false");
 			CString sIndexFields;
 			for (list<CECSConnection::S3_BUCKET_INDEX_ENTRY>::const_iterator it = pOptions->IndexFieldList.begin();
 				it != pOptions->IndexFieldList.end(); ++it)
