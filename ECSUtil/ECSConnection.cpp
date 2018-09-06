@@ -3045,7 +3045,11 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				if (!sPrefix.IsEmpty())
 					sResource += _T("&prefix=") + sPrefix;
 				if (!State.sEmcToken.IsEmpty())
-					sResource += UriEncode(_T("&marker=") + State.sEmcToken);
+					sResource += _T("&marker=") + UriEncode(State.sEmcToken, true);
+				if (!sS3NextKeyMarker.IsEmpty())
+					sResource += _T("&key-marker=") + UriEncode(sS3NextKeyMarker, true);
+				if (!sS3NextVersionIdMarker.IsEmpty())
+					sResource += _T("&version-id-marker=") + UriEncode(sS3NextVersionIdMarker, true);
 				if (pdwGetECSRetention != nullptr)
 				{
 					Req.push_back(HEADER_REQ(_T("x-emc-retention-period")));
@@ -3479,7 +3483,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 		// now construct the new metadata list
 		if (ullObjSize < GIGABYTES(5ULL))
 		{
-			CString sSrcPath(UriEncode(pszSrcPath));
+			CString sSrcPath(UriEncode(pszSrcPath, true));
 			if (pszVersionId != nullptr)
 				sSrcPath += CString(_T("?versionId=")) + pszVersionId;
 			AddHeader(_T("x-amz-copy-source"), sSrcPath);							// specify source of copy
@@ -3493,7 +3497,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 						AddHeader(itList->sHeader, itList->sContents);
 				}
 			}
-			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath), nullptr, 0, RetData, &Req);
+			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath, true), nullptr, 0, RetData, &Req);
 			return Error;
 		}
 		Error = S3MultiPartInitiate(pszTargetPath, MultiPartInfo, pMDList);
@@ -3547,7 +3551,7 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 		list<HEADER_REQ> Req;
 		CString sPath(pszPath);
 		InitHeader();
-		Error = SendRequest(_T("HEAD"), UriEncode(sPath), nullptr, 0, RetData, &Req);
+		Error = SendRequest(_T("HEAD"), UriEncode(sPath, true), nullptr, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 
@@ -3584,10 +3588,10 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 				(void)State.Headers.erase(sTag);
 			}
 		}
-		AddHeader(_T("x-amz-copy-source"), UriEncode(sPath));							// copy it to itself
+		AddHeader(_T("x-amz-copy-source"), UriEncode(sPath, true));							// copy it to itself
 		AddHeader(_T("x-amz-metadata-directive"), _T("REPLACE"));
 		// now compare with the original metadata to see if there has been a change
-		Error = SendRequest(_T("PUT"), UriEncode(sPath), nullptr, 0, RetData, &Req);
+		Error = SendRequest(_T("PUT"), UriEncode(sPath, true), nullptr, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 	}
@@ -4584,7 +4588,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 		}
 	}
 	AddHeader(_T("content-type"), _T("application/octet-stream"));
-	Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploads"), nullptr, 0, RetData);
+	Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource, true) + _T("?uploads"), nullptr, 0, RetData);
 	if (Error.IfError())
 		return Error;
 	// parse XML
@@ -4704,7 +4708,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 
 		InitHeader();
-		Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploadId=") + MultiPartInfo.sUploadId, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
+		Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource, true) + _T("?uploadId=") + MultiPartInfo.sUploadId, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
 		if (!Error.IfError() && !RetData.IsEmpty())
 		{
 			{
@@ -4738,7 +4742,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartAbort(const S3_UPLOAD_PART_I
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	Error = SendRequest(_T("DELETE"), UriEncode(MultiPartInfo.sResource) + _T("?uploadId=") + MultiPartInfo.sUploadId, nullptr, 0, RetData);
+	Error = SendRequest(_T("DELETE"), UriEncode(MultiPartInfo.sResource, true) + _T("?uploadId=") + MultiPartInfo.sUploadId, nullptr, 0, RetData);
 	return Error;
 }
 
@@ -4918,7 +4922,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 	sResource += _T("?partNumber=") + FmtNum(PartEntry.uPartNum) + _T("&uploadId=") + MultiPartInfo.sUploadId;
 	if (pszCopySource != nullptr)
 	{
-		CString sSource(UriEncode(pszCopySource));
+		CString sSource(UriEncode(pszCopySource, true));
 		if ((pszVersionId != nullptr) && (*pszVersionId != NUL))
 			sSource += CString(_T("?versionId=")) + pszVersionId;
 		AddHeader(_T("x-amz-copy-source"), sSource);
@@ -5458,7 +5462,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetKeysForUser(LPCTSTR pszUser,
 		sMethod += pszUser;
 		if ((pszNamespace != nullptr) && (*pszNamespace != NUL))
 			sMethod += CString(_T("/")) + pszNamespace;
-		Error = SendRequest(_T("GET"), UriEncode(sMethod), nullptr, 0, RetData, &Req);
+		Error = SendRequest(_T("GET"), UriEncode(sMethod, true), nullptr, 0, RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
 		{
@@ -5550,7 +5554,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
 		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
-		Error = SendRequest(_T("POST"), UriEncode(_T("/object/user-secret-keys/") + User.sUser), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
+		Error = SendRequest(_T("POST"), UriEncode(_T("/object/user-secret-keys/") + User.sUser, true), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
 		{
@@ -6539,7 +6543,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 			pReq = &Req;
 		Properties.Empty();
 		InitHeader();
-		CString sPath(UriEncode(pszPath));
+		CString sPath(UriEncode(pszPath, true));
 		// first get the complete list of system metadata for this object
 		if ((pszVersionId != nullptr) && (*pszVersionId != NUL))
 			sPath += CString(_T("?versionId=")) + pszVersionId;
