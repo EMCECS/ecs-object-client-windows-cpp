@@ -657,6 +657,14 @@ public:
 
 	typedef list<ACL_ENTRY> UIDList_t;
 
+	struct ECSUTIL_EXT_CLASS ECS_CERT_INFO
+	{
+		CString sCertName;								// if certificate error, these fields contain info from the server cert
+		CString sCertSubject;							// Certificate Subject
+		CString sCertSubjectAltName;					// Subject Alternative Names (SAN) extension if available
+		CBuffer SerializedCert;							// if self-signed cert, this contains the certificate from the server
+	};
+
 	struct ECSUTIL_EXT_CLASS S3_ERROR_BASE
 	{
 		DWORD dwError;					// WIN32 error
@@ -667,6 +675,8 @@ public:
 		CString sS3Resource;			// S3: resource associated with the error
 		CString sS3RequestID;			// S3: request ID associated with the error
 		CString sDetails;				// ECS Admin: additional details
+		CString sHostAddr;				// IP/FQDN:port of connection that failed
+		ECS_CERT_INFO CertInfo;			// if secure error, a copy of important fields in the certificate
 
 		S3_ERROR_BASE(DWORD dwErrorParam = ERROR_SUCCESS)
 			: dwError(dwErrorParam)
@@ -774,14 +784,6 @@ public:
 				sMsg += _T("\r\n") + sAdditionalInfo;
 			return sMsg;
 		}
-	};
-
-	struct ECSUTIL_EXT_CLASS ECS_CERT_INFO
-	{
-		CString sCertName;								// if certificate error, these fields contain info from the server cert
-		CString sCertSubject;							// Certificate Subject
-		CString sCertSubjectAltName;					// Subject Alternative Names (SAN) extension if available
-		CBuffer SerializedCert;							// if self-signed cert, this contains the certificate from the server
 	};
 
 	struct ECSUTIL_EXT_CLASS S3_SYSTEM_METADATA

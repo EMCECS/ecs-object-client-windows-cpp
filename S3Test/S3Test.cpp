@@ -512,7 +512,7 @@ static int DoTest(CString& sOutMessage)
 		{
 			DWORD dwSecureError = Conn.GetSecureError();
 			Conn.GetCertInfo(CertInfo);
-			_tprintf(_T("Cert Name:\n%s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
+			_tprintf(_T("Cert Name: %s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
 				(LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject, (LPCTSTR)CertInfo.sCertSubjectAltName);
 			if ((dwSecureError & WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA) != 0)
 			{

@@ -1419,13 +1419,14 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	S3_ERROR Error;
 	// use const version of pStreamSend to use "read" locks instead of "write" locks when only reading is being done
 	const STREAM_CONTEXT *pConstStreamSend = (const STREAM_CONTEXT *)pStreamSend;
+	CString sHostHeader(CString(GetCurrentServerIP()) + _T(":") + FmtNum(Port));
 	try
 	{
 		// fixup the host header line (if it exists)
 		{
 			map<CString, HEADER_STRUCT>::iterator itHeader = State.Headers.find(_T("host"));
 			if (itHeader != State.Headers.end())
-				itHeader->second.sContents = CString(GetCurrentServerIP()) + _T(":") + FmtNum(Port);
+				itHeader->second.sContents = sHostHeader;
 		}
 		State.dwSecureError = 0;
 		if (pbGotServerResponse != nullptr)
@@ -1993,15 +1994,20 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			pStreamSend->iAccProgress = 0;
 		}
 		Error = E.Error;
-		if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
-			Error.dwSecureError = State.dwSecureError;
+		Error.sHostAddr = sHostHeader;
 		State.CloseRequest(Error.dwError == ERROR_WINHTTP_SECURE_FAILURE);
 		State.Session.pValue->bKillWhenDone = true;
 		State.Session.ReleaseSession();
+		if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
+		{
+			Error.dwSecureError = State.dwSecureError;
+			GetCertInfo(Error.CertInfo);
+		}
 		return Error;
 	}
 	State.CloseRequest();
 	State.Session.ReleaseSession();
+	Error.sHostAddr = sHostHeader;
 	return Error;
 }
 
@@ -3216,13 +3222,25 @@ CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 	{
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
-		sMsg += _T("Secure Error: ") + GetSecureErrorText(dwSecureError);
+		sMsg += _T("Secure Error: ") + GetSecureErrorText(dwSecureError) + sLineEnd;
+		// with a secure error, chances are the problem has to do with the certificate
+		// so we'll dump the certificate with the error text
+		CString sCert;
+		sCert.Format(_T("Cert Name: %s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
+			(LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject, (LPCTSTR)CertInfo.sCertSubjectAltName);
+		sMsg += sCert;
 	}
 	if (!sDetails.IsEmpty())
 	{
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
 		sMsg += _T("Details: ") + sDetails;
+	}
+	if (!sHostAddr.IsEmpty())
+	{
+		if (!sMsg.IsEmpty())
+			sMsg += sLineEnd;
+		sMsg += _T("IP: ") + sHostAddr;
 	}
 	if (bOneLine)
 	{
