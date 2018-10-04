@@ -497,6 +497,9 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetUserAgent(_T("TestApp/1.0"));
 	Conn.SetRetries(10, SECONDS(2), SECONDS(4));
 	Conn.SetHttpsProtocol(WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2);
+//	Conn.SetHTTPSecurityFlags(SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_UNKNOWN_CA);
+//	Conn.SetProxy(false, L"127.0.0.1", 8888, nullptr, nullptr);
+	Conn.SetTimeouts(10, SECONDS(180), SECONDS(180), SECONDS(180), SECONDS(180), 10);
 
 	// get the list of buckets
 	if (bCert || bSetCert)
@@ -642,7 +645,7 @@ static int DoTest(CString& sOutMessage)
 		Context.sTitle = L"Write";
 		list<CECSConnection::HEADER_STRUCT> MDList;
 		CECSConnection::HEADER_STRUCT MD_Rec;
-#ifdef unused
+#ifndef unused
 		MD_Rec.sHeader = _T("x-amz-meta-NewTag");
 		MD_Rec.sContents = _T("NewTagValue");
 		MDList.push_back(MD_Rec);
