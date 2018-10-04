@@ -442,12 +442,19 @@ CECSConnection::S3_ERROR S3Write(
 			if (Conn.TestAbort())
 				throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_OPERATION_ABORTED);
 		}
+		if (WriteThread.FileSize.QuadPart != liOffset.QuadPart)
+		{
+			DebugF(L"Size Mismatch!!! Size at start: %I64d, Size of PUT: %I64d", WriteThread.FileSize.QuadPart, liOffset.QuadPart);
+			throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_BAD_LENGTH);
+		}
 		// now wait for the worker thread to terminate to get its error code
 		WriteThread.KillThreadWait();			// kill background thread
 	}
 	catch (const CErrorInfo& E)
 	{
 		WriteThread.KillThreadWait();			// kill background thread
+		if (WriteThread.Error.IfError())
+			return WriteThread.Error;			// if the S3 call failed, that error is most likely more important than this one
 		return E.dwError;
 	}
 	return WriteThread.Error;
