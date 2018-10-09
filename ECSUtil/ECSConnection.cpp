@@ -3198,7 +3198,11 @@ CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 	{
 		CString sErrorText;
 		if (S3ErrorInfo(S3Error, nullptr, &sErrorText))
-			sMsg += L"S3Error = " + sErrorText + sLineEnd;
+		{
+			if (!sMsg.IsEmpty())
+				sMsg += sLineEnd;
+			sMsg += L"S3Error = " + sErrorText;
+		}
 	}
 	if (!sS3Code.IsEmpty())
 	{
