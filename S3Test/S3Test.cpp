@@ -42,10 +42,12 @@ _T("   /port <port number>                 Rest API Port\n")
 _T("   /user <user ID>                     ECS object user\n")
 _T("   /secret <secret>                    ECS object secret\n")
 _T("   /list <path, starting with bucket>  Object listing\n")
+_T("   /listbuckets                        Dump all buckets and endpoints\n")
 _T("   /create <localfile> <ECSpath>       Create ECS object and initialize with file\n")
 _T("   /delete <ECSpath>                   Delete ECS object\n")
 _T("   /read <localfile> <ECSpath>         Read ECS object into file\n")
 _T("   /write <localfile> <ECSpath>        Write ECS object from file\n")
+_T("   /mpu                                Used with /write to use multi-part update\n")
 _T("   /readmeta <ECSpath>                 Read all metadata from object\n")
 _T("   /cert                               Display certificate even if connect successful\n")
 _T("   /setcert                            Prompt user to install certificate\n")
@@ -64,10 +66,12 @@ const TCHAR * const CMD_OPTION_SECRET = _T("/secret");
 const TCHAR * const CMD_OPTION_HTTPS = _T("/https");
 const TCHAR * const CMD_OPTION_HTTP = _T("/http");
 const TCHAR * const CMD_OPTION_LIST = _T("/list");
+const TCHAR * const CMD_OPTION_LISTBUCKETS = _T("/listbuckets");
 const TCHAR * const CMD_OPTION_CREATE = _T("/create");
 const TCHAR * const CMD_OPTION_DELETE = _T("/delete");
 const TCHAR * const CMD_OPTION_READ = _T("/read");
 const TCHAR * const CMD_OPTION_WRITE = _T("/write");
+const TCHAR * const CMD_OPTION_MPU = _T("/mpu");
 const TCHAR * const CMD_OPTION_READMETA = _T("/readmeta");
 const TCHAR * const CMD_OPTION_CERT = _T("/cert");
 const TCHAR * const CMD_OPTION_SETCERT = _T("/setcert");
@@ -100,6 +104,8 @@ CString sCreateBucket;
 bool bHttps = true;
 bool bCert = false;
 bool bSetCert = false;
+bool bMPU = false;
+bool bListBuckets = false;
 INTERNET_PORT wPort = 9021;
 DWORD dwRetention = 0;					// retention in seconds
 
@@ -324,6 +330,14 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 		{
 			bSetCert = true;
 		}
+		else if (itParam->CompareNoCase(CMD_OPTION_MPU) == 0)
+		{
+			bMPU = true;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_LISTBUCKETS) == 0)
+		{
+			bListBuckets = true;
+		}
 		else if (itParam->CompareNoCase(CMD_OPTION_DTQUERY) == 0)
 		{
 			++itParam;
@@ -425,9 +439,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			if (!ParseArguments(CmdArgs, sOutMessage))
 				_tprintf(_T("%s\n"), (LPCTSTR)sOutMessage);
 			nRetCode = DoTest(sOutMessage);
-
-			_tprintf(_T("Press ENTER to continue..."));
-			cin.get();
 			ECSTermLib();
 		}
     }
@@ -507,17 +518,46 @@ static int DoTest(CString& sOutMessage)
 		Conn.SetSaveCertInfo(true);
 	}
 	CECSConnection::S3_SERVICE_INFO ServiceInfo;
-	Error = Conn.S3ServiceInformation(ServiceInfo);
-	if (Error.IfError())
+	if (bListBuckets || bCert || bSetCert)
 	{
-		_tprintf(_T("S3ServiceInformation error: %s\n"), (LPCTSTR)Error.Format());
-		if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
+		Error = Conn.S3ServiceInformation(ServiceInfo);
+		if (Error.IfError())
 		{
-			DWORD dwSecureError = Conn.GetSecureError();
+			_tprintf(_T("S3ServiceInformation error: %s\n"), (LPCTSTR)Error.Format());
+			if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
+			{
+				DWORD dwSecureError = Conn.GetSecureError();
+				Conn.GetCertInfo(CertInfo);
+				_tprintf(_T("Cert Name: %s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
+					(LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject, (LPCTSTR)CertInfo.sCertSubjectAltName);
+				if ((dwSecureError & WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA) != 0)
+				{
+					wchar_t InArray[10];
+					size_t SizeRead = 0;
+					_tprintf(L"Install Certificate?\n");
+					errno_t err = _cgetws_s(InArray, &SizeRead);
+					CString sInArray(InArray);
+					sInArray.MakeLower();
+					if (sInArray.Left(1) == L"y")
+					{
+						DWORD dwErr = CECSConnection::SetRootCertificate(CertInfo);
+						if (dwErr == ERROR_SUCCESS)
+							_tprintf(L"Certificate installed\n");
+						else
+							_tprintf(L"Error installing certificate: %d\n", dwErr);
+					}
+				}
+			}
+			return 1;
+		}
+		// check if we should dump the certificate info
+		if (bCert || bSetCert)
+		{
+			Conn.SetSaveCertInfo(false);
 			Conn.GetCertInfo(CertInfo);
-			_tprintf(_T("Cert Name: %s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
+			_tprintf(_T("Cert Name:\n%s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
 				(LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject, (LPCTSTR)CertInfo.sCertSubjectAltName);
-			if ((dwSecureError & WINHTTP_CALLBACK_STATUS_FLAG_INVALID_CA) != 0)
+			if (bSetCert)
 			{
 				wchar_t InArray[10];
 				size_t SizeRead = 0;
@@ -531,58 +571,35 @@ static int DoTest(CString& sOutMessage)
 					if (dwErr == ERROR_SUCCESS)
 						_tprintf(L"Certificate installed\n");
 					else
-						_tprintf(L"Error installing certificate: %d\n", dwErr);
+						_tprintf(L"Error installing certificate: %s\n", (LPCTSTR)GetNTErrorText(dwErr));
 				}
 			}
 		}
-		return 1;
-	}
-	// check if we should dump the certificate info
-	if (bCert || bSetCert)
-	{
-		Conn.SetSaveCertInfo(false);
-		Conn.GetCertInfo(CertInfo);
-		_tprintf(_T("Cert Name:\n%s\n\nCert Subject:\n%s\n\nCert Subject Alternate Names:\n%s\n"),
-			(LPCTSTR)CertInfo.sCertName, (LPCTSTR)CertInfo.sCertSubject, (LPCTSTR)CertInfo.sCertSubjectAltName);
-		if (bSetCert)
+		if (bListBuckets)
 		{
-			wchar_t InArray[10];
-			size_t SizeRead = 0;
-			_tprintf(L"Install Certificate?\n");
-			errno_t err = _cgetws_s(InArray, &SizeRead);
-			CString sInArray(InArray);
-			sInArray.MakeLower();
-			if (sInArray.Left(1) == L"y")
+			// dump service info
+			_tprintf(_T("OwnerID: %s, Name: %s\n"), (LPCTSTR)ServiceInfo.sOwnerID, (LPCTSTR)ServiceInfo.sOwnerDisplayName);
+			for (list<CECSConnection::S3_BUCKET_INFO>::const_iterator itList = ServiceInfo.BucketList.begin();
+				itList != ServiceInfo.BucketList.end(); ++itList)
 			{
-				DWORD dwErr = CECSConnection::SetRootCertificate(CertInfo);
-				if (dwErr == ERROR_SUCCESS)
-					_tprintf(L"Certificate installed\n");
-				else
-					_tprintf(L"Error installing certificate: %s\n", (LPCTSTR)GetNTErrorText(dwErr));
+				_tprintf(_T("  Bucket: %s: %s\n"), (LPCTSTR)itList->sName, (LPCTSTR)DateTimeStr(&itList->ftCreationDate, true, true, true, false, true));
+			}
+			// get the endpoint list
+			CECSConnection::S3_ENDPOINT_INFO Endpoint;
+			Error = Conn.DataNodeEndpointS3(Endpoint);
+			if (Error.IfError())
+			{
+				_tprintf(_T("DataNodeEndpointS3 error: %s\n"), (LPCTSTR)Error.Format());
+				return 1;
+			}
+			// dump endpoint info
+			_tprintf(_T("Version: %s\n"), (LPCTSTR)Endpoint.sVersion);
+			for (list<CString>::const_iterator itList = Endpoint.EndpointList.begin();
+				itList != Endpoint.EndpointList.end(); ++itList)
+			{
+				_tprintf(_T("  Endpoint: %s\n"), (LPCTSTR)*itList);
 			}
 		}
-	}
-	// dump service info
-	_tprintf(_T("OwnerID: %s, Name: %s\n"), (LPCTSTR)ServiceInfo.sOwnerID, (LPCTSTR)ServiceInfo.sOwnerDisplayName);
-	for (list<CECSConnection::S3_BUCKET_INFO>::const_iterator itList = ServiceInfo.BucketList.begin();
-		itList != ServiceInfo.BucketList.end(); ++itList)
-	{
-		_tprintf(_T("  Bucket: %s: %s\n"), (LPCTSTR)itList->sName, (LPCTSTR)DateTimeStr(&itList->ftCreationDate, true, true, true, false, true));
-	}
-	// get the endpoint list
-	CECSConnection::S3_ENDPOINT_INFO Endpoint;
-	Error = Conn.DataNodeEndpointS3(Endpoint);
-	if (Error.IfError())
-	{
-		_tprintf(_T("DataNodeEndpointS3 error: %s\n"), (LPCTSTR)Error.Format());
-		return 1;
-	}
-	// dump endpoint info
-	_tprintf(_T("Version: %s\n"), (LPCTSTR)Endpoint.sVersion);
-	for (list<CString>::const_iterator itList = Endpoint.EndpointList.begin();
-		itList != Endpoint.EndpointList.end(); ++itList)
-	{
-		_tprintf(_T("  Endpoint: %s\n"), (LPCTSTR)*itList);
 	}
 
 	// create a bucket?
@@ -636,6 +653,7 @@ static int DoTest(CString& sOutMessage)
 		if (Error.IfError())
 		{
 			_tprintf(_T("Error from S3Read: %s\n"), (LPCTSTR)Error.Format());
+			return 1;
 		}
 		_tprintf(L"\r\n");
 	}
@@ -645,40 +663,47 @@ static int DoTest(CString& sOutMessage)
 		Context.sTitle = L"Write";
 		list<CECSConnection::HEADER_STRUCT> MDList;
 		CECSConnection::HEADER_STRUCT MD_Rec;
-#ifndef unused
-		MD_Rec.sHeader = _T("x-amz-meta-NewTag");
-		MD_Rec.sContents = _T("NewTagValue");
-		MDList.push_back(MD_Rec);
-		CECSConnection::S3_ERROR Error = S3Write(sWriteLocalPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, Conn, sWriteECSPath, MEGABYTES(1), true, 20, &MDList, ProgressCallBack, &Context);
-		if (Error.IfError())
+		if (!bMPU)
 		{
-			_tprintf(_T("Error from S3Write: %s\n"), (LPCTSTR)Error.Format());
+			CECSConnection::S3_ERROR Error = S3Write(sWriteLocalPath, STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, Conn, sWriteECSPath, MEGABYTES(1), true, 20, &MDList, ProgressCallBack, &Context);
+			if (Error.IfError())
+			{
+				_tprintf(_T("Error from S3Write: %s\n"), (LPCTSTR)Error.Format());
+				return 1;
+			}
+			_tprintf(L"\r\n");
 		}
-		_tprintf(L"\r\n");
-#else
-		MD_Rec.sHeader = _T("x-amz-meta-NewTag");
-		MD_Rec.sContents = _T("NewTagValueMPU");
-		MDList.push_back(MD_Rec);
-		CECSConnection::S3_ERROR Error;
-		_tprintf(L"\nMPU Upload:\n");
-		bool bMPUUpload = DoS3MultiPartUpload(
-			sWriteLocalPath,
-			STGM_READ | STGM_SHARE_DENY_WRITE,
-			FILE_ATTRIBUTE_NORMAL,
-			Conn,						// established connection to ECS
-			sWriteECSPath,				// path to object in format: /bucket/dir1/dir2/object
-			MEGABYTES(1),				// size of buffer to use
-			10,							// part size (in MB)
-			3,							// maxiumum number of threads to spawn
-			true,						// if set, include content-MD5 header
-			&MDList,					// optional metadata to send to object
-			4,							// how big the queue can grow that feeds the upload thread
-			5,							// how many times to retry a part before giving up
-			ProgressCallBack,			// optional progress callback
-			&Context,					// context for UpdateProgressCB
-			Error);						// returned error
-		_tprintf(L"\nMPU Upload: %s, %s\n", bMPUUpload ? L"success" : L"fail", (LPCTSTR)Error.Format(true));
-#endif
+		else
+		{
+			CECSConnection::S3_ERROR Error;
+			_tprintf(L"\nMPU Upload:\n");
+			bool bMPUUpload = DoS3MultiPartUpload(
+				sWriteLocalPath,
+				STGM_READ | STGM_SHARE_DENY_WRITE,
+				FILE_ATTRIBUTE_NORMAL,
+				Conn,						// established connection to ECS
+				sWriteECSPath,				// path to object in format: /bucket/dir1/dir2/object
+				MEGABYTES(1),				// size of buffer to use
+				10,							// part size (in MB)
+				3,							// maxiumum number of threads to spawn
+				true,						// if set, include content-MD5 header
+				&MDList,					// optional metadata to send to object
+				4,							// how big the queue can grow that feeds the upload thread
+				5,							// how many times to retry a part before giving up
+				ProgressCallBack,			// optional progress callback
+				&Context,					// context for UpdateProgressCB
+				Error);						// returned error
+			_tprintf(L"\nMPU Upload: %s, %s\n", bMPUUpload ? L"success" : L"fail", (LPCTSTR)Error.Format(true));
+			if (!bMPUUpload && !Error.IfError())
+			{
+				_tprintf(L"File too small for MPU upload\n");
+				return 1;
+			}
+			if (Error.IfError())
+			{
+				return 1;
+			}
+		}
 	}
 	if (!sDeleteECSPath.IsEmpty())
 	{
@@ -746,6 +771,7 @@ static int DoTest(CString& sOutMessage)
 			Response.uShippedDataPercentage);
 	}
 	CString sBadIPMap(Conn.DumpBadIPMap());
-	_tprintf(_T("\nBad IP Map:\n%s\n"), (LPCTSTR)sBadIPMap);
+	if (!sBadIPMap.IsEmpty())
+		_tprintf(_T("\nBad IP Map:\n%s\n"), (LPCTSTR)sBadIPMap);
 	return 0;
 }
