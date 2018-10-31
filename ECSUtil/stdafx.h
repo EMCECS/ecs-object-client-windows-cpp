@@ -56,6 +56,7 @@
 //#include <ntdef.h>
 #include <WinNT.h>
 #include <memory>
+#include <string>
 #include <vector>
 #include <map>
 #include <list>
