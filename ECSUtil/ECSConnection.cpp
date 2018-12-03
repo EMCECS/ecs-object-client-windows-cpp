@@ -615,7 +615,7 @@ static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
 	sToken.TrimRight();
 	if (SignQuerySet.IfQuery(sToken))
 	{
-		(void)QueryMap.insert(make_pair(sToken, sQuery));
+		(void)QueryMap.insert(make_pair(sToken, UriDecode(sQuery)));
 	}
 }
 
@@ -5992,11 +5992,11 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 			CString sNewStr(sExpr.Left(iOpen) + L'"' + sStr + L'"' + sExpr.Mid(iClose + 1));
 			sExpr = sNewStr;
 		}
-		CString sResource = CString(_T("/")) + Params.sBucket + _T("/?query=") + sExpr;
+		CString sResource = CString(_T("/")) + UriEncode(Params.sBucket) + _T("/?query=") + UriEncode(sExpr, true);
 		if (!Params.sAttributes.IsEmpty())
-			sResource += _T("&attributes=") + Params.sAttributes;
+			sResource += _T("&attributes=") + UriEncode(Params.sAttributes, true);
 		if (!Params.sSorted.IsEmpty())
-			sResource += _T("&sorted=") + Params.sSorted;
+			sResource += _T("&sorted=") + UriEncode(Params.sSorted, true);
 		if (Params.bOlderVersions)
 			sResource += CString(_T("&include-older-versions=")) + (Params.bOlderVersions ? _T("true") : _T("false"));
 		CString sMarker;
