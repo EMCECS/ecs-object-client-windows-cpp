@@ -508,6 +508,7 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetUserAgent(_T("TestApp/1.0"));
 	Conn.SetRetries(10, SECONDS(2), SECONDS(4));
 	Conn.SetHttpsProtocol(WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2);
+//	Conn.SetHTTPSecurityFlags(/*SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | */SECURITY_FLAG_IGNORE_UNKNOWN_CA/* | SECURITY_FLAG_IGNORE_CERT_CN_INVALID*/);
 //	Conn.SetHTTPSecurityFlags(SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_UNKNOWN_CA);
 //	Conn.SetProxy(false, L"127.0.0.1", 8888, nullptr, nullptr);
 	Conn.SetTimeouts(10, SECONDS(180), SECONDS(180), SECONDS(180), SECONDS(180), 10);
