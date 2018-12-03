@@ -19,3 +19,5 @@ Release Lib
 /Release Lib Static
 /objDebug Lib Static
 /objRelease Lib Static
+/*.gz
+/*.zip

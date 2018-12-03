@@ -1,3 +1,3 @@
 @echo off
 if exist ecs-object-client-windows-cpp.~VERSION~.zip del ecs-object-client-windows-cpp.~VERSION~.zip
-7z.exe a -tzip ecs-object-client-windows-cpp.~VERSION~.zip -r -x!*.user -x!*.aps -x!*.opendb -x!*.db -x!Debug -x!"Debug Lib" -x!"Debug Lib Static" -x!lint -x!objDebug -x!"objDebug Lib" -x!"objDebug Lib Static" -x!objRelease -x!"objRelease Lib" -x!"objRelease Lib Static" -x!Release -x!"Release Lib" -x!"Release Lib Static" -x!ziplib.bat -x!.git -x!.vs -x!.gitignore -x!*.zip *
+7z.exe a -tzip ecs-object-client-windows-cpp.~VERSION~.zip -r -x!*.user -x!*.aps -x!*.opendb -x!*.db -x!Debug -x!"Debug Lib" -x!"Debug Lib Static" -x!lint -x!objDebug -x!"objDebug Lib" -x!"objDebug Lib Static" -x!objRelease -x!"objRelease Lib" -x!"objRelease Lib Static" -x!Release -x!"Release Lib" -x!"Release Lib Static" -x!ziplib.bat -x!.git -x!.vs -x!.gitignore -x!*.zip -x!*.gz *
