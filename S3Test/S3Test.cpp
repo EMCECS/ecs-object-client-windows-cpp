@@ -41,6 +41,7 @@ _T("   /endpoint <IP or hostname>          S3/ECS Server\n")
 _T("   /port <port number>                 Rest API Port\n")
 _T("   /user <user ID>                     ECS object user\n")
 _T("   /secret <secret>                    ECS object secret\n")
+_T("   /proxy <proxy> <port>               To enable for Fiddler: 127.0.0.1 8888\n")
 _T("   /list <path, starting with bucket>  Object listing\n")
 _T("   /listbuckets                        Dump all buckets and endpoints\n")
 _T("   /create <localfile> <ECSpath>       Create ECS object and initialize with file\n")
@@ -65,6 +66,7 @@ const TCHAR * const CMD_OPTION_USER = _T("/user");
 const TCHAR * const CMD_OPTION_SECRET = _T("/secret");
 const TCHAR * const CMD_OPTION_HTTPS = _T("/https");
 const TCHAR * const CMD_OPTION_HTTP = _T("/http");
+const TCHAR * const CMD_OPTION_PROXY = _T("/proxy");
 const TCHAR * const CMD_OPTION_LIST = _T("/list");
 const TCHAR * const CMD_OPTION_LISTBUCKETS = _T("/listbuckets");
 const TCHAR * const CMD_OPTION_CREATE = _T("/create");
@@ -100,6 +102,9 @@ CString sDTQueryNamespace;
 CString sDTQueryBucket;
 CString sDTQueryObject;
 CString sCreateBucket;
+
+CString sProxyAddr;
+WORD wProxyPort = 0;
 
 bool bHttps = true;
 bool bCert = false;
@@ -250,6 +255,23 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 		else if (itParam->CompareNoCase(CMD_OPTION_HTTP) == 0)
 		{
 			bHttps = false;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_PROXY) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			sProxyAddr = *itParam;
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			wProxyPort = (WORD)_wtoi(*itParam);
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_LIST) == 0)
 		{
@@ -510,7 +532,8 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetHttpsProtocol(WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2);
 //	Conn.SetHTTPSecurityFlags(/*SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | */SECURITY_FLAG_IGNORE_UNKNOWN_CA/* | SECURITY_FLAG_IGNORE_CERT_CN_INVALID*/);
 //	Conn.SetHTTPSecurityFlags(SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_UNKNOWN_CA);
-//	Conn.SetProxy(false, L"127.0.0.1", 8888, nullptr, nullptr);
+	if (!sProxyAddr.IsEmpty() && (wProxyPort != 0))
+		Conn.SetProxy(false, sProxyAddr, wProxyPort, nullptr, nullptr);
 	Conn.SetTimeouts(10, SECONDS(180), SECONDS(180), SECONDS(180), SECONDS(180), 10);
 
 	// get the list of buckets
@@ -719,8 +742,8 @@ static int DoTest(CString& sOutMessage)
 	if (!sDirPath.IsEmpty())
 	{
 		CECSConnection::DirEntryList_t DirList;
-//		CECSConnection::S3_ERROR Error = Conn.DirListing(sDirPath, DirList);
-		CECSConnection::S3_ERROR Error = Conn.DirListingS3Versions(sDirPath, DirList);
+		CECSConnection::S3_ERROR Error = Conn.DirListing(sDirPath, DirList);
+//		CECSConnection::S3_ERROR Error = Conn.DirListingS3Versions(sDirPath, DirList);
 		if (Error.IfError())
 		{
 			_tprintf(_T("listing error: %s\n"), (LPCTSTR)Error.Format());

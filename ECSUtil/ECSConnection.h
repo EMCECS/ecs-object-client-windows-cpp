@@ -114,6 +114,33 @@ public:
 class ECSUTIL_EXT_CLASS CECSConnection
 {
 public:
+	// used for DirListing context if calling it each time for the 
+	class LISTING_NEXT_MARKER_CONTEXT
+	{
+	public:
+		bool bTruncated;
+		UINT dwMaxNum;						// maximum number of elements to request at a time
+		CString sS3NextMarker;
+		CString sS3NextKeyMarker;
+		CString sS3NextVersionIdMarker;
+	
+		LISTING_NEXT_MARKER_CONTEXT(UINT dwMaxNumParam = 0)
+			: bTruncated(false)
+			, dwMaxNum(dwMaxNumParam)
+		{}
+		bool IsTruncated(void)
+		{
+			return bTruncated;
+		}
+		void Clear(void)
+		{
+			bTruncated = false;
+			sS3NextMarker.Empty();
+			sS3NextKeyMarker.Empty();
+			sS3NextVersionIdMarker.Empty();
+		}
+	};
+
 	// DT Query support
 	struct DT_QUERY_RESPONSE
 	{
@@ -327,6 +354,17 @@ public:
 		list<S3_LIFECYCLE_RULE> LifecycleRules;			// list of lifecycle rules
 
 		S3_LIFECYCLE_INFO()
+		{}
+	};
+
+	struct ECSUTIL_EXT_CLASS S3_REPLICATION_INFO
+	{
+		bool bIndexReplicated;
+		long double dReplicatedDataPercentage;
+
+		S3_REPLICATION_INFO()
+			: bIndexReplicated(false)
+			, dReplicatedDataPercentage(0.0)
 		{}
 	};
 
@@ -1112,7 +1150,6 @@ private:
 		map<CString,HEADER_STRUCT> Headers;
 		UINT iIPList;							// index into IPList showing currently used
 		deque<CString> IPListLocal;				// local copy of IPListHost to be used only for this request
-		CString sEmcToken;						// holds last x-emc-token received
 		CEvent evThrottle;						// triggered if throttling and throttle interval was refreshed
 		HTTP_CALLBACK_CONTEXT CallbackContext;
 		DWORD dwCurrentThread;
@@ -1398,7 +1435,7 @@ private:
 	DWORD ChooseAuthScheme(DWORD dwSupportedSchemes);
 	CString FormatAuthScheme(void);
 	// internal version of DirListing allowing it to search for a single file/dir and not return the whole list
-	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName);
+	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker);
 	CString signS3ShareableURL(const CString& sResource, const CString& sExpire);
 	void KillHostSessions(void);
 	void DeleteS3Send(void);
@@ -1473,8 +1510,8 @@ public:
 	S3_ERROR DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId = nullptr);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
-	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr, LPCTSTR pszObjName = nullptr);
-	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName = nullptr);
+	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr);
+	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr);
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
 	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data);
 	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr);
@@ -1492,6 +1529,7 @@ public:
 	S3_ERROR S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO& Lifecycle);
 	S3_ERROR S3PutLifecycle(LPCTSTR pszBucket, const S3_LIFECYCLE_INFO& Lifecycle);
 	S3_ERROR S3DeleteLifecycle(LPCTSTR pszBucket);
+	S3_ERROR S3GetReplicationInfo(LPCTSTR pszPath, S3_REPLICATION_INFO& RepInfo);
 
 	// S3 multipart upload support
 	S3_ERROR S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<HEADER_STRUCT> *pMDList);

@@ -2997,14 +2997,16 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	bool bS3Versions,
 	bool bSingle,							// if true, don't keep going back for more files. we just want to know if there are SOME
 	DWORD *pdwGetECSRetention,				// if non-nullptr, check for ECS bucket retention. return retention period
-	LPCTSTR pszObjName)
+	LPCTSTR pszObjName,
+	LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker)	// if non-nullptr, only one request is done at a time. this holds the next marker for the next page of entries
 {
 	CECSConnectionState& State(GetStateBuf());
 	S3_ERROR Error;
 	XML_DIR_LISTING_CONTEXT Context;
 	list<HEADER_REQ> Req;
-	CString sS3NextKeyMarker;			// passed to key-marker in next request
-	CString sS3NextVersionIdMarker;		// passed to version-id-marker in next request
+	CString sS3NextMarker;				// next marker for next page
+	CString sS3NextKeyMarker;			// passed to key-marker in next request (version listing)
+	CString sS3NextVersionIdMarker;		// passed to version-id-marker in next request (version listing)
 
 	try
 	{
@@ -3020,9 +3022,15 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 			DirList.clear();
 		}
 		CBuffer RetData;
-		State.sEmcToken.Empty();
 		do
 		{
+			if (pNextRequestMarker != nullptr)
+			{
+				sS3NextMarker = pNextRequestMarker->sS3NextMarker;
+				sS3NextKeyMarker = pNextRequestMarker->sS3NextKeyMarker;
+				sS3NextVersionIdMarker = pNextRequestMarker->sS3NextVersionIdMarker;
+				pNextRequestMarker->bTruncated = false;
+			}
 			Req.clear();
 			InitHeader();
 			CString sResource;
@@ -3046,12 +3054,21 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					sResource += _T("?versions&delimiter=/");
 				else
 					sResource += _T("?delimiter=/");
-				if (bSingle || ((dwS3BucketListingMax >= 10) && (dwS3BucketListingMax < 1000)))
-					sResource += CString(_T("&max-keys=")) + (bSingle ? _T("10") : (LPCTSTR)FmtNum(dwS3BucketListingMax));
+				{
+					DWORD dwMaxKeys = 0;
+					if ((pNextRequestMarker != nullptr) && (pNextRequestMarker->dwMaxNum != 0))
+						dwMaxKeys = pNextRequestMarker->dwMaxNum;
+					else if (bSingle)
+						dwMaxKeys = 10;
+					else if ((dwS3BucketListingMax >= 10) && (dwS3BucketListingMax < 1000))
+						dwMaxKeys = dwS3BucketListingMax;
+					if (dwMaxKeys != 0)
+						sResource += _T("&max-keys=") + FmtNum(dwMaxKeys);
+				}
 				if (!sPrefix.IsEmpty())
 					sResource += _T("&prefix=") + sPrefix;
-				if (!State.sEmcToken.IsEmpty())
-					sResource += _T("&marker=") + UriEncode(State.sEmcToken, true);
+				if (!sS3NextMarker.IsEmpty())
+					sResource += _T("&marker=") + UriEncode(sS3NextMarker, true);
 				if (!sS3NextKeyMarker.IsEmpty())
 					sResource += _T("&key-marker=") + UriEncode(sS3NextKeyMarker, true);
 				if (!sS3NextVersionIdMarker.IsEmpty())
@@ -3106,7 +3123,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 			Context.bGotRootElement = false;
 			{
 				XMLLITE_READER_CB procXmlDirListingCB;
-				State.sEmcToken.Empty();
+				sS3NextMarker.Empty();
 				sS3NextKeyMarker.Empty();
 				sS3NextVersionIdMarker.Empty();
 				if (bS3Versions)
@@ -3132,9 +3149,21 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					if (Context.bIsTruncated)
 					{
 						// listing was truncated
-						State.sEmcToken = Context.sS3NextMarker;
+						sS3NextMarker = Context.sS3NextMarker;
 						sS3NextKeyMarker = Context.sS3NextKeyMarker;
 						sS3NextVersionIdMarker = Context.sS3NextVersionIdMarker;
+						if (pNextRequestMarker != nullptr)
+						{
+							pNextRequestMarker->sS3NextMarker = sS3NextMarker;
+							pNextRequestMarker->sS3NextKeyMarker = sS3NextKeyMarker;
+							pNextRequestMarker->sS3NextVersionIdMarker = sS3NextVersionIdMarker;
+							pNextRequestMarker->bTruncated = true;
+						}
+					}
+					else
+					{
+						if (pNextRequestMarker != nullptr)
+							pNextRequestMarker->Clear();
 					}
 				}
 			}
@@ -3150,7 +3179,9 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				Error.S3Error = S3_ERROR_MalformedXML;
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			}
-		} while (!State.sEmcToken.IsEmpty() && !bSingle);
+			if (pNextRequestMarker != nullptr)
+				break;
+		} while ((!sS3NextMarker.IsEmpty() || !sS3NextKeyMarker.IsEmpty() || !sS3NextVersionIdMarker.IsEmpty()) && !bSingle);
 		DirList.sort();
 	}
 	catch (const CS3ErrorInfo& E)
@@ -3164,16 +3195,16 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName)
+CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pdwGetECSRetention, pszObjName);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pdwGetECSRetention, pszObjName, pNextRequestMarker);
 }
 
-CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName)
+CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr, pszObjName);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr, pszObjName, pNextRequestMarker);
 }
 
 CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
@@ -6754,3 +6785,73 @@ CString CECSConnection::DumpBadIPMap(void)
 	return sMsg;
 }
 
+struct XML_S3_REPLICATION_INFO_CONTEXT
+{
+	CECSConnection::S3_REPLICATION_INFO *pReplicationInfo;
+};
+
+const WCHAR * const XML_S3_REPLICATION_INFO_INDEX_REPLICATED = L"//ObjectReplicationInfo/IndexReplicated";
+const WCHAR * const XML_S3_REPLICATION_INFO_REPLICATED_DATA_PERCENTAGE = L"//ObjectReplicationInfo/ReplicatedDataPercentage";
+
+HRESULT XmlS3ReplicationInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+{
+	(void)pReader;
+	(void)pAttrList;
+	XML_S3_REPLICATION_INFO_CONTEXT *pInfo = (XML_S3_REPLICATION_INFO_CONTEXT *)pContext;
+	if ((pInfo == nullptr) || (pInfo->pReplicationInfo == nullptr))
+		return ERROR_INVALID_DATA;
+
+	switch (NodeType)
+	{
+	case XmlNodeType_Text:
+		if ((psValue != nullptr) && !psValue->IsEmpty())
+		{
+			wchar_t *pszStop = nullptr;
+			if (sXmlPath.CompareNoCase(XML_S3_REPLICATION_INFO_INDEX_REPLICATED) == 0)
+				pInfo->pReplicationInfo->bIndexReplicated = psValue->CompareNoCase(L"true") == 0;
+			else if (sXmlPath.CompareNoCase(XML_S3_REPLICATION_INFO_REPLICATED_DATA_PERCENTAGE) == 0)
+				pInfo->pReplicationInfo->dReplicatedDataPercentage = wcstold(*psValue, &pszStop);
+		}
+		break;
+
+	case XmlNodeType_Element:
+		break;
+	case XmlNodeType_EndElement:
+		break;
+
+	default:
+		break;
+	}
+	return 0;
+}
+
+CECSConnection::S3_ERROR CECSConnection::S3GetReplicationInfo(LPCTSTR pszPath, S3_REPLICATION_INFO& RepInfo)
+{
+	list<HEADER_REQ> Req;
+	S3_ERROR Error;
+	CBuffer RetData;
+	InitHeader();
+	CString sResource(CString(pszPath) + _T("?replicationInfo"));
+	Error = SendRequest(_T("GET"), sResource, nullptr, 0, RetData, &Req);
+	if (Error.IfError())
+		return Error;
+	if (!RetData.IsEmpty())
+	{
+		XML_S3_REPLICATION_INFO_CONTEXT Context;
+		Context.pReplicationInfo = &RepInfo;
+		HRESULT hr = ScanXml(&RetData, &Context, XmlS3ReplicationInfoCB);
+		if (FAILED(hr))
+			return hr;
+	}
+	else
+	{
+		// XML doesn't look valid. maybe we are connected to the wrong server?
+		// maybe there is a man-in-middle attack?
+		Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
+		Error.S3Error = S3_ERROR_MalformedXML;
+		Error.sS3Code = _T("MalformedXML");
+		Error.sS3RequestID = _T("GET");
+		Error.sS3Resource = sResource;
+	}
+	return Error;
+}
