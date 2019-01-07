@@ -54,6 +54,40 @@ Here is sample code showing how to initialize a connection:
    // optionally set SSL protocols that will be allowed
    Conn.SetHttpsProtocol(WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2);
 ```
+## Deploy with Vcpkg
+
+This library is supported by Vcpkg.
+
+To use with Vcpkg, go to github (https://github.com/Microsoft/vcpkg) and clone Vcpkg.
+
+Follow the instructions on installing and registering Vcpkg.
+
+Run one or more of the following commands to build and deploy the following different configurations:
+
+x64, dynamic DLL, dynamic MFC:
+
+`C:\vcpkg>vcpkg install ecsutil:x64-windows`
+
+x64, static DLL, static MFC:
+
+`C:\vcpkg>vcpkg install ecsutil:x64-windows-static`
+
+x64, static DLL, dynamic MFC:
+
+`C:\vcpkg>vcpkg install ecsutil:x64-windows-static-md`
+
+x86, dynamic DLL, dynamic MFC:
+
+`C:\vcpkg>vcpkg install ecsutil:x86-windows`
+
+x86, static DLL, static MFC:
+
+`C:\vcpkg>vcpkg install ecsutil:x86-windows-static`
+
+x86, static DLL, dynamic MFC:
+
+`C:\vcpkg>vcpkg install ecsutil:x86-windows-static-md`
+
 ## CECSConnection::S3_ERROR
 
 All requests return an error code of type S3_ERROR. The error consists of:
