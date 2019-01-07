@@ -68,11 +68,11 @@ x64, dynamic DLL, dynamic MFC:
 
 `C:\vcpkg>vcpkg install ecsutil:x64-windows`
 
-x64, static DLL, static MFC:
+x64, static lib, static MFC:
 
 `C:\vcpkg>vcpkg install ecsutil:x64-windows-static`
 
-x64, static DLL, dynamic MFC:
+x64, static lib, dynamic MFC:
 
 `C:\vcpkg>vcpkg install ecsutil:x64-windows-static-md`
 
@@ -80,11 +80,11 @@ x86, dynamic DLL, dynamic MFC:
 
 `C:\vcpkg>vcpkg install ecsutil:x86-windows`
 
-x86, static DLL, static MFC:
+x86, static lib, static MFC:
 
 `C:\vcpkg>vcpkg install ecsutil:x86-windows-static`
 
-x86, static DLL, dynamic MFC:
+x86, static lib, dynamic MFC:
 
 `C:\vcpkg>vcpkg install ecsutil:x86-windows-static-md`
 
