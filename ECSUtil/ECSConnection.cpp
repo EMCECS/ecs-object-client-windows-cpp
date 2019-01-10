@@ -2182,7 +2182,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 	if (sOldPathS3.IsEmpty() || sNewPathS3.IsEmpty())
 		return ERROR_INVALID_NAME;
 
-	if (sOldPathS3[sOldPathS3.GetLength() - 1] != L'\\')
+	if (sOldPathS3[sOldPathS3.GetLength() - 1] != L'/')
 	{
 		deque<ACL_ENTRY> Acls;
 		// first get the ACL of the "before" object
@@ -2273,9 +2273,31 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 
 CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId)
 {
-	list<CECSConnection::S3_DELETE_ENTRY> PathList;
-	PathList.push_back(CECSConnection::S3_DELETE_ENTRY(pszPath, pszVersionId));
-	return DeleteS3(PathList);
+	S3_ERROR Error;
+	try
+	{
+		CString sPath(pszPath);
+		if (sPath.IsEmpty())
+			return S3_ERROR(ERROR_INVALID_NAME);
+		CBuffer RetData;
+		// if folder, do bulk delete
+		if (sPath[sPath.GetLength() - 1] == L'/')
+		{
+			list<CECSConnection::S3_DELETE_ENTRY> PathList;
+			PathList.push_back(CECSConnection::S3_DELETE_ENTRY(pszPath, pszVersionId));
+			return DeleteS3(PathList);
+		}
+		InitHeader();
+		CString sResource(UriEncode(sPath));
+		if (pszVersionId != nullptr)
+			sResource += CString(L"?versionId=") + pszVersionId;
+		Error = SendRequest(L"DELETE", sResource, NULL, 0, RetData);
+	}
+	catch (const CS3ErrorInfo& E)
+	{
+		return E.Error;
+	}
+	return Error;
 }
 
 CECSConnection::S3_ERROR CECSConnection::DeleteS3(const list<CECSConnection::S3_DELETE_ENTRY>& PathList)
@@ -2303,7 +2325,7 @@ void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY
 	list<CECSConnection::S3_DELETE_ENTRY>::const_iterator itPath;
 	for (itPath = PathList.begin(); itPath != PathList.end(); ++itPath)
 	{
-		if (itPath->sKey[itPath->sKey.GetLength() - 1] == L'\\')
+		if (itPath->sKey[itPath->sKey.GetLength() - 1] == L'/')
 		{
 			list<CECSConnection::S3_DELETE_ENTRY> PathListAdd;
 			DirEntryList_t DirList;
@@ -2314,7 +2336,7 @@ void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY
 			{
 				for (DirEntryList_t::const_iterator itDir = DirList.begin(); itDir != DirList.end(); ++itDir)
 				{
-					PathListAdd.push_back(S3_DELETE_ENTRY(itPath->sKey + itDir->sName + (itDir->bDir ? _T("\\") : _T(""))));
+					PathListAdd.push_back(S3_DELETE_ENTRY(itPath->sKey + itDir->sName + (itDir->bDir ? _T("/") : _T(""))));
 				}
 				DeleteS3Internal(PathListAdd);
 			}
