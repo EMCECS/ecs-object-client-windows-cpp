@@ -41,6 +41,7 @@ static CString EscapeChar(char ch);
 //If bEncodeAll is true, we will encode almost all the special characters
 CString UriEncode(LPCTSTR pszInput, bool bEncodeAll)
 {
+	// can't use WSDUriEncode: it doesn't properly encode '#'
 #if 0
 	LPWSTR destOut = nullptr;
 	DWORD cchDestOut = 0;
