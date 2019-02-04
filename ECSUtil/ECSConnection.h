@@ -1447,7 +1447,6 @@ public:
 	~CECSConnection();
 	CECSConnection(const CECSConnection& Rec);
 	static void Init(void);
-	static S3_ERROR CECSConnection::ParseS3Timestamp(const CString& sS3Time, FILETIME& ftTime);
 	static void SetGlobalHttpsProtocol(DWORD dwGlobalHttpsProtocolParam);
 	static void SetS3BucketListingMax(DWORD dwS3BucketListingMaxParam);
 	static void SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam = 500, DWORD dwPauseAfter500ErrorParam = 500);

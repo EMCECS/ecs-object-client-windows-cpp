@@ -3677,43 +3677,6 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 	return ERROR_SUCCESS;
 }
 
-// ParseS3Timestamp
-// convert server time field to FILETIME
-CECSConnection::S3_ERROR CECSConnection::ParseS3Timestamp(const CString& sS3Time, FILETIME& ftTime)
-{
-	S3_ERROR Error;
-	SYSTEMTIME stTime;
-	int iYear, iMonth, iDay, iHour, iMin, iSec;
-	int iMilliSec = 0;
-	ZeroMemory(&stTime, sizeof(stTime));
-	// the format of this field: 2010-07-05T19:51:19Z
-	int iConv = _stscanf_s(sS3Time, _T("%d-%d-%dT%d:%d:%dZ"), &iYear, &iMonth, &iDay, &iHour, &iMin, &iSec);
-	if (iConv != 6)
-	{
-		iConv = _stscanf_s(sS3Time, _T("%d-%d-%dT%d:%d:%d.%dZ"), &iYear, &iMonth, &iDay, &iHour, &iMin, &iSec, &iMilliSec);
-		if (iConv != 7)
-		{
-			Error.sDetails = sS3Time;
-			Error.dwError = ERROR_INVALID_DATA;
-			return Error;
-		}
-	}
-	stTime.wYear = (WORD)iYear;
-	stTime.wMonth = (WORD)iMonth;
-	stTime.wDay = (WORD)iDay;
-	stTime.wHour = (WORD)iHour;
-	stTime.wMinute = (WORD)iMin;
-	stTime.wSecond = (WORD)iSec;
-	stTime.wMilliseconds = (WORD)iMilliSec;
-	if (!SystemTimeToFileTime(&stTime, &ftTime))
-	{
-		Error.sDetails = sS3Time;
-		Error.dwError = GetLastError();
-		return Error;
-	}
-	return ERROR_SUCCESS;
-}
-
 // take text permission and translate it to E_S3_ACL_VALUES enum
 CECSConnection::E_S3_ACL_VALUES TranslateACLText(LPCTSTR pszEntry)
 {
