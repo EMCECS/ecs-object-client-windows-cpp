@@ -641,6 +641,8 @@
     <ClInclude Include="CngAES_GCM.h" />
     <ClInclude Include="CRWLock.h" />
     <ClInclude Include="CSharedQueue.h" />
+    <ClInclude Include="DLLFUNC.H" />
+    <ClInclude Include="dyndll.h" />
     <ClInclude Include="ECSGlobal.h" />
     <ClInclude Include="exportdef.h" />
     <ClInclude Include="FileSupport.h" />

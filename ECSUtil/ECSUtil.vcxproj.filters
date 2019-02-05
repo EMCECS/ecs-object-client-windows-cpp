@@ -146,6 +146,12 @@
     <ClInclude Include="Version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DLLFUNC.H">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dyndll.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ECSUtil.def">

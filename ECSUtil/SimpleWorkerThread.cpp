@@ -24,10 +24,12 @@ using namespace std;
 #include "fmtnum.h"
 #include "widestring.h"
 #include "NTERRTXT.H"
+#include "dyndll.h"
 
 CCriticalSection *CSimpleWorkerThread::pcsGlobalThreadSet;
 set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSetActive;
 set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSet;
+static CThreadDescription ThreadDescription;
 
 void CSimpleWorkerThread::SignalTermination(void)
 {
@@ -112,9 +114,27 @@ bool CSimpleWorkerThread::CreateThread(
 	if (pThread != nullptr)
 	{
 		CSingleLock lock(&Events.csWorkEvent, true);
-		dwThreadID = pThread->m_nThreadID;
-		hThread = OpenThread(SYNCHRONIZE | THREAD_QUERY_INFORMATION, FALSE, dwThreadID);
 		bRunning = true;
+		dwThreadID = pThread->m_nThreadID;
+		bool bGotThreadDescription = ThreadDescription.IsInitialized();
+		DWORD dwThreadAccess = SYNCHRONIZE | THREAD_QUERY_INFORMATION;
+		if (bGotThreadDescription)
+			dwThreadAccess |= THREAD_SET_LIMITED_INFORMATION;
+		hThread = OpenThread(dwThreadAccess, FALSE, dwThreadID);
+		if (hThread == nullptr)					// typically: error 5 access denied
+		{
+			// the thread was created, we have to resume it so it dies a quick death (hThread == nullptr, so it will die immediately)
+			(void)pThread->ResumeThread();
+			// wait for it to die.
+			(void)WaitForSingleObject(pThread->m_hThread, SECONDS(1));
+			return nullptr;
+		}
+		// if win10 or later, set thread description
+		if (bGotThreadDescription)
+		{
+			CString sThreadName(typeid(*this).name());
+			(void)ThreadDescription.SetThreadDescription(hThread, sThreadName);
+		}
 		(void)pThread->ResumeThread();
 	}
 	return pThread != nullptr;
@@ -131,6 +151,8 @@ void CSimpleWorkerThread::StartWork()
 UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 {
 	CSimpleWorkerThread *pSimpleThread = (CSimpleWorkerThread *)pParam;
+	if (pSimpleThread->hThread == nullptr)
+		return 0;
 	HANDLE EventArray[MAXIMUM_WAIT_OBJECTS];
 	DWORD iEvent;
 
