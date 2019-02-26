@@ -195,51 +195,73 @@ static bool IfServerReached(DWORD dwError)
 	return true;
 }
 
-CECSConnection::CECSConnectionState& CECSConnection::GetStateBuf(DWORD dwThreadID)
+shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWORD dwThreadID, bool bIncRef)
 {
 	if (dwThreadID == 0)
 		dwThreadID = GetCurrentThreadId();
 
 	CSimpleRWLockAcquire lock(&StateList.rwlStateMap, false);			// read lock
 																		// this will either insert it or if it already exists, return the existing entry for this thread
-	map<DWORD, unique_ptr<CECSConnectionState>>::iterator itState = StateList.StateMap.find(dwThreadID);
+	map<DWORD, shared_ptr<CECSConnectionState>>::iterator itState = StateList.StateMap.find(dwThreadID);
 	if (itState == StateList.StateMap.end())
 	{
 		lock.Unlock();
 		lock.Lock(true);									// get write lock
-		pair<map<DWORD, unique_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_unique<CECSConnectionState>()));
+		pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_unique<CECSConnectionState>()));
 		if (ret.second)
 			ret.first->second->pECSConnection = this;
+		if (bIncRef)
+			InterlockedIncrement(&ret.first->second->ulReferenceCount);
 		ASSERT(ret.first->second->pECSConnection == this);
-		return *ret.first->second;
+		return ret.first->second;
 	}
 	ASSERT(itState->second->pECSConnection == this);
-	return *itState->second;
+	if (bIncRef)
+		InterlockedIncrement(&itState->second->ulReferenceCount);
+	return itState->second;
+}
+
+CECSConnection::CStateRef::CStateRef(CECSConnection *pConnParam)
+	: pConn(pConnParam)
+{
+	if (pConn != nullptr)
+	{
+		Ref = pConn->GetStateBuf(0, true);
+	}
+}
+
+CECSConnection::CStateRef::~CStateRef()
+{
+	if (Ref)
+	{
+		InterlockedDecrement(&Ref->ulReferenceCount);
+		GetSystemTimeAsFileTime(&Ref->ftLastUsed);		// no lock needed since only this thread will update these fields
+	}
 }
 
 void CECSConnection::PrepareCmd()
 {
-	CECSConnectionState& State(GetStateBuf());
-	ASSERT(State.dwCurrentThread == 0);
-	State.dwCurrentThread = GetCurrentThreadId();
-	VERIFY(State.CallbackContext.Event.evCmd.ResetEvent());
-	State.CallbackContext.Reset();
-	State.CallbackContext.bDisableSecureLog = State.bDisableSecureLog;
-	State.CallbackContext.dwSecureError = State.dwSecureError;
-	State.CallbackContext.pHost = this;
+	CStateRef State(this);
+	ASSERT(State.Ref->dwCurrentThread == 0);
+	State.Ref->dwCurrentThread = GetCurrentThreadId();
+	VERIFY(State.Ref->CallbackContext.Event.evCmd.ResetEvent());
+	State.Ref->CallbackContext.Reset();
+	State.Ref->CallbackContext.bDisableSecureLog = State.Ref->bDisableSecureLog;
+	State.Ref->CallbackContext.dwSecureError = State.Ref->dwSecureError;
+	State.Ref->CallbackContext.pHost = this;
 }
 
 void CECSConnection::CleanupCmd()
 {
-	CECSConnectionState& State(GetStateBuf());
-	ASSERT(State.dwCurrentThread != 0);
-	State.dwCurrentThread = 0;
-	State.dwSecureError = State.CallbackContext.dwSecureError;		// any security error is passed back to the main class
+	CStateRef State(this);
+	ASSERT(State.Ref->dwCurrentThread != 0);
+	State.Ref->dwCurrentThread = 0;
+	State.Ref->dwSecureError = State.Ref->CallbackContext.dwSecureError;		// any security error is passed back to the main class
 }
 
 bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	const UINT MaxWaitInterval = SECONDS(1);			// max time to wait before checking for abort
 	DWORD dwError;
 	UINT iTimeout = 0;
@@ -247,33 +269,33 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 	for (;;)
 	{
 		// wait at most 500 ms. then check if we are terminating
-		dwError = WaitForSingleObject(State.CallbackContext.Event.evCmd.m_hObject, MaxWaitInterval);
+		dwError = WaitForSingleObject(State.Ref->CallbackContext.Event.evCmd.m_hObject, MaxWaitInterval);
 		// check for thread exit (but not if we are waiting for the handle to close)
 		if ((dwCallbackExpected != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) && TestAbort())
 		{
-			CSingleLock lock(&State.CallbackContext.csContext, true);
-			State.CallbackContext.Result.dwError = ERROR_OPERATION_ABORTED;
-			State.CallbackContext.Result.dwResult = 0;
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
+			State.Ref->CallbackContext.Result.dwError = ERROR_OPERATION_ABORTED;
+			State.Ref->CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
 			return false;
 		}
 		if (dwError == WAIT_OBJECT_0)
 		{
-			CSingleLock lock(&State.CallbackContext.csContext, true);
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 			bool bGotIt = false;
 			// command finished!
-			for (UINT i=0 ; i<State.CallbackContext.CallbacksReceived.size() ; i++)
-				if (State.CallbackContext.CallbacksReceived[i] == dwCallbackExpected)
+			for (UINT i=0 ; i<State.Ref->CallbackContext.CallbacksReceived.size() ; i++)
+				if (State.Ref->CallbackContext.CallbacksReceived[i] == dwCallbackExpected)
 					bGotIt = true;
-			State.CallbackContext.CallbacksReceived.clear();
+			State.Ref->CallbackContext.CallbacksReceived.clear();
 			// if it is waiting for WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING, don't exit until we get it
 			// if it is waiting for anything else, return on failure, or the receipt of the correct callback
 			if ((dwCallbackExpected != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) || bGotIt)
 			{
-				if (bGotIt || State.CallbackContext.bFailed)
+				if (bGotIt || State.Ref->CallbackContext.bFailed)
 				{
 					CleanupCmd();
-					if (State.CallbackContext.bFailed)
+					if (State.Ref->CallbackContext.bFailed)
 						return false;
 					return true;
 				}
@@ -281,21 +303,21 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		}
 		else if (dwError == WAIT_TIMEOUT)
 		{
-			CSingleLock lock(&State.CallbackContext.csContext, true);
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 			iTimeout++;
 			if (iTimeout > iTimeoutMax)
 			{
-				State.CallbackContext.Result.dwError = WAIT_TIMEOUT;
-				State.CallbackContext.Result.dwResult = 0;
+				State.Ref->CallbackContext.Result.dwError = WAIT_TIMEOUT;
+				State.Ref->CallbackContext.Result.dwResult = 0;
 				CleanupCmd();
 				return false;
 			}
 		}
 		else if (dwError == WAIT_FAILED)
 		{
-			CSingleLock lock(&State.CallbackContext.csContext, true);
-			State.CallbackContext.Result.dwError = GetLastError();
-			State.CallbackContext.Result.dwResult = 0;
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
+			State.Ref->CallbackContext.Result.dwError = GetLastError();
+			State.Ref->CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
 			return false;
 		}
@@ -408,7 +430,7 @@ void CECSConnection::CThrottleTimerThread::DoWork()
 			if ((*itList)->sHost == itMap->first)
 			{
 				CSimpleRWLockAcquire lockStateMap(&(*itList)->StateList.rwlStateMap, false);
-				map<DWORD,unique_ptr<CECSConnectionState>>::iterator itStateMap;
+				map<DWORD,shared_ptr<CECSConnectionState>>::iterator itStateMap;
 				for (itStateMap = (*itList)->StateList.StateMap.begin(); itStateMap != (*itList)->StateList.StateMap.end(); ++itStateMap)
 					VERIFY(itStateMap->second->evThrottle.SetEvent());
 			}
@@ -861,8 +883,8 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 
 DWORD CECSConnection::InitSession()
 {
-	CECSConnectionState& State(GetStateBuf());
-	State.Session.AllocSession(sHost, GetCurrentServerIP());
+	CStateRef State(this);
+	State.Ref->Session.AllocSession(sHost, GetCurrentServerIP());
 	DWORD dwError = ERROR_SUCCESS;
 	// Use WinHttpOpen to obtain a session handle.
 	CString sVer;
@@ -870,15 +892,15 @@ DWORD CECSConnection::InitSession()
 		sVer = _T("Test/1.0");
 	else
 		sVer = sUserAgent;
-	if (!State.Session.pValue->hSession.IfOpen() || !State.Session.pValue->hConnect.IfOpen())
+	if (!State.Ref->Session.pValue->hSession.IfOpen() || !State.Ref->Session.pValue->hConnect.IfOpen())
 	{
-		State.Session.pValue->CloseAll();
+		State.Ref->Session.pValue->CloseAll();
 		CString sProxyString(sProxy);
 		if (!sProxyString.IsEmpty())
 		{
 			if (dwProxyPort != 0)
 				sProxyString += _T(":") + FmtNum(dwProxyPort);
-			State.Session.pValue->hSession = WinHttpOpen(TO_UNICODE(sVer),
+			State.Ref->Session.pValue->hSession = WinHttpOpen(TO_UNICODE(sVer),
 				WINHTTP_ACCESS_TYPE_NAMED_PROXY,
 				TO_UNICODE(sProxyString),
 				L"<local>",
@@ -886,13 +908,13 @@ DWORD CECSConnection::InitSession()
 		}
 		else
 		{
-			State.Session.pValue->hSession = WinHttpOpen(TO_UNICODE(sVer),
+			State.Ref->Session.pValue->hSession = WinHttpOpen(TO_UNICODE(sVer),
 				bUseDefaultProxy ? WINHTTP_ACCESS_TYPE_DEFAULT_PROXY : WINHTTP_ACCESS_TYPE_NO_PROXY,
 				WINHTTP_NO_PROXY_NAME,
 				WINHTTP_NO_PROXY_BYPASS,
 				WINHTTP_FLAG_ASYNC);
 		}
-		if (!State.Session.pValue->hSession.IfOpen())
+		if (!State.Ref->Session.pValue->hSession.IfOpen())
 			return GetLastError();
 		// the protocol specific for this connection takes precedence
 		DWORD dwTempProtocol = dwHttpsProtocol;
@@ -900,20 +922,20 @@ DWORD CECSConnection::InitSession()
 			dwTempProtocol = dwGlobalHttpsProtocol;
 		if (dwTempProtocol != 0)
 		{
-			if (!WinHttpSetOption(State.Session.pValue->hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &dwTempProtocol, sizeof(dwTempProtocol)))
+			if (!WinHttpSetOption(State.Ref->Session.pValue->hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &dwTempProtocol, sizeof(dwTempProtocol)))
 			{
 				dwError = GetLastError();
-				State.Session.pValue->CloseAll();
+				State.Ref->Session.pValue->CloseAll();
 				return dwError;
 			}
 		}
-		ASSERT(!State.Session.pValue->hConnect.IfOpen());
+		ASSERT(!State.Ref->Session.pValue->hConnect.IfOpen());
 		// Specify an HTTP server.
-		State.Session.pValue->hConnect = WinHttpConnect(State.Session.pValue->hSession, TO_UNICODE(GetCurrentServerIP()), Port, 0);
-		if (!State.Session.pValue->hConnect.IfOpen())
+		State.Ref->Session.pValue->hConnect = WinHttpConnect(State.Ref->Session.pValue->hSession, TO_UNICODE(GetCurrentServerIP()), Port, 0);
+		if (!State.Ref->Session.pValue->hConnect.IfOpen())
 		{
 			dwError = GetLastError();
-			State.Session.pValue->CloseAll();
+			State.Ref->Session.pValue->CloseAll();
 			return dwError;
 		}
 	}
@@ -946,17 +968,17 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 
 void CECSConnection::CloseAll() throw()
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	// Close any open handles.
-	State.CloseRequest();
+	State.Ref->CloseRequest();
 }
 
 // InitHeader
 // set headers common to all requests
 void CECSConnection::InitHeader(void)
 {
-	CECSConnectionState& State(GetStateBuf());
-	State.Headers.clear();
+	CStateRef State(this);
+	State.Ref->Headers.clear();
 	// add the list of headers common to all requests
 	CString sDate(GetCanonicalTime());
 	AddHeader(_T("Date"), sDate);
@@ -965,7 +987,7 @@ void CECSConnection::InitHeader(void)
 
 void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	CString sHeaderLabel(pszHeaderLabel);
 	sHeaderLabel.TrimLeft();
 	sHeaderLabel.TrimRight();
@@ -974,7 +996,7 @@ void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bo
 	HEADER_STRUCT Hdr;
 	Hdr.sHeader = sHeaderLabel;
 	Hdr.sContents = pszHeaderText;
-	pair<map<CString, HEADER_STRUCT>::iterator, bool> ret = State.Headers.insert(make_pair(sLabelLower, Hdr));
+	pair<map<CString, HEADER_STRUCT>::iterator, bool> ret = State.Ref->Headers.insert(make_pair(sLabelLower, Hdr));
 	if (!ret.second && bOverride)
 	{
 		ret.first->second.sHeader = sHeaderLabel;
@@ -986,12 +1008,12 @@ void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bo
 // pick from one of the ip addrs going to this host
 LPCTSTR CECSConnection::GetCurrentServerIP(void)
 {
-	CECSConnectionState& State(GetStateBuf());
-	if (State.IPListLocal.empty())
+	CStateRef State(this);
+	if (State.Ref->IPListLocal.empty())
 		return _T("?");
-	if (State.iIPList >= State.IPListLocal.size())
-		State.iIPList = 0;
-	return State.IPListLocal[State.iIPList];
+	if (State.Ref->iIPList >= State.Ref->IPListLocal.size())
+		State.Ref->iIPList = 0;
+	return State.Ref->IPListLocal[State.Ref->iIPList];
 }
 
 // GetNextECSIP
@@ -999,13 +1021,13 @@ LPCTSTR CECSConnection::GetCurrentServerIP(void)
 // returns false if there are no available IPs for this host
 bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	if (dwBadIPAddrAge == 0)
 	{
 		dwBadIPAddrAge = HOURS(2);
 	}
 	__int64 liBadIPAge = (__int64)dwBadIPAddrAge * 10000;			// convert to FILETIME units
-	if (State.IPListLocal.empty())
+	if (State.Ref->IPListLocal.empty())
 		return false;
 	// first see if any of the entries are too old to be in there
 	CSingleLock csBad(&csBadIPMap, true);
@@ -1022,30 +1044,30 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 
 	// insert new LoadBalMap record, or retrieve existing record
 	pair<map<CString, UINT>::iterator, bool> Ret = LoadBalMap.insert(make_pair(sHost, 0));
-	if (++Ret.first->second >= State.IPListLocal.size())
+	if (++Ret.first->second >= State.Ref->IPListLocal.size())
 		Ret.first->second = 0;
-	State.iIPList = Ret.first->second;
+	State.Ref->iIPList = Ret.first->second;
 
 	bool bBad;
 	UINT i;
-	for (i = 0; i<State.IPListLocal.size(); i++)
+	for (i = 0; i<State.Ref->IPListLocal.size(); i++)
 	{
 		bBad = false;
-		if (State.iIPList >= State.IPListLocal.size())
-			State.iIPList = 0;
+		if (State.Ref->iIPList >= State.Ref->IPListLocal.size())
+			State.Ref->iIPList = 0;
 		// check if this entry is BAD
-		if (BadIPMap.find(BAD_IP_KEY(sHost, State.IPListLocal[State.iIPList])) != BadIPMap.end())			//lint !e864 (Info -- Expression involving variable 'CAtmosUtil::BadIPMap' possibly depends on order of evaluation)
+		if (BadIPMap.find(BAD_IP_KEY(sHost, State.Ref->IPListLocal[State.Ref->iIPList])) != BadIPMap.end())			//lint !e864 (Info -- Expression involving variable 'CAtmosUtil::BadIPMap' possibly depends on order of evaluation)
 			bBad = true;					// bad - move to the next
 		// check if we've already tried this one
-	//	if (!bBad && (IPUsed.find(State.IPListLocal[State.iIPList]) != IPUsed.end()))				//lint !e864 (Info -- Expression involving variable 'IPUsed' possibly depends on order of evaluation)
+	//	if (!bBad && (IPUsed.find(State.Ref->IPListLocal[State.Ref->iIPList]) != IPUsed.end()))				//lint !e864 (Info -- Expression involving variable 'IPUsed' possibly depends on order of evaluation)
 	//		bBad = true;
 		if (!bBad)
 			break;
-		++State.iIPList;					// try the next
+		++State.Ref->iIPList;					// try the next
 	}
 	// update the current IP pointer as it might have changed
-	Ret.first->second = State.iIPList;
-	return i < State.IPListLocal.size();
+	Ret.first->second = State.Ref->iIPList;
+	return i < State.Ref->IPListLocal.size();
 }
 
 // TestAllIPBad
@@ -1053,8 +1075,8 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 // if so, remove them all from the bad map so it can be retried
 void CECSConnection::TestAllIPBad()
 {
-	CECSConnectionState& State(GetStateBuf());
-	deque<CString> IPList = State.IPListLocal;
+	CStateRef State(this);
+	deque<CString> IPList = State.Ref->IPListLocal;
 	{
 		// we need to test and reset a rare possibilty that all of the IPs for this host have been marked bad
 		// normally that shouldn't happen because an IP is only marked bad if another IP was successful
@@ -1153,7 +1175,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 	STREAM_CONTEXT *pStreamReceive,			// is supplied, don't return data through RetData, push it on this queue
 	ULONGLONG ullTotalLen)					// for StreamSend the total length of the transfer, for StreamReceive, the starting offset into the object
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	bool bGotServerResponse = false;
 	S3_ERROR Error;
 	map<CString,BAD_IP_ENTRY> IPUsed;
@@ -1166,7 +1188,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 		// first get a local copy of the IPList for use by this request
 		{
 			CSimpleRWLockAcquire lock(&rwlIPListHost);			// read lock
-			State.IPListLocal = IPListHost;
+			State.Ref->IPListLocal = IPListHost;
 		}
 		if (!GetNextECSIP(IPUsed))
 		{
@@ -1415,7 +1437,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	STREAM_CONTEXT *pStreamReceive,			// is supplied, don't return data through RetData, push it on this queue
 	ULONGLONG ullTotalLen)					// for StreamSend the total length of the transfer, for StreamReceive, the starting offset into the object
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 	// use const version of pStreamSend to use "read" locks instead of "write" locks when only reading is being done
 	const STREAM_CONTEXT *pConstStreamSend = (const STREAM_CONTEXT *)pStreamSend;
@@ -1424,11 +1446,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	{
 		// fixup the host header line (if it exists)
 		{
-			map<CString, HEADER_STRUCT>::iterator itHeader = State.Headers.find(_T("host"));
-			if (itHeader != State.Headers.end())
+			map<CString, HEADER_STRUCT>::iterator itHeader = State.Ref->Headers.find(_T("host"));
+			if (itHeader != State.Ref->Headers.end())
 				itHeader->second.sContents = sHostHeader;
 		}
-		State.dwSecureError = 0;
+		State.Ref->dwSecureError = 0;
 		if (pbGotServerResponse != nullptr)
 			*pbGotServerResponse = false;
 		if (pConstStreamSend != nullptr)
@@ -1445,42 +1467,42 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		// now construct the signature for the header
 		CString sMethod(pszMethod), sResource(pszResource);
 		CString sSignature;
-		sSignature = signRequestS3v2(sSecret, sMethod, sResource, State.Headers);
+		sSignature = signRequestS3v2(sSecret, sMethod, sResource, State.Ref->Headers);
 
 		DWORD dwError = InitSession();
 		if (dwError != ERROR_SUCCESS)
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, dwError);
 		// close any current request
-		State.CloseRequest();
+		State.Ref->CloseRequest();
 		// Create an HTTP request handle.
-		State.hRequest = WinHttpOpenRequest(State.Session.pValue->hConnect, TO_UNICODE(pszMethod), TO_UNICODE(pszResource),
+		State.Ref->hRequest = WinHttpOpenRequest(State.Ref->Session.pValue->hConnect, TO_UNICODE(pszMethod), TO_UNICODE(pszResource),
 			nullptr, WINHTTP_NO_REFERER, 
 			WINHTTP_DEFAULT_ACCEPT_TYPES, 
 			(bSSL ? WINHTTP_FLAG_SECURE : 0));
-		State.bCallbackRegistered = false;
-		State.CallbackContext.pbCallbackRegistered = &State.bCallbackRegistered;
-		if (!State.hRequest.IfOpen())
+		State.Ref->bCallbackRegistered = false;
+		State.Ref->CallbackContext.pbCallbackRegistered = &State.Ref->bCallbackRegistered;
+		if (!State.Ref->hRequest.IfOpen())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-		if (WinHttpSetStatusCallback(State.hRequest, CECSConnection::HttpStatusCallback, ECS_CONN_WINHTTP_CALLBACK_FLAGS, NULL) == WINHTTP_INVALID_STATUS_CALLBACK)
+		if (WinHttpSetStatusCallback(State.Ref->hRequest, CECSConnection::HttpStatusCallback, ECS_CONN_WINHTTP_CALLBACK_FLAGS, NULL) == WINHTTP_INVALID_STATUS_CALLBACK)
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-		DWORD_PTR dwpContext = (DWORD_PTR)&State.CallbackContext;
-		if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_CONTEXT_VALUE, &dwpContext, sizeof(dwpContext)))
+		DWORD_PTR dwpContext = (DWORD_PTR)&State.Ref->CallbackContext;
+		if (!WinHttpSetOption(State.Ref->hRequest, WINHTTP_OPTION_CONTEXT_VALUE, &dwpContext, sizeof(dwpContext)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-		State.bCallbackRegistered = true;
+		State.Ref->bCallbackRegistered = true;
 		DWORD dwAutoLogon = WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH;
-		if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_AUTOLOGON_POLICY, &dwAutoLogon, sizeof(dwAutoLogon)))
+		if (!WinHttpSetOption(State.Ref->hRequest, WINHTTP_OPTION_AUTOLOGON_POLICY, &dwAutoLogon, sizeof(dwAutoLogon)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-		DWORD dwSecurityFlags = dwHttpSecurityFlags | State.dwSecurityFlagsAdd & ~State.dwSecurityFlagsSub;
-		if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &dwSecurityFlags, sizeof(dwSecurityFlags)))
+		DWORD dwSecurityFlags = dwHttpSecurityFlags | State.Ref->dwSecurityFlagsAdd & ~State.Ref->dwSecurityFlagsSub;
+		if (!WinHttpSetOption(State.Ref->hRequest, WINHTTP_OPTION_SECURITY_FLAGS, &dwSecurityFlags, sizeof(dwSecurityFlags)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-		SetTimeouts(State.hRequest);
+		SetTimeouts(State.Ref->hRequest);
 		CString sHeaders;
 		map<CString,HEADER_STRUCT>::const_iterator iter;
-		for (iter=State.Headers.begin() ; iter != State.Headers.end() ; ++iter)
+		for (iter=State.Ref->Headers.begin() ; iter != State.Ref->Headers.end() ; ++iter)
 		{
 			sHeaders += iter->second.sHeader + _T(":") + iter->second.sContents + _T("\r\n");
 		}
-		if (!State.bS3Admin)
+		if (!State.Ref->bS3Admin)
 			sHeaders += _T("Authorization: ") + sSignature + _T("\r\n");
 		DWORD dwIndex;
 		CBuffer RetBuf;
@@ -1492,25 +1514,25 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		for (UINT iRetryAuth=0 ; iRetryAuth<3 ; iRetryAuth++)
 		{
 			// send authorization, if we've already determined it was necessary
-			if ((State.dwProxyAuthScheme != 0) && !sProxyUser.IsEmpty())
+			if ((State.Ref->dwProxyAuthScheme != 0) && !sProxyUser.IsEmpty())
 			{
 				// if passport, we must use WinHttpSetOption instead of WinHttpSetCredentials
-				if (State.dwProxyAuthScheme == WINHTTP_AUTH_SCHEME_PASSPORT)
+				if (State.Ref->dwProxyAuthScheme == WINHTTP_AUTH_SCHEME_PASSPORT)
 				{
-					if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_PROXY_USERNAME, (void *)(LPCTSTR)sProxyUser, sProxyUser.GetLength()))
+					if (!WinHttpSetOption(State.Ref->hRequest, WINHTTP_OPTION_PROXY_USERNAME, (void *)(LPCTSTR)sProxyUser, sProxyUser.GetLength()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
-					if (!WinHttpSetOption(State.hRequest, WINHTTP_OPTION_PROXY_PASSWORD, (void *)(LPCTSTR)sProxyPassword, sProxyPassword.GetLength()))
+					if (!WinHttpSetOption(State.Ref->hRequest, WINHTTP_OPTION_PROXY_PASSWORD, (void *)(LPCTSTR)sProxyPassword, sProxyPassword.GetLength()))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 				}
 				else
 				{
-					if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_PROXY, State.dwProxyAuthScheme, TO_UNICODE(sProxyUser), TO_UNICODE(sProxyPassword), nullptr))
+					if (!WinHttpSetCredentials(State.Ref->hRequest, WINHTTP_AUTH_TARGET_PROXY, State.Ref->dwProxyAuthScheme, TO_UNICODE(sProxyUser), TO_UNICODE(sProxyPassword), nullptr))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 				}
 			}
-			if ((State.dwAuthScheme != 0) && !State.sHTTPUser.IsEmpty())
+			if ((State.Ref->dwAuthScheme != 0) && !State.Ref->sHTTPUser.IsEmpty())
 			{
-				if (!WinHttpSetCredentials(State.hRequest, WINHTTP_AUTH_TARGET_SERVER, State.dwAuthScheme, TO_UNICODE(State.sHTTPUser), TO_UNICODE(State.sHTTPPassword), nullptr))
+				if (!WinHttpSetCredentials(State.Ref->hRequest, WINHTTP_AUTH_TARGET_SERVER, State.Ref->dwAuthScheme, TO_UNICODE(State.Ref->sHTTPUser), TO_UNICODE(State.Ref->sHTTPPassword), nullptr))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 			}
 			{
@@ -1525,9 +1547,9 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					PrepareCmd();
 					bool bSendReturn;
 					if (pConstStreamSend == nullptr)
-						bSendReturn = WinHttpSendRequest(State.hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), const_cast<void *>(pData), dwDataPartLen, dwDataLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
+						bSendReturn = WinHttpSendRequest(State.Ref->hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), const_cast<void *>(pData), dwDataPartLen, dwDataLen, (DWORD_PTR)&State.Ref->CallbackContext) != FALSE;
 					else
-						bSendReturn = WinHttpSendRequest(State.hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), WINHTTP_NO_REQUEST_DATA, 0, (ullTotalLen > ULONG_MAX) ? WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH : (DWORD)ullTotalLen, (DWORD_PTR)&State.CallbackContext) != FALSE;
+						bSendReturn = WinHttpSendRequest(State.Ref->hRequest, TO_UNICODE((LPCTSTR)sHeaders), (DWORD)sHeaders.GetLength(), WINHTTP_NO_REQUEST_DATA, 0, (ullTotalLen > ULONG_MAX) ? WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH : (DWORD)ullTotalLen, (DWORD_PTR)&State.Ref->CallbackContext) != FALSE;
 					if (!bSendReturn)
 					{
 						dwError = GetLastError();
@@ -1538,9 +1560,9 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					}
 					if (!WaitComplete(WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE))
 					{
-						if (State.CallbackContext.Result.dwError == ERROR_WINHTTP_RESEND_REQUEST)
+						if (State.Ref->CallbackContext.Result.dwError == ERROR_WINHTTP_RESEND_REQUEST)
 							continue;
-						throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.CallbackContext.Result.dwError);
+						throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
 					}
 					break;
 				}
@@ -1567,7 +1589,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				{
 					bool bWriteDataSuccess;
 					bool bDoWriteData = true;
-					State.CallbackContext.dwBytesWritten = 0;
+					State.Ref->CallbackContext.dwBytesWritten = 0;
 					if (pConstStreamSend == nullptr)
 					{
 						if (ullCurDataSent >= (ULONGLONG)dwDataLen)
@@ -1576,7 +1598,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						if ((dwMaxWriteRequest > 0) && (dwDataPartLen > dwMaxWriteRequest))
 							dwDataPartLen = dwMaxWriteRequest;
 						PrepareCmd();
-						bWriteDataSuccess = WinHttpWriteData(State.hRequest, (BYTE *)pData + (DWORD)ullCurDataSent, dwDataPartLen, nullptr) != FALSE;
+						bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, (BYTE *)pData + (DWORD)ullCurDataSent, dwDataPartLen, nullptr) != FALSE;
 					}
 					else
 					{
@@ -1607,7 +1629,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 								if ((dwMaxWriteRequest > 0) && (dwDataPartLen > dwMaxWriteRequest))
 									dwDataPartLen = dwMaxWriteRequest;
 								PrepareCmd();
-								bWriteDataSuccess = WinHttpWriteData(State.hRequest, pConstStreamSend->StreamData.front().Data.GetData() + ullCurDataSent, dwDataPartLen, nullptr) != FALSE;
+								bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, pConstStreamSend->StreamData.front().Data.GetData() + ullCurDataSent, dwDataPartLen, nullptr) != FALSE;
 							}
 						}
 						else
@@ -1626,19 +1648,19 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					if (bDoWriteData)
 					{
 						if (!WaitComplete(WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE))
-							throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.CallbackContext.Result.dwError);
+							throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
 
-						ullCurDataSent += (ULONGLONG)State.CallbackContext.dwBytesWritten;
+						ullCurDataSent += (ULONGLONG)State.Ref->CallbackContext.dwBytesWritten;
 					}
 					bool bLast = false;
 					if (pConstStreamSend == nullptr)
-						ASSERT(State.CallbackContext.dwBytesWritten == dwDataPartLen);
+						ASSERT(State.Ref->CallbackContext.dwBytesWritten == dwDataPartLen);
 					else
 					{
 						if (pConstStreamSend->UpdateProgressCB != nullptr)
 						{
-							pStreamSend->iAccProgress += (int)State.CallbackContext.dwBytesWritten;
-							pConstStreamSend->UpdateProgressCB((int)State.CallbackContext.dwBytesWritten, pConstStreamSend->pContext);
+							pStreamSend->iAccProgress += (int)State.Ref->CallbackContext.dwBytesWritten;
+							pConstStreamSend->UpdateProgressCB((int)State.Ref->CallbackContext.dwBytesWritten, pConstStreamSend->pContext);
 						}
 						if (ullCurDataSent >= (ULONGLONG)pConstStreamSend->StreamData.front().Data.GetBufSize())
 						{
@@ -1661,7 +1683,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 							if ((itThrottle != ThrottleMap.end()) && (itThrottle->second.Upload.iBytesSec != 0))
 							{
 								// okay, we need to throttle
-								itThrottle->second.Upload.iBytesCurInterval -= (int)State.CallbackContext.dwBytesWritten;
+								itThrottle->second.Upload.iBytesCurInterval -= (int)State.Ref->CallbackContext.dwBytesWritten;
 							}
 						}
 						for (;;)
@@ -1682,7 +1704,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 									break;
 							}
 							// wait for the next time slot where hopefully we can receive more bytes
-							dwError = WaitForSingleObject(State.evThrottle.m_hObject, SECONDS(2));
+							dwError = WaitForSingleObject(State.Ref->evThrottle.m_hObject, SECONDS(2));
 							switch (dwError)
 							{
 							case WAIT_FAILED:
@@ -1702,7 +1724,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			}
 			// wait for response
 			PrepareCmd();
-			if (!WinHttpReceiveResponse(State.hRequest, nullptr))
+			if (!WinHttpReceiveResponse(State.Ref->hRequest, nullptr))
 			{
 				dwError = GetLastError();
 				if (IfServerReached(dwError) && (pbGotServerResponse != nullptr))
@@ -1712,14 +1734,14 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			}
 			if (!WaitComplete(WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE))
 			{
-				if (IfServerReached(State.CallbackContext.Result.dwError) && (pbGotServerResponse != nullptr))
+				if (IfServerReached(State.Ref->CallbackContext.Result.dwError) && (pbGotServerResponse != nullptr))
 					*pbGotServerResponse = true;
-				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.CallbackContext.Result.dwError);
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
 			}
 			if (pbGotServerResponse != nullptr)
 				*pbGotServerResponse = true;
 			dwIndex = 0;
-			if (!WinHttpQueryHeadersBuffer(State.hRequest, WINHTTP_QUERY_STATUS_CODE, WINHTTP_HEADER_NAME_BY_INDEX, RetBuf, &dwIndex))
+			if (!WinHttpQueryHeadersBuffer(State.Ref->hRequest, WINHTTP_QUERY_STATUS_CODE, WINHTTP_HEADER_NAME_BY_INDEX, RetBuf, &dwIndex))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 			if (RetBuf.IsEmpty())
 				Error.dwHttpError = 0;
@@ -1734,13 +1756,13 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				DWORD dwFirstScheme;
 				DWORD dwTarget;
 				// Obtain the supported and preferred schemes.
-				if (!WinHttpQueryAuthSchemes(State.hRequest, &dwSupportedSchemes, &dwFirstScheme, &dwTarget))
+				if (!WinHttpQueryAuthSchemes(State.Ref->hRequest, &dwSupportedSchemes, &dwFirstScheme, &dwTarget))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 				// Set the credentials before re-sending the request.
 				if (Error.dwHttpError == HTTP_STATUS_PROXY_AUTH_REQ)
-					State.dwProxyAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
+					State.Ref->dwProxyAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
 				else
-					State.dwAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
+					State.Ref->dwAuthScheme = ChooseAuthScheme(dwSupportedSchemes);
 			}
 		}
 		// if it required authorization and was successful
@@ -1748,13 +1770,13 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		// log an INFO message detailing the proxy connection
 		if (bAuthFailure
 			&& !Error.IfError()
-			&& State.bDisableSecureLog
-			&& (State.dwProxyAuthScheme != 0))
+			&& State.Ref->bDisableSecureLog
+			&& (State.Ref->dwProxyAuthScheme != 0))
 		{
 			CString sProxyString(sProxy);
 			if (dwProxyPort != 0)
 				sProxyString += _T(":") + FmtNum(dwProxyPort);
-			if (bSSL || (State.dwProxyAuthScheme != WINHTTP_AUTH_SCHEME_BASIC))
+			if (bSSL || (State.Ref->dwProxyAuthScheme != WINHTTP_AUTH_SCHEME_BASIC))
 				LogMessage(_T(__FILE__), __LINE__, _T("Connection to %1 successfully authenticated through proxy server.\r\nProxy: %2\r\nAuthentication: %3\r\n"), ERROR_SUCCESS, (LPCTSTR)sHost, (LPCTSTR)sProxyString, (LPCTSTR)FormatAuthScheme());
 			else
 				LogMessage(_T(__FILE__), __LINE__, _T("Connection to %1 successfully authenticated through proxy server - NOT SECURE.\r\nWarning: This server is requesting your username and password to be sent in an insecure manner (basic authentication without a secure connection).\r\nProxy: %2\r\nAuthentication: %3\r\n"), ERROR_SUCCESS, (LPCTSTR)sHost, (LPCTSTR)sProxyString, (LPCTSTR)FormatAuthScheme());
@@ -1764,7 +1786,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			if (pHeaderReq->empty())
 			{
 				dwIndex = 0;
-				if (!WinHttpQueryHeadersBuffer(State.hRequest, WINHTTP_QUERY_RAW_HEADERS, WINHTTP_HEADER_NAME_BY_INDEX, RetBuf, &dwIndex))
+				if (!WinHttpQueryHeadersBuffer(State.Ref->hRequest, WINHTTP_QUERY_RAW_HEADERS, WINHTTP_HEADER_NAME_BY_INDEX, RetBuf, &dwIndex))
 				{
 					dwError = GetLastError();
 					LogMessage(_T(__FILE__), __LINE__, _T("WinHttpQueryHeadersBuffer Error"), dwError);
@@ -1816,7 +1838,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					dwIndex = 0;
 					for (;;)
 					{
-						if (!WinHttpQueryHeadersBuffer(State.hRequest, WINHTTP_QUERY_CUSTOM, itReq->sHeader, RetBuf, &dwIndex))
+						if (!WinHttpQueryHeadersBuffer(State.Ref->hRequest, WINHTTP_QUERY_CUSTOM, itReq->sHeader, RetBuf, &dwIndex))
 						{
 							dwError = GetLastError();
 							if (dwError == ERROR_WINHTTP_HEADER_NOT_FOUND)
@@ -1841,15 +1863,15 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		{
 			// Check for available data.
 			PrepareCmd();
-			if (!WinHttpQueryDataAvailable(State.hRequest, nullptr))
+			if (!WinHttpQueryDataAvailable(State.Ref->hRequest, nullptr))
 			{
 				Error.dwError = GetLastError();
 				CleanupCmd();
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			}
 			if (!WaitComplete(WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE))
-				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.CallbackContext.Result.dwError);
-			dwSize = State.CallbackContext.dwReadLength;
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
+			dwSize = State.Ref->CallbackContext.dwReadLength;
 			if (dwSize == 0)
 			{
 				if (pStreamReceive != nullptr)
@@ -1877,13 +1899,13 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				while (RetData.GetAllocSize() < (dwLen + dwSize))
 					RetData.SetBufSize(RetData.GetBufSize() + GDReadWriteChunkMax);
 				RetData.SetBufSize(dwLen + dwSize);
-				bReadReturn = WinHttpReadData(State.hRequest, RetData.GetData() + dwLen, dwSize, nullptr) != FALSE;
+				bReadReturn = WinHttpReadData(State.Ref->hRequest, RetData.GetData() + dwLen, dwSize, nullptr) != FALSE;
 			}
 			else
 			{
 				RcvBuf.Data.SetBufSize(dwSize);
 				RcvBuf.bLast = false;
-				bReadReturn = WinHttpReadData(State.hRequest, RcvBuf.Data.GetData(), dwSize, nullptr) != FALSE;
+				bReadReturn = WinHttpReadData(State.Ref->hRequest, RcvBuf.Data.GetData(), dwSize, nullptr) != FALSE;
 			}
 			if (!bReadReturn)
 			{
@@ -1892,8 +1914,8 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			}
 			if (!WaitComplete(WINHTTP_CALLBACK_STATUS_READ_COMPLETE))
-				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.CallbackContext.Result.dwError);
-			dwDownloaded = State.CallbackContext.dwReadLength;
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
+			dwDownloaded = State.Ref->CallbackContext.dwReadLength;
 			if (pStreamReceive != nullptr)
 			{
 				if (Error.dwHttpError < 400)
@@ -1901,7 +1923,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					RcvBuf.Data.SetBufSize(dwDownloaded);
 					RcvBuf.ullOffset = dwLen;
 					pStreamReceive->ullTotalSize += (ULONGLONG)dwDownloaded;
-					State.ullReadBytes += (ULONGLONG)dwDownloaded;
+					State.Ref->ullReadBytes += (ULONGLONG)dwDownloaded;
 					pStreamReceive->StreamData.push_back(RcvBuf,
 						MaxStreamQueueSize,
 						TestAbortStatic,
@@ -1946,7 +1968,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 							break;
 					}
 					// wait for the next time slot where hopefully we can receive more bytes
-					dwError = WaitForSingleObject(State.evThrottle.m_hObject, SECONDS(2));
+					dwError = WaitForSingleObject(State.Ref->evThrottle.m_hObject, SECONDS(2));
 					switch (dwError)
 					{
 					case WAIT_FAILED:
@@ -1974,11 +1996,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		{
 			XML_ECS_ERROR_CONTEXT Context;
 			Context.pError = &Error;
-			if (!State.bS3Admin)
+			if (!State.Ref->bS3Admin)
 			{
 				(void)ScanXml(&RetData, &Context, XmlS3ErrorCB);
 			}
-			else if (State.bS3Admin)
+			else if (State.Ref->bS3Admin)
 			{
 				(void)ScanXml(&RetData, &Context, XmlECSAdminErrorCB);
 			}
@@ -1995,18 +2017,18 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		}
 		Error = E.Error;
 		Error.sHostAddr = sHostHeader;
-		State.CloseRequest(Error.dwError == ERROR_WINHTTP_SECURE_FAILURE);
-		State.Session.pValue->bKillWhenDone = true;
-		State.Session.ReleaseSession();
+		State.Ref->CloseRequest(Error.dwError == ERROR_WINHTTP_SECURE_FAILURE);
+		State.Ref->Session.pValue->bKillWhenDone = true;
+		State.Ref->Session.ReleaseSession();
 		if (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)
 		{
-			Error.dwSecureError = State.dwSecureError;
+			Error.dwSecureError = State.Ref->dwSecureError;
 			GetCertInfo(Error.CertInfo);
 		}
 		return Error;
 	}
-	State.CloseRequest();
-	State.Session.ReleaseSession();
+	State.Ref->CloseRequest();
+	State.Ref->Session.ReleaseSession();
 	Error.sHostAddr = sHostHeader;
 	return Error;
 }
@@ -2041,12 +2063,12 @@ void CECSConnection::SetHost(LPCTSTR pszHost)				// set Host
 
 void CECSConnection::SetIPList(const deque<CString>& IPListParam)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	CSimpleRWLockAcquire lock(&rwlIPListHost, true);			// write lock because we might change it
 	if (IPListHost != IPListParam)
 	{
 		IPListHost = IPListParam;
-		State.iIPList = 0;
+		State.Ref->iIPList = 0;
 		lock.Unlock();
 		KillHostSessions();
 	}
@@ -2302,11 +2324,11 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVe
 
 CECSConnection::S3_ERROR CECSConnection::DeleteS3(const list<CECSConnection::S3_DELETE_ENTRY>& PathList)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
-		State.S3DeletePathList.clear();
+		State.Ref->S3DeletePathList.clear();
 		DeleteS3Internal(PathList);
 		DeleteS3Send();								// delete any straggelers
 	}
@@ -2319,7 +2341,7 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(const list<CECSConnection::S3_
 
 void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY>& PathList)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 
 	list<CECSConnection::S3_DELETE_ENTRY>::const_iterator itPath;
@@ -2341,8 +2363,8 @@ void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY
 				DeleteS3Internal(PathListAdd);
 			}
 		}
-		State.S3DeletePathList.emplace_back(S3_DELETE_ENTRY(itPath->sKey, itPath->sVersionId));
-		if (State.S3DeletePathList.size() > MaxS3DeleteObjects)
+		State.Ref->S3DeletePathList.emplace_back(S3_DELETE_ENTRY(itPath->sKey, itPath->sVersionId));
+		if (State.Ref->S3DeletePathList.size() > MaxS3DeleteObjects)
 			DeleteS3Send();
 	}
 }
@@ -2435,8 +2457,8 @@ HRESULT XmlDeleteS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRea
 
 void CECSConnection::DeleteS3Send()
 {
-	CECSConnectionState& State(GetStateBuf());
-	if (State.S3DeletePathList.empty())
+	CStateRef State(this);
+	if (State.Ref->S3DeletePathList.empty())
 		return;
 	CBufferStream *pBufStream = new CBufferStream;
 	CComPtr<IStream> pOutFileStream = pBufStream;
@@ -2461,11 +2483,11 @@ void CECSConnection::DeleteS3Send()
 		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
 	// now put out the list of objects to delete
-	State.S3DeletePathList.sort();
-	State.S3DeletePathList.unique();
+	State.Ref->S3DeletePathList.sort();
+	State.Ref->S3DeletePathList.unique();
 	UINT iCount = 0;								// keep a count. don't let it go over MaxS3DeleteObjects
 	list<S3_DELETE_ENTRY>::iterator itPath;
-	for (itPath = State.S3DeletePathList.end(); itPath != State.S3DeletePathList.begin();)
+	for (itPath = State.Ref->S3DeletePathList.end(); itPath != State.Ref->S3DeletePathList.begin();)
 	{
 		--itPath;															// run through the list from the end to the beginning
 		// extract the bucket
@@ -2499,7 +2521,7 @@ void CECSConnection::DeleteS3Send()
 		}
 		if (FAILED(pWriter->WriteFullEndElement()))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-		itPath = State.S3DeletePathList.erase(itPath);
+		itPath = State.Ref->S3DeletePathList.erase(itPath);
 		iCount++;
 		if (iCount >= MaxS3DeleteObjects)
 			break;
@@ -2566,7 +2588,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 	ULONGLONG *pullReturnedLength)
 {
 	const UINT READ_RETRY_MAX_TRIES = 5;
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
@@ -2575,7 +2597,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 		CString sRange;
 		for (UINT iRetry = 0; iRetry < READ_RETRY_MAX_TRIES; iRetry++)
 		{
-			(void)State.Headers.erase(_T("range"));			// erase it in case of a retry
+			(void)State.Ref->Headers.erase(_T("range"));			// erase it in case of a retry
 			HeaderReq.clear();
 			if ((lwOffset != 0) || (lwLen != 0))
 			{
@@ -2584,7 +2606,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 					sRange += FmtNum(lwOffset + lwLen - 1);
 				AddHeader(_T("range"), sRange);
 			}
-			State.ullReadBytes = 0ULL;
+			State.Ref->ullReadBytes = 0ULL;
 			Error = SendRequest(_T("GET"), (LPCTSTR)UriEncode(pszPath), nullptr, 0, RetData, &HeaderReq,
 				((pStreamReceive == nullptr) && (lwLen != 0)) ? ((DWORD)lwLen + 1024) : 0, dwBufOffset, nullptr, pStreamReceive, lwOffset);
 			if (pRcvHeaders != nullptr)
@@ -2598,7 +2620,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 				if (pStreamReceive == nullptr)
 					ullTotalLength = (ULONGLONG)RetData.GetBufSize();
 				else
-					ullTotalLength = State.ullReadBytes;
+					ullTotalLength = State.Ref->ullReadBytes;
 				if (pullReturnedLength != nullptr)
 					*pullReturnedLength = ullTotalLength;
 				// make sure we have all the bytes we asked for
@@ -3022,7 +3044,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	LPCTSTR pszObjName,
 	LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker)	// if non-nullptr, only one request is done at a time. this holds the next marker for the next page of entries
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 	XML_DIR_LISTING_CONTEXT Context;
 	list<HEADER_REQ> Req;
@@ -3620,7 +3642,7 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 	S3_ERROR Error;
 	try
 	{
-		CECSConnectionState& State(GetStateBuf());
+		CStateRef State(this);
 		list<HEADER_STRUCT> MDList = MDListParam;
 		CBuffer RetData;
 		list<HEADER_REQ> Req;
@@ -3660,7 +3682,7 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 			{
 				CString sTag(*itDel);
 				sTag.MakeLower();
-				(void)State.Headers.erase(sTag);
+				(void)State.Ref->Headers.erase(sTag);
 			}
 		}
 		AddHeader(_T("x-amz-copy-source"), UriEncode(sPath, true));							// copy it to itself
@@ -3937,11 +3959,11 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 
 bool CECSConnection::TestAbort(void)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	if (!bCheckShutdown)
 		return false;
-	CSimpleRWLockAcquire lock(&State.rwlAbortList, false);			// read lock
-	for (list<ABORT_ENTRY>::const_iterator itList = State.AbortList.begin(); itList != State.AbortList.end(); ++itList)
+	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, false);			// read lock
+	for (list<ABORT_ENTRY>::const_iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); ++itList)
 	{
 		if ((itList->ShutdownCB != nullptr) && (itList->ShutdownCB)(itList->pShutdownContext))
 			return true;
@@ -3965,22 +3987,22 @@ bool CECSConnection::TestAbort(void)
 
 void CECSConnection::RegisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *pContext)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	ABORT_ENTRY Rec;
 	Rec.ShutdownCB = ShutdownParamCB;
 	Rec.pShutdownContext = pContext;
-	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
-	State.AbortList.push_back(Rec);
+	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	State.Ref->AbortList.push_back(Rec);
 }
 
 void CECSConnection::UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *pContext)
 {
-	CECSConnectionState& State(GetStateBuf());
-	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
-	for (list<ABORT_ENTRY>::iterator itList = State.AbortList.begin(); itList != State.AbortList.end(); )
+	CStateRef State(this);
+	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	for (list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
 	{
 		if ((itList->ShutdownCB == ShutdownParamCB) && (itList->pShutdownContext == pContext))
-			itList = State.AbortList.erase(itList);
+			itList = State.Ref->AbortList.erase(itList);
 		else
 			++itList;
 	}
@@ -3988,22 +4010,22 @@ void CECSConnection::UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void
 
 void CECSConnection::RegisterAbortPtr(const bool *pbAbort, bool bAbortTrue)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	ABORT_ENTRY Rec;
 	Rec.pbAbort = pbAbort;
 	Rec.bAbortIfTrue = bAbortTrue;
-	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
-	State.AbortList.push_back(Rec);
+	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	State.Ref->AbortList.push_back(Rec);
 }
 
 void CECSConnection::UnregisterAbortPtr(const bool *pbAbort)
 {
-	CECSConnectionState& State(GetStateBuf());
-	CSimpleRWLockAcquire lock(&State.rwlAbortList, true);			// write lock
-	for (list<ABORT_ENTRY>::iterator itList = State.AbortList.begin(); itList != State.AbortList.end(); )
+	CStateRef State(this);
+	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	for (list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
 	{
 		if (itList->pbAbort == pbAbort)
-			itList = State.AbortList.erase(itList);
+			itList = State.Ref->AbortList.erase(itList);
 		else
 			++itList;
 	}
@@ -4072,20 +4094,20 @@ void CECSConnection::CheckShutdown(bool bCheckShutdownParam)
 
 void CECSConnection::SetDisableSecureLog(bool bDisable)
 {
-	CECSConnectionState& State(GetStateBuf());
-	State.bDisableSecureLog = bDisable;
+	CStateRef State(this);
+	State.Ref->bDisableSecureLog = bDisable;
 }
 
 void CECSConnection::GetCertInfo(ECS_CERT_INFO& Rec)
 {
-	CECSConnectionState& State(GetStateBuf());
-	Rec = State.CertInfo;
+	CStateRef State(this);
+	Rec = State.Ref->CertInfo;
 }
 
 void CECSConnection::SetSaveCertInfo(bool bSave)
 {
-	CECSConnectionState& State(GetStateBuf());
-	State.bSaveCertInfo = bSave;
+	CStateRef State(this);
+	State.Ref->bSaveCertInfo = bSave;
 }
 
 DWORD CECSConnection::ChooseAuthScheme(DWORD dwSupportedSchemes)
@@ -4122,7 +4144,7 @@ DWORD CECSConnection::ChooseAuthScheme(DWORD dwSupportedSchemes)
 // output non-localized authorization scheme name
 CString CECSConnection::FormatAuthScheme()
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	//  It is the server's responsibility only to accept 
 	//  authentication schemes that provide a sufficient level
 	//  of security to protect the server's resources.
@@ -4134,29 +4156,29 @@ CString CECSConnection::FormatAuthScheme()
 	//  because Basic authentication exposes the client's username 
 	//  and password to anyone monitoring the connection.
   
-	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_NEGOTIATE))
+	if (TST_BIT(State.Ref->dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_NEGOTIATE))
 		return _T("Negotiate");
-	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_NTLM))
+	if (TST_BIT(State.Ref->dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_NTLM))
 		return _T("NTLM");
-	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_PASSPORT))
+	if (TST_BIT(State.Ref->dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_PASSPORT))
 		return _T("Passport");
-	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_DIGEST))
+	if (TST_BIT(State.Ref->dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_DIGEST))
 		return _T("Digest");
-	if (TST_BIT(State.dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_BASIC))
+	if (TST_BIT(State.Ref->dwProxyAuthScheme, WINHTTP_AUTH_SCHEME_BASIC))
 		return _T("Basic");
 	return _T("");
 }
 
 DWORD CECSConnection::GetSecureError(void)
 {
-	CECSConnectionState& State(GetStateBuf());
-	return State.dwSecureError;
+	CStateRef State(this);
+	return State.Ref->dwSecureError;
 }
 
 CString CECSConnection::signS3ShareableURL(const CString& sResource, const CString& sExpire)
 {
-	CECSConnectionState& State(GetStateBuf());
-	CString sSignature(signRequestS3v2(sSecret, _T("GET"), sResource, State.Headers, sExpire));
+	CStateRef State(this);
+	CString sSignature(signRequestS3v2(sSecret, _T("GET"), sResource, State.Ref->Headers, sExpire));
 	return sSignature;
 }
 
@@ -4347,23 +4369,45 @@ void CECSConnection::KillHostSessions()
 
 void CECSConnection::GarbageCollect()
 {
-	CSingleLock lock(&csSessionMap, true);
-	FILETIME ftNow;
-	GetSystemTimeAsFileTime(&ftNow);
-	map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
-	for (itMap = SessionMap.begin()
-		; itMap != SessionMap.end()
-		;)
 	{
-		if (!itMap->second.bInUse)
+		CSingleLock lock(&csSessionMap, true);
+		FILETIME ftNow;
+		GetSystemTimeAsFileTime(&ftNow);
+		map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
+		for (itMap = SessionMap.begin()
+			; itMap != SessionMap.end()
+			;)
 		{
-			if (ftNow > (itMap->second.ftIdleTime + FT_MINUTES(2)))
+			if (!itMap->second.bInUse)
 			{
-				itMap = SessionMap.erase(itMap);
-				continue;
+				if (ftNow > (itMap->second.ftIdleTime + FT_MINUTES(2)))
+				{
+					itMap = SessionMap.erase(itMap);
+					continue;
+				}
+			}
+			++itMap;
+		}
+	}
+	{
+		FILETIME ftExpire;
+		GetSystemTimeAsFileTime(&ftExpire);
+		ftExpire = ftExpire - FT_MINUTES(2);						// any entries not touched for a while are removed
+		CSingleLock lockThrottle(&csThrottleMap, true);
+		for (list<CECSConnection *>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
+		{
+			CSimpleRWLockAcquire lockState(&(*itConn)->StateList.rwlStateMap, true);			// write lock
+			if ((*itConn)->StateList.StateMap.size() > 100)							// don't bother until this gets big
+			{
+				for (map<DWORD, shared_ptr<CECSConnectionState>>::iterator itMap = (*itConn)->StateList.StateMap.begin(); itMap != (*itConn)->StateList.StateMap.end(); )
+				{
+					if ((itMap->second->ulReferenceCount == 0) && !IfFTZero(itMap->second->ftLastUsed) && (itMap->second->ftLastUsed < ftExpire))
+						itMap = (*itConn)->StateList.StateMap.erase(itMap);
+					else
+						++itMap;
+				}
 			}
 		}
-		++itMap;
 	}
 }
 
@@ -5153,16 +5197,16 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogin(LPCTSTR pszUser, LPCTSTR 
 {
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
-	CECSConnectionState& State(GetStateBuf());
-	State.sHTTPUser = pszUser;
-	State.sHTTPPassword = pszPassword;
-	State.dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.dwSecurityFlagsSub = 0;
-	CBoolSet TurnOffSignature(&State.bS3Admin);				// set this flag, and reset it on exit
+	CStateRef State(this);
+	State.Ref->sHTTPUser = pszUser;
+	State.Ref->sHTTPPassword = pszPassword;
+	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+	State.Ref->dwSecurityFlagsSub = 0;
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
-	State.Headers.clear();
+	State.Ref->Headers.clear();
 	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
 	AddHeader(_T("Date"), sDate);
@@ -5173,9 +5217,9 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogin(LPCTSTR pszUser, LPCTSTR 
 		for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 		{
 			if ((it->sHeader.CompareNoCase(_T("X-SDS-AUTH-TOKEN")) == 0) && (it->ContentList.size() == 1))
-				State.sX_SDS_AUTH_TOKEN = it->ContentList.front();
+				State.Ref->sX_SDS_AUTH_TOKEN = it->ContentList.front();
 		}
-		if (State.sX_SDS_AUTH_TOKEN.IsEmpty())
+		if (State.Ref->sX_SDS_AUTH_TOKEN.IsEmpty())
 			Error.dwError = ERROR_INVALID_DATA;				// didn't get the auth token
 	}
 	SetPort(wSavePort);
@@ -5186,22 +5230,22 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogout()
 {
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
-	CECSConnectionState& State(GetStateBuf());
-	State.dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.dwSecurityFlagsSub = 0;
-	CBoolSet TurnOffSignature(&State.bS3Admin);				// set this flag, and reset it on exit
+	CStateRef State(this);
+	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+	State.Ref->dwSecurityFlagsSub = 0;
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
-	State.Headers.clear();
+	State.Ref->Headers.clear();
 	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
 	AddHeader(_T("Date"), sDate);
 	AddHeader(_T("host"), GetCurrentServerIP());
-	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
 	Error = SendRequest(_T("GET"), _T("/logout"), nullptr, 0, RetData, &Req);
 	if (!Error.IfError())
-		State.sX_SDS_AUTH_TOKEN.Empty();
+		State.Ref->sX_SDS_AUTH_TOKEN.Empty();
 	SetPort(wSavePort);
 	return Error;
 }
@@ -5258,19 +5302,19 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetUserList(list<S3_ADMIN_USER_
 	UserList.clear();
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
-	CECSConnectionState& State(GetStateBuf());
-	State.dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.dwSecurityFlagsSub = 0;
-	CBoolSet TurnOffSignature(&State.bS3Admin);				// set this flag, and reset it on exit
+	CStateRef State(this);
+	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+	State.Ref->dwSecurityFlagsSub = 0;
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
-	State.Headers.clear();
+	State.Ref->Headers.clear();
 	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
 	AddHeader(_T("Date"), sDate);
 	AddHeader(_T("host"), GetCurrentServerIP());
-	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
 	Error = SendRequest(_T("GET"), _T("/object/users"), nullptr, 0, RetData, &Req);
 	SetPort(wSavePort);
 	if (!Error.IfError())
@@ -5333,19 +5377,19 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 {
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
-	CECSConnectionState& State(GetStateBuf());
-	State.dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.dwSecurityFlagsSub = 0;
-	CBoolSet TurnOffSignature(&State.bS3Admin);				// set this flag, and reset it on exit
+	CStateRef State(this);
+	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+	State.Ref->dwSecurityFlagsSub = 0;
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
-	State.Headers.clear();
+	State.Ref->Headers.clear();
 	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
 	AddHeader(_T("Date"), sDate);
 	AddHeader(_T("host"), GetCurrentServerIP());
-	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
 	AddHeader(_T("Content-Type"), _T("application/xml"));
 	try
 	{
@@ -5481,19 +5525,19 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetKeysForUser(LPCTSTR pszUser,
 {
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
-	CECSConnectionState& State(GetStateBuf());
-	State.dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.dwSecurityFlagsSub = 0;
-	CBoolSet TurnOffSignature(&State.bS3Admin);				// set this flag, and reset it on exit
+	CStateRef State(this);
+	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+	State.Ref->dwSecurityFlagsSub = 0;
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
-	State.Headers.clear();
+	State.Ref->Headers.clear();
 	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
 	AddHeader(_T("Date"), sDate);
 	AddHeader(_T("host"), GetCurrentServerIP());
-	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
 	try
 	{
 		CString sMethod(_T("/object/user-secret-keys/"));
@@ -5526,19 +5570,19 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 {
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
-	CECSConnectionState& State(GetStateBuf());
-	State.dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.dwSecurityFlagsSub = 0;
-	CBoolSet TurnOffSignature(&State.bS3Admin);				// set this flag, and reset it on exit
+	CStateRef State(this);
+	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+	State.Ref->dwSecurityFlagsSub = 0;
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
-	State.Headers.clear();
+	State.Ref->Headers.clear();
 	AddHeader(_T("accept"), _T("*/*"));
 	CString sDate(GetCanonicalTime());
 	AddHeader(_T("Date"), sDate);
 	AddHeader(_T("host"), GetCurrentServerIP());
-	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
 	AddHeader(_T("Content-Type"), _T("application/xml"));
 	try
 	{
@@ -5711,7 +5755,7 @@ HRESULT XmlS3GetMDSearchFieldsCB(const CStringW& sXmlPath, void *pContext, IXmlR
 
 CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(S3_METADATA_SEARCH_FIELDS& MDFields)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
@@ -5812,7 +5856,7 @@ HRESULT XmlS3GetMDSearchFieldsBucketCB(const CStringW& sXmlPath, void *pContext,
 
 CECSConnection::S3_ERROR CECSConnection::S3GetMDSearchFields(LPCTSTR pszBucket, S3_METADATA_SEARCH_FIELDS_BUCKET& MDFieldBucket)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
@@ -5971,7 +6015,7 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 	const S3_METADATA_SEARCH_PARAMS& Params,
 	S3_METADATA_SEARCH_RESULT& MDSearchResult)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
@@ -6209,7 +6253,7 @@ HRESULT XmlS3EndpointInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader
 
 CECSConnection::S3_ERROR CECSConnection::DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
@@ -6715,10 +6759,10 @@ CString CECSConnection::GetSecureErrorText(DWORD dwSecureError)
 
 DWORD CECSConnection::RetrieveServerCertificate(ECS_CERT_INFO& CertInfo)
 {
-	CECSConnectionState& State(GetStateBuf());
+	CStateRef State(this);
 	CERT_CONTEXT *pCert;
 	DWORD dwLen = sizeof pCert;
-	if (!WinHttpQueryOption(State.hRequest, WINHTTP_OPTION_SERVER_CERT_CONTEXT, &pCert, &dwLen))
+	if (!WinHttpQueryOption(State.Ref->hRequest, WINHTTP_OPTION_SERVER_CERT_CONTEXT, &pCert, &dwLen))
 		return GetLastError();
 	TCHAR NameBuf[1024];
 	(void)CertGetNameString(pCert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, NameBuf, _countof(NameBuf));

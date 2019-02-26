@@ -1141,6 +1141,8 @@ private:
 	// all state fields. These are not copied during assignment or copy constructor
 	struct CECSConnectionState
 	{
+		ULONG ulReferenceCount;					// if 0, no threads are using this record
+		FILETIME ftLastUsed;					// time of last use. used in garbage collect
 		CECSConnection *pECSConnection;			// pointer to parent record
 		CECSConnectionSession Session;			// current allocated session (cached hSession and hConnect)
 		CInternetHandle hRequest;				// request handle
@@ -1169,7 +1171,8 @@ private:
 		mutable CSimpleRWLock rwlAbortList;		// lock used for AbortList
 
 		CECSConnectionState()
-			: pECSConnection(nullptr)
+			: ulReferenceCount(0)
+			, pECSConnection(nullptr)
 			, hRequest(nullptr)
 			, bCallbackRegistered(false)
 			, bS3Admin(false)
@@ -1183,7 +1186,9 @@ private:
 			, ullReadBytes(0ULL)
 			, dwSecurityFlagsAdd(0)
 			, dwSecurityFlagsSub(0)
-		{}
+		{
+			ZeroFT(ftLastUsed);
+		}
 		~CECSConnectionState()
 		{
 			// Close any open handles.
@@ -1222,7 +1227,7 @@ private:
 	struct CECSConnectionStateCS
 	{
 		mutable CSimpleRWLock rwlStateMap;		// lock for StateMap
-		mutable map<DWORD, unique_ptr<CECSConnectionState>> StateMap;
+		mutable map<DWORD, shared_ptr<CECSConnectionState>> StateMap;
 
 		CECSConnectionStateCS()
 		{
@@ -1310,16 +1315,6 @@ private:
 		THROTTLE_INFO Upload;
 		THROTTLE_INFO Download;
 	};
-	struct RECENT_PATH
-	{
-		CString sPath;
-		FILETIME ftTime;					// time the path was added
-		RECENT_PATH(LPCTSTR pszPath = nullptr)
-			: sPath(pszPath)
-		{
-			GetSystemTimeAsFileTime(&ftTime);
-		}
-	};
 	static bool bInitialized;							// starts out false. If false, timeouts are very short. must call SetInitialized to get regular timeouts
 	static CThrottleTimerThread TimerThread;			// throttle timer thread
 	static map<CString,THROTTLE_REC> ThrottleMap;		// global map used by all CECSConnection objects, key is host name
@@ -1404,11 +1399,19 @@ private:
 			GetSystemTimeAsFileTime(&ftError);
 		}
 	};
+
+	struct CStateRef
+	{
+		CECSConnection *pConn;
+		shared_ptr<CECSConnectionState> Ref;
+		CStateRef(CECSConnection *pConnParam = nullptr);
+		~CStateRef();
+	};
 	static CCriticalSection csBadIPMap;
 	static map<BAD_IP_KEY,BAD_IP_ENTRY> BadIPMap;
 	static map<CString,UINT> LoadBalMap;					// global IP selector for all entries
 
-	CECSConnectionState& GetStateBuf(DWORD dwThreadID = 0);
+	shared_ptr<CECSConnectionState> GetStateBuf(DWORD dwThreadID = 0, bool bIncRef = false);
 	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCTSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
 	CString GetCanonicalTime() const;
 	static FILETIME ParseCanonicalTime(LPCTSTR pszCanonTime);

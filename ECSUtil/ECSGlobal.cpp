@@ -52,8 +52,5 @@ void ECSInitLib(
 void ECSTermLib()
 {
 	GarbageCollectThread.KillThreadWait();
-	// clean up all thread pools
-	CThreadPoolBase::AllTerminate();
-	// clean up all worker threads
-	CSimpleWorkerThread::AllTerminate();
+	CECSConnection::TerminateThrottle();
 }
