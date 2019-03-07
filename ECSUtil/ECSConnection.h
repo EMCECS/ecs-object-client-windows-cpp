@@ -896,7 +896,6 @@ public:
 	typedef bool (*TEST_SHUTDOWN_CB)(void *pContext);
 	typedef void (*ECS_DISCONNECT_CB)(CECSConnection *pHost, const CS3ErrorInfo *pError, bool *pbDisconnected);
 	typedef CString (*GET_HTTP_ERROR_TEXT_CB)(DWORD dwHttpError);
-	typedef void (*GET_HOST_PERF_COUNTERS_CB)(LPCTSTR pszHost, ULONGLONG **ppullPerfBytesSentToHost_Host, ULONGLONG **ppullPerfBytesRcvFromHost_Host, int *piHostCounters);
 	typedef void (*DIR_LISTING_CB)(size_t Size, void *pContext);
 
 public:
@@ -1411,6 +1410,13 @@ private:
 	static map<BAD_IP_KEY,BAD_IP_ENTRY> BadIPMap;
 	static map<CString,UINT> LoadBalMap;					// global IP selector for all entries
 
+	// global performance counters
+	static ULONGLONG *pullGlobalPerfBytesSent;
+	static ULONGLONG *pullGlobalPerfBytesRcv;
+	// per-instance performance counters
+	ULONGLONG *pullPerfBytesSent = nullptr;
+	ULONGLONG *pullPerfBytesRcv = nullptr;
+
 	shared_ptr<CECSConnectionState> GetStateBuf(DWORD dwThreadID = 0, bool bIncRef = false);
 	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCTSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
 	CString GetCanonicalTime() const;
@@ -1468,6 +1474,8 @@ public:
 	CString GetS3KeyID(void);
 	static DWORD ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftTime, bool bLocal = false);
 	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec = true);
+	static void SetGlobalPerformanceCounters(ULONGLONG *pullGlobalPerfBytesSentParam, ULONGLONG *pullGlobalPerfBytesRcvParam);
+	void SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, ULONGLONG *pullPerfBytesRcvParam);
 
 	void SetUserAgent(LPCTSTR pszUserAgent);					// typically app name/version. put in 'user agent' field in HTTP protocol
 	void SetPort(INTERNET_PORT PortParam);

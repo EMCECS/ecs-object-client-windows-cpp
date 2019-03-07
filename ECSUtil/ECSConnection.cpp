@@ -59,6 +59,10 @@ long CECSConnection::lSessionKeyValue;
 CString CECSConnection::sAmzMetaPrefix(TEXT("x-amz-meta-"));						// just a place to hold "x-amz-meta-"
 set<CString> CECSConnection::SystemMDSet;					// set of system metadata fields that can be indexed
 
+// global performance counters
+ULONGLONG *CECSConnection::pullGlobalPerfBytesSent;
+ULONGLONG *CECSConnection::pullGlobalPerfBytesRcv;
+
 DWORD CECSConnection::dwMaxRetryCount(MaxRetryCount);				// max retries for HTTP command
 DWORD CECSConnection::dwPauseBetweenRetries(500);					// pause between retries (millisec)
 DWORD CECSConnection::dwPauseAfter500Error(500);					// pause between retries after HTTP 500 error (millisec)
@@ -464,6 +468,8 @@ CECSConnection::CECSConnection()
 	, dwBadIPAddrAge(0)
 	, dwMaxWriteRequest(MaxWriteRequest)
 	, dwHttpSecurityFlags(0)
+	, pullPerfBytesSent(nullptr)
+	, pullPerfBytesRcv(nullptr)
 {
 	CSingleLock lock(&csThrottleMap, true);
 	ECSConnectionList.push_back(this);
@@ -622,6 +628,18 @@ CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal, b
 		+ _T("T") + FmtNum(stDate.wHour, 2, true) + _T(":") + FmtNum(stDate.wMinute, 2, true) + _T(":") + FmtNum(stDate.wSecond, 2, true)
 		+ (bMilliSec ? (LPCTSTR)(_T(".") + FmtNum(stDate.wMilliseconds, 3, true)) : _T(""))
 		+ _T("Z");
+}
+
+void CECSConnection::SetGlobalPerformanceCounters(ULONGLONG *pullGlobalPerfBytesSentParam, ULONGLONG *pullGlobalPerfBytesRcvParam)
+{
+	pullGlobalPerfBytesSent = pullGlobalPerfBytesSentParam;
+	pullGlobalPerfBytesRcv = pullGlobalPerfBytesRcvParam;
+}
+
+void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, ULONGLONG *pullPerfBytesRcvParam)
+{
+	pullPerfBytesSent = pullPerfBytesSentParam;
+	pullPerfBytesRcv = pullPerfBytesRcvParam;
 }
 
 static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
@@ -1571,6 +1589,13 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					dwDataPartLen = 0;							// didn't send any data yet
 					ullCurDataSent = 0ULL;
 				}
+				// if performance monitor is attached, count the bytes sent
+				{
+					if (pullGlobalPerfBytesSent != NULL)
+						(void)InterlockedExchangeAdd64((LONG64 *)pullGlobalPerfBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
+					if (pullPerfBytesSent != NULL)
+						(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
+				}
 				ullCurDataSent += (ULONGLONG)dwDataPartLen;
 				CSharedQueueEvent MsgEvent;		// event that a new message arrived on pStreamSend
 				if (pConstStreamSend != nullptr)
@@ -1649,6 +1674,12 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					{
 						if (!WaitComplete(WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE))
 							throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
+						{
+							if (pullGlobalPerfBytesSent != NULL)
+								(void)InterlockedExchangeAdd64((LONG64 *)pullGlobalPerfBytesSent, State.Ref->CallbackContext.dwBytesWritten);
+							if (pullPerfBytesSent != NULL)
+								(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, State.Ref->CallbackContext.dwBytesWritten);
+						}
 
 						ullCurDataSent += (ULONGLONG)State.Ref->CallbackContext.dwBytesWritten;
 					}
@@ -1916,6 +1947,12 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			if (!WaitComplete(WINHTTP_CALLBACK_STATUS_READ_COMPLETE))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
 			dwDownloaded = State.Ref->CallbackContext.dwReadLength;
+			{
+				if (pullGlobalPerfBytesRcv != NULL)
+					(void)InterlockedExchangeAdd64((LONG64 *)pullGlobalPerfBytesRcv, dwDownloaded);
+				if (pullPerfBytesRcv != NULL)
+					(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesRcv, dwDownloaded);
+			}
 			if (pStreamReceive != nullptr)
 			{
 				if (Error.dwHttpError < 400)
