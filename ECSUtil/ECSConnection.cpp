@@ -648,6 +648,14 @@ void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, U
 	pullPerfBytesRcv = pullPerfBytesRcvParam;
 	pulStateMapSize = pulStateMapSizeParam;
 	pulMaxStateMapSize = pulMaxStateMapSizeParam;
+	// get the current state info
+	if (pulStateMapSize != nullptr)
+	{
+		CSimpleRWLockAcquire lock(&StateList.rwlStateMap, true);			// write lock
+		*pulStateMapSize = (ULONG)StateList.StateMap.size();
+		if ((pulMaxStateMapSize != nullptr) && (*pulMaxStateMapSize < (ULONG)StateList.StateMap.size()))
+			*pulMaxStateMapSize = (ULONG)StateList.StateMap.size();
+	}
 }
 
 static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
