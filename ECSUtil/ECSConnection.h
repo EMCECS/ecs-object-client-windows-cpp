@@ -972,6 +972,16 @@ public:
 		}
 	};
 
+	struct GLOBAL_PERF_POINTERS
+	{
+		volatile ULONGLONG *pullBytesSent;
+		volatile ULONGLONG *pullBytesRcv;
+		GLOBAL_PERF_POINTERS(volatile ULONGLONG *pullBytesSentParam = nullptr, volatile ULONGLONG *pullBytesRcvParam = nullptr)
+			: pullBytesSent(pullBytesSentParam)
+			, pullBytesRcv(pullBytesRcvParam)
+		{}
+	};
+
 private:
 	struct HTTP_CALLBACK_EVENT
 	{
@@ -1192,6 +1202,8 @@ private:
 		{
 			// Close any open handles.
 			CloseRequest();
+			if (pECSConnection != nullptr)
+				pECSConnection->SetPerfStateSize(-1);
 			pECSConnection = nullptr;
 		}
 
@@ -1411,13 +1423,14 @@ private:
 	static map<CString,UINT> LoadBalMap;					// global IP selector for all entries
 
 	// global performance counters
-	static ULONGLONG *pullGlobalPerfBytesSent;
-	static ULONGLONG *pullGlobalPerfBytesRcv;
+	static CSimpleRWLock rwlGlobalPerf;
+	static list<GLOBAL_PERF_POINTERS> GlobalPerfList;
 	// per-instance performance counters
-	ULONGLONG *pullPerfBytesSent = nullptr;
-	ULONGLONG *pullPerfBytesRcv = nullptr;
-	ULONG *pulStateMapSize = nullptr;
-	ULONG *pulMaxStateMapSize = nullptr;
+	volatile ULONGLONG *pullPerfBytesSent = nullptr;
+	volatile ULONGLONG *pullPerfBytesRcv = nullptr;
+	volatile ULONG *pulStateMapSize = nullptr;
+	volatile ULONG *pulMaxStateMapSize = nullptr;
+	void SetPerfStateSize(long lDiff);
 
 	shared_ptr<CECSConnectionState> GetStateBuf(DWORD dwThreadID = 0, bool bIncRef = false);
 	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCTSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
@@ -1476,7 +1489,7 @@ public:
 	CString GetS3KeyID(void);
 	static DWORD ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftTime, bool bLocal = false);
 	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec = true);
-	static void SetGlobalPerformanceCounters(ULONGLONG *pullGlobalPerfBytesSentParam, ULONGLONG *pullGlobalPerfBytesRcvParam);
+	static void SetGlobalPerformanceCounters(const list<GLOBAL_PERF_POINTERS>& PerfListParam);
 	void SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, ULONGLONG *pullPerfBytesRcvParam, ULONG *pulStateMapSizeParam, ULONG *pulMaxStateMapSizeParam);
 
 	void SetUserAgent(LPCTSTR pszUserAgent);					// typically app name/version. put in 'user agent' field in HTTP protocol

@@ -60,8 +60,8 @@ CString CECSConnection::sAmzMetaPrefix(TEXT("x-amz-meta-"));						// just a plac
 set<CString> CECSConnection::SystemMDSet;					// set of system metadata fields that can be indexed
 
 // global performance counters
-ULONGLONG *CECSConnection::pullGlobalPerfBytesSent;
-ULONGLONG *CECSConnection::pullGlobalPerfBytesRcv;
+CSimpleRWLock CECSConnection::rwlGlobalPerf;
+list<CECSConnection::GLOBAL_PERF_POINTERS> CECSConnection::GlobalPerfList;
 
 DWORD CECSConnection::dwMaxRetryCount(MaxRetryCount);				// max retries for HTTP command
 DWORD CECSConnection::dwPauseBetweenRetries(500);					// pause between retries (millisec)
@@ -199,6 +199,24 @@ static bool IfServerReached(DWORD dwError)
 	return true;
 }
 
+void CECSConnection::SetPerfStateSize(long lDiff)
+{
+	if (pulStateMapSize != nullptr)
+	{
+		long lCurMapSize = InterlockedAdd((long *)pulStateMapSize, lDiff);
+		if (pulMaxStateMapSize != nullptr)
+		{
+			while (lCurMapSize > InterlockedAdd((long *)pulMaxStateMapSize, 0))
+			{
+				long lOldMax = InterlockedExchange(pulMaxStateMapSize, lCurMapSize);
+				if (lOldMax <= lCurMapSize)
+					break;
+				lCurMapSize = lOldMax;
+			}
+		}
+	}
+}
+
 shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWORD dwThreadID, bool bIncRef)
 {
 	if (dwThreadID == 0)
@@ -217,12 +235,7 @@ shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWOR
 		if (bIncRef)
 			InterlockedIncrement(&ret.first->second->ulReferenceCount);
 		ASSERT(ret.first->second->pECSConnection == this);
-		if (pulStateMapSize != nullptr)
-		{
-			*pulStateMapSize = (ULONG)StateList.StateMap.size();
-			if ((pulMaxStateMapSize != nullptr) && (*pulMaxStateMapSize < (ULONG)StateList.StateMap.size()))
-				*pulMaxStateMapSize = (ULONG)StateList.StateMap.size();
-		}
+		SetPerfStateSize(1);
 		return ret.first->second;
 	}
 	ASSERT(itState->second->pECSConnection == this);
@@ -636,10 +649,10 @@ CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal, b
 		+ _T("Z");
 }
 
-void CECSConnection::SetGlobalPerformanceCounters(ULONGLONG *pullGlobalPerfBytesSentParam, ULONGLONG *pullGlobalPerfBytesRcvParam)
+void CECSConnection::SetGlobalPerformanceCounters(const list<GLOBAL_PERF_POINTERS>& PerfListParam)
 {
-	pullGlobalPerfBytesSent = pullGlobalPerfBytesSentParam;
-	pullGlobalPerfBytesRcv = pullGlobalPerfBytesRcvParam;
+	CSimpleRWLockAcquire lock(&rwlGlobalPerf, true);		// write lock
+	GlobalPerfList = PerfListParam;
 }
 
 void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, ULONGLONG *pullPerfBytesRcvParam, ULONG *pulStateMapSizeParam, ULONG *pulMaxStateMapSizeParam)
@@ -652,9 +665,7 @@ void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, U
 	if (pulStateMapSize != nullptr)
 	{
 		CSimpleRWLockAcquire lock(&StateList.rwlStateMap, true);			// write lock
-		*pulStateMapSize = (ULONG)StateList.StateMap.size();
-		if ((pulMaxStateMapSize != nullptr) && (*pulMaxStateMapSize < (ULONG)StateList.StateMap.size()))
-			*pulMaxStateMapSize = (ULONG)StateList.StateMap.size();
+		SetPerfStateSize((LONG)StateList.StateMap.size());
 	}
 }
 
@@ -1607,8 +1618,14 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				}
 				// if performance monitor is attached, count the bytes sent
 				{
-					if (pullGlobalPerfBytesSent != NULL)
-						(void)InterlockedExchangeAdd64((LONG64 *)pullGlobalPerfBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
+					{
+						CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
+						for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
+						{
+							if (it->pullBytesSent != NULL)
+								(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
+						}
+					}
 					if (pullPerfBytesSent != NULL)
 						(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
 				}
@@ -1691,8 +1708,14 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						if (!WaitComplete(WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE))
 							throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
 						{
-							if (pullGlobalPerfBytesSent != NULL)
-								(void)InterlockedExchangeAdd64((LONG64 *)pullGlobalPerfBytesSent, State.Ref->CallbackContext.dwBytesWritten);
+							{
+								CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
+								for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
+								{
+									if (it->pullBytesSent != NULL)
+										(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, State.Ref->CallbackContext.dwBytesWritten);
+								}
+							}
 							if (pullPerfBytesSent != NULL)
 								(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, State.Ref->CallbackContext.dwBytesWritten);
 						}
@@ -1964,8 +1987,14 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
 			dwDownloaded = State.Ref->CallbackContext.dwReadLength;
 			{
-				if (pullGlobalPerfBytesRcv != NULL)
-					(void)InterlockedExchangeAdd64((LONG64 *)pullGlobalPerfBytesRcv, dwDownloaded);
+				{
+					CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
+					for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
+					{
+						if (it->pullBytesRcv != NULL)
+							(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesRcv, dwDownloaded);
+					}
+				}
 				if (pullPerfBytesRcv != NULL)
 					(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesRcv, dwDownloaded);
 			}
@@ -4458,12 +4487,6 @@ void CECSConnection::GarbageCollect()
 						itMap = (*itConn)->StateList.StateMap.erase(itMap);
 					else
 						++itMap;
-				}
-				if ((*itConn)->pulStateMapSize != nullptr)
-				{
-					*(*itConn)->pulStateMapSize = (ULONG)(*itConn)->StateList.StateMap.size();
-					if (((*itConn)->pulMaxStateMapSize != nullptr) && (*(*itConn)->pulMaxStateMapSize < (ULONG)(*itConn)->StateList.StateMap.size()))
-						*(*itConn)->pulMaxStateMapSize = (ULONG)(*itConn)->StateList.StateMap.size();
 				}
 			}
 		}
