@@ -31,6 +31,7 @@ const UINT MaxWriteRequest = 0;
 const UINT MaxWriteRequestThrottle = 8192;
 const UINT MaxS3DeleteObjects = 1000;				// maximum number of objects to delete in one command (S3)
 const UINT MaxStreamQueueSize = 30;					// maximum size of stream queue. if there is a mismatch between the queue feed and consumer, you don't want it to grow too big
+const UINT DefaultS3AuthV4ChunkSize = 0x200000;		// default chunk size when using v4 auth. this ends up being the buffer size when streaming writes
 
 
 // ECS x-emc-mtime header shows the time as a number
@@ -1179,6 +1180,11 @@ private:
 		list<ABORT_ENTRY> AbortList;			// list of abort entries
 		mutable CSimpleRWLock rwlAbortList;		// lock used for AbortList
 
+		// v4 auth chunk info
+		UINT uS3AuthV4ChunkMetadataSize;
+		UINT uS3AuthV4ChunkMetadataOffset;
+		CStringA sChunkMetadataFormatA;
+
 		CECSConnectionState()
 			: ulReferenceCount(0)
 			, pECSConnection(nullptr)
@@ -1195,6 +1201,8 @@ private:
 			, ullReadBytes(0ULL)
 			, dwSecurityFlagsAdd(0)
 			, dwSecurityFlagsSub(0)
+			, uS3AuthV4ChunkMetadataSize(0)
+			, uS3AuthV4ChunkMetadataOffset(0)
 		{
 			ZeroFT(ftLastUsed);
 		}
@@ -1222,6 +1230,8 @@ private:
 			, ullReadBytes(0ULL)
 			, dwSecurityFlagsAdd(0)
 			, dwSecurityFlagsSub(0)
+			, uS3AuthV4ChunkMetadataSize(src.uS3AuthV4ChunkMetadataSize)
+			, uS3AuthV4ChunkMetadataOffset(src.uS3AuthV4ChunkMetadataOffset)
 		{
 			(void)src;
 		};
@@ -1279,6 +1289,12 @@ private:
 	// S3 settings
 	CString sS3KeyID;						// S3 Key ID
 	CString sS3Region;						// S3 region (ie us-east-1)
+	bool bS3AuthV4;							// true if S3 V4 authorization
+	UINT uS3AuthV4ChunkSize;				// if S3 V4 auth, the size of the chunks
+
+	mutable CSimpleRWLock lwrS3V4SigningKey;// critical section protecting GlobalS3V4SigningKey
+	CBuffer GlobalS3V4SigningKey;			// if S3 V4, calculated signing key (good for a week)
+	FILETIME ftS3V4SigningKey;				// timestamp when signing key was created
 
 	CECSConnectionStateCS StateList;		// this is in a substruct because we don't want the state list to be assigned or copied
 
@@ -1411,6 +1427,13 @@ private:
 		}
 	};
 
+	enum class E_S3_V4_PAYLOAD : BYTE
+	{
+		Signed,
+		Chunked,
+		Unsigned
+	};
+
 	struct CStateRef
 	{
 		CECSConnection *pConn;
@@ -1434,10 +1457,22 @@ private:
 
 	shared_ptr<CECSConnectionState> GetStateBuf(DWORD dwThreadID = 0, bool bIncRef = false);
 	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCTSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
-	CString GetCanonicalTime() const;
+	static CString GetCanonicalTime(const SYSTEMTIME *pstTime = nullptr);
 	static FILETIME ParseCanonicalTime(LPCTSTR pszCanonTime);
 	void sign(const CString& secretStr, const CString& hashStr, CString& encodedStr);
 	CString signRequestS3v2(const CString& secretStr, const CString& method, const CString& resource, const map<CString, HEADER_STRUCT>& headers, LPCTSTR pszExpires = nullptr);
+	CString signRequestS3v4(const CString& secretStr, const CString& method, const CString& resource, const map<CString, HEADER_STRUCT>& headers, const void *pData,
+		DWORD dwDataLen, E_S3_V4_PAYLOAD PayloadType, ULONGLONG ullTotalLen, ULONGLONG ullTotalPayloadLen, CBuffer& S3SigningKey, CString& sPreviousSignature,
+		const SYSTEMTIME& stRequestTime);
+	void CreateS3SigningKey(const CString& secretStr, const SYSTEMTIME& stRequestTime, CBuffer& SigningKey);
+	CStringA BuildV4ChunkMetadata(UINT uChunkLength, const CString& sSignature);
+	void CreateS3V4ChunkMetadata(
+		CString& sPreviousSignature,
+		CBuffer& S3AuthV4SendBuf,
+		UINT& uS3AuthV4SendBufIndex,
+		const CString& sEmptySignature,
+		const CBuffer& S3SigningKey,
+		const SYSTEMTIME& stRequestTime);
 
 	static void CALLBACK HttpStatusCallback(__in  HINTERNET hInternet,__in  DWORD_PTR dwContext,__in  DWORD dwInternetStatus,__in  LPVOID lpvStatusInformation,__in  DWORD dwStatusInformationLength);
 	DWORD InitSession();
@@ -1455,12 +1490,11 @@ private:
 	void CleanupCmd(void);
 	bool WaitComplete(DWORD dwCallbackExpected);
 	bool WaitStreamSend(STREAM_CONTEXT *pStreamSend, const CSharedQueueEvent& MsgEvent);
-	void SetNewFailoverIP(void);
 	DWORD ChooseAuthScheme(DWORD dwSupportedSchemes);
 	CString FormatAuthScheme(void);
 	// internal version of DirListing allowing it to search for a single file/dir and not return the whole list
 	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker);
-	CString signS3ShareableURL(const CString& sResource, const CString& sExpire);
+	CString signS3ShareableURL(CString& sResource, const CString& sExpire, const CString& sHostPort);
 	void KillHostSessions(void);
 	void DeleteS3Send(void);
 	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
@@ -1488,9 +1522,13 @@ public:
 	void SetS3KeyID(LPCTSTR pszS3KeyID);
 	CString GetS3KeyID(void);
 	static DWORD ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftTime, bool bLocal = false);
-	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec = true);
+	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec = true, bool bBasicFormat = false);
+	static CString FormatISO8601Date(const SYSTEMTIME& stDateUTC, bool bLocal, bool bMilliSec = true, bool bBasicFormat = false);
+
 	static void SetGlobalPerformanceCounters(const list<GLOBAL_PERF_POINTERS>& PerfListParam);
 	void SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, ULONGLONG *pullPerfBytesRcvParam, ULONG *pulStateMapSizeParam, ULONG *pulMaxStateMapSizeParam);
+	void SetHostAuth(bool bAuthV4 = true, UINT uS3AuthV4ChunkSize = DefaultS3AuthV4ChunkSize);
+	bool IfS3v4(UINT *puChunkSize = nullptr) const;
 
 	void SetUserAgent(LPCTSTR pszUserAgent);					// typically app name/version. put in 'user agent' field in HTTP protocol
 	void SetPort(INTERNET_PORT PortParam);

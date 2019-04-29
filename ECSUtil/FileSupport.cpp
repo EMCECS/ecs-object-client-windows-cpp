@@ -215,6 +215,8 @@ CECSConnection::S3_ERROR S3Read(
 			dwMainThreadError = ERROR_OPERATION_ABORTED;
 			break;
 		}
+		if (ReadThread.bWorkerDone)
+			break;
 		// check if the background thread has ended with an error
 		if (!ReadThread.IfActive() && ReadThread.Error.IfError())
 			break;
@@ -314,6 +316,21 @@ struct CS3WriteThread : public CSimpleWorkerThread
 	}
 	void DoWork();
 };
+
+// TestShutdownWriteThread
+// pContext must point to CSimpleWorkerThread
+static bool TestShutdownWriteThread(void *pContext)
+{
+	CS3WriteThread *pThread = (CS3WriteThread *)pContext;
+	// test if thread is exiting
+	if (pThread != nullptr)
+	{
+		if (pThread->bWorkerDone)
+			return true;
+		return pThread->GetExitFlag();
+	}
+	return false;
+}
 
 static DWORD CalcUploadChecksum(
 	IStream *pStream,							// open stream to file
@@ -418,6 +435,8 @@ CECSConnection::S3_ERROR S3Write(
 			throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
 		while (!bDone)
 		{
+			if (WriteThread.bWorkerDone)
+				break;
 			if (Conn.TestAbort())
 				break;
 			dwError = pStream->Read(WriteBuf.GetData(), WriteBuf.GetBufSize(), &dwBytesRead);
@@ -428,11 +447,13 @@ CECSConnection::S3_ERROR S3Write(
 			WriteRec.Data.Load(WriteBuf.GetData(), dwBytesRead);
 			WriteRec.ullOffset = liOffset.QuadPart;
 			liOffset.QuadPart += dwBytesRead;
-			WriteThread.WriteContext.StreamData.push_back(WriteRec, dwMaxQueueSize, TestShutdownThread, &WriteThread);
+			WriteThread.WriteContext.StreamData.push_back(WriteRec, dwMaxQueueSize, TestShutdownWriteThread, &WriteThread);
 		}
 		// wait for the worker thread to finish the S3 command
 		for (;;)
 		{
+			if (WriteThread.bWorkerDone)
+				break;
 			dwError = WaitForSingleObject(WriteThread.evWriteComplete.m_hObject, SECONDS(2));
 			if (dwError == WAIT_OBJECT_0)
 				break;
@@ -444,7 +465,7 @@ CECSConnection::S3_ERROR S3Write(
 		}
 		if (WriteThread.FileSize.QuadPart != liOffset.QuadPart)
 		{
-			DebugF(L"Size Mismatch!!! Size at start: %I64d, Size of PUT: %I64d", WriteThread.FileSize.QuadPart, liOffset.QuadPart);
+			DebugF(_T("Size Mismatch!!! Size at start: %I64d, Size of PUT: %I64d"), WriteThread.FileSize.QuadPart, liOffset.QuadPart);
 			throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_BAD_LENGTH);
 		}
 		// now wait for the worker thread to terminate to get its error code
@@ -467,9 +488,9 @@ void CS3WriteThread::DoWork()
 		CBuffer HashData;
 		if (bGotHash)
 			Hash.GetHashData(HashData);
-		pConn->RegisterShutdownCB(TestShutdownThread, this);
+		pConn->RegisterShutdownCB(TestShutdownWriteThread, this);
 		Error = pConn->Create(sECSPath, nullptr, 0UL, pMDList, bGotHash ? &HashData : nullptr, &WriteContext, FileSize.QuadPart);
-		pConn->UnregisterShutdownCB(TestShutdownThread, this);
+		pConn->UnregisterShutdownCB(TestShutdownWriteThread, this);
 		VERIFY(evWriteComplete.SetEvent());							// notify parent thread that we're done here
 		bWorkerDone = true;
 	}

@@ -67,18 +67,18 @@ DWORD CECSConnection::dwMaxRetryCount(MaxRetryCount);				// max retries for HTTP
 DWORD CECSConnection::dwPauseBetweenRetries(500);					// pause between retries (millisec)
 DWORD CECSConnection::dwPauseAfter500Error(500);					// pause between retries after HTTP 500 error (millisec)
 
-static WCHAR *SystemMDInit[] =
+static TCHAR *SystemMDInit[] =
 {
-	L"ObjectName",
-	L"Owner",
-	L"Size",
-	L"CreateTime",
-	L"LastModified",
-	L"ContentType",
-	L"Expiration",
-	L"ContentEncoding",
-	L"Expires",
-	L"Retention"
+	_T("ObjectName"),
+	_T("Owner"),
+	_T("Size"),
+	_T("CreateTime"),
+	_T("LastModified"),
+	_T("ContentType"),
+	_T("Expiration"),
+	_T("ContentEncoding"),
+	_T("Expires"),
+	_T("Retention")
 };
 
 class CSignQuerySet
@@ -285,7 +285,7 @@ void CECSConnection::CleanupCmd()
 bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 {
 	CStateRef State(this);
-	const UINT MaxWaitInterval = SECONDS(1);			// max time to wait before checking for abort
+	const UINT MaxWaitInterval = SECONDS(5);			// max time to wait before checking for abort
 	DWORD dwError;
 	UINT iTimeout = 0;
 	UINT iTimeoutMax = max(dwLongestTimeout, SECONDS(90))/MaxWaitInterval + 2;
@@ -476,6 +476,8 @@ CECSConnection::CECSConnection()
 	, dwProxyPort(0)
 	, dwHttpsProtocol(0)
 	, bCheckShutdown(true)
+	, bS3AuthV4(true)
+	, uS3AuthV4ChunkSize(DefaultS3AuthV4ChunkSize)
 	, DisconnectCB(nullptr)
 	, sS3Region(_T("us-east-1"))
 	, dwWinHttpOptionConnectRetries(0)
@@ -573,21 +575,30 @@ BOOL CECSConnection::WinHttpQueryHeadersBuffer(
 // GetCanonicalTime
 // output current time in the format:
 //   Thu, 05 Jun 2008 16:38:19 GMT
-CString CECSConnection::GetCanonicalTime() const
+CString CECSConnection::GetCanonicalTime(const SYSTEMTIME *pstTime)
 {
 	SYSTEMTIME stNow;
 
-	GetSystemTime(&stNow);
+	if (pstTime == nullptr)
+	{
+		GetSystemTime(&stNow);
+		pstTime = &stNow;
+	}
 	CStringW sTimeStr;
 	LPWSTR pszTimeStr = sTimeStr.GetBuffer(WINHTTP_TIME_FORMAT_BUFSIZE / sizeof(WCHAR));
 
-	if (!WinHttpTimeFromSystemTime(&stNow, pszTimeStr))
+	if (!WinHttpTimeFromSystemTime(pstTime, pszTimeStr))
 	{
 		sTimeStr.ReleaseBuffer();
 		return _T("");
 	}
 	sTimeStr.ReleaseBuffer();
-	return FROM_UNICODE(sTimeStr);
+#ifndef _UNICODE
+	CString sTimeStrA(sTimeStr);
+	return sTimeStrA;
+#else
+	return sTimeStr;
+#endif
 }
 
 // ParseCanonicalTime
@@ -617,25 +628,36 @@ DWORD CECSConnection::ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftDate, bool b
 	ZeroMemory(&stDate, sizeof(stDate));
 	ZeroFT(ftDate);
 	if (_stscanf_s(pszDate, _T("%hd-%hd-%hdT%hd:%hd:%hd.%hd"),
-		&stDate.wYear, &stDate.wMonth, &stDate.wDay, &stDate.wHour, &stDate.wMinute, &stDate.wSecond, &stDate.wMilliseconds) >= 3)
+		&stDate.wYear, &stDate.wMonth, &stDate.wDay, &stDate.wHour, &stDate.wMinute, &stDate.wSecond, &stDate.wMilliseconds) < 3)
 	{
-		if (bLocal)
+		if (_stscanf_s(pszDate, _T("%4hd%2hd%2hdT%2hd%2hd%2hd%3hd"),
+			&stDate.wYear, &stDate.wMonth, &stDate.wDay, &stDate.wHour, &stDate.wMinute, &stDate.wSecond, &stDate.wMilliseconds) < 3)
 		{
-			if (!TzSpecificLocalTimeToSystemTime(nullptr, &stDate, &stDateUTC))
-				return GetLastError();
-			stDate = stDateUTC;
+			return ERROR_INVALID_DATA;
 		}
-		if (!SystemTimeToFileTime(&stDate, &ftDate))
-			return GetLastError();
 	}
+	if (bLocal)
+	{
+		if (!TzSpecificLocalTimeToSystemTime(nullptr, &stDate, &stDateUTC))
+			return GetLastError();
+		stDate = stDateUTC;
+	}
+	if (!SystemTimeToFileTime(&stDate, &ftDate))
+		return GetLastError();
 	return ERROR_SUCCESS;
 }
 
-CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec)
+CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec, bool bBasicFormat)
 {
-	SYSTEMTIME stDateUTC{ 0,0,0,0,0,0,0,0 }, stDate{ 0,0,0,0,0,0,0,0 };
+	SYSTEMTIME stDateUTC;
 	if (!FileTimeToSystemTime(&ftDate, &stDateUTC))
 		return _T("");
+	return FormatISO8601Date(stDateUTC, bLocal, bMilliSec, bBasicFormat);
+}
+
+CString CECSConnection::FormatISO8601Date(const SYSTEMTIME& stDateUTC, bool bLocal, bool bMilliSec, bool bBasicFormat)
+{
+	SYSTEMTIME stDate;
 	if (bLocal)
 	{
 		if (!SystemTimeToTzSpecificLocalTime(nullptr, &stDateUTC, &stDate))
@@ -643,8 +665,14 @@ CString CECSConnection::FormatISO8601Date(const FILETIME& ftDate, bool bLocal, b
 	}
 	else
 		stDate = stDateUTC;
-	return FmtNum(stDate.wYear, 4, true) + _T("-") + FmtNum(stDate.wMonth, 2, true) + _T("-") + FmtNum(stDate.wDay, 2, true)
-		+ _T("T") + FmtNum(stDate.wHour, 2, true) + _T(":") + FmtNum(stDate.wMinute, 2, true) + _T(":") + FmtNum(stDate.wSecond, 2, true)
+	CString sDateSep, sTimeSep;
+	if (!bBasicFormat)
+	{
+		sDateSep = _T('-');
+		sTimeSep = _T(':');
+	}
+	return FmtNum(stDate.wYear, 4, true) + sDateSep + FmtNum(stDate.wMonth, 2, true) + sDateSep + FmtNum(stDate.wDay, 2, true)
+		+ _T("T") + FmtNum(stDate.wHour, 2, true) + sTimeSep + FmtNum(stDate.wMinute, 2, true) + sTimeSep + FmtNum(stDate.wSecond, 2, true)
 		+ (bMilliSec ? (LPCTSTR)(_T(".") + FmtNum(stDate.wMilliseconds, 3, true)) : _T(""))
 		+ _T("Z");
 }
@@ -671,7 +699,7 @@ void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, U
 
 static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
 {
-	int iEqual = sQuery.Find(L'=');
+	int iEqual = sQuery.Find(_T('='));
 	CString sToken;
 	if (iEqual < 0)
 		sToken = sQuery;
@@ -720,7 +748,7 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 			sCanonical += _T("\n");
 
 		//		Content-Type
-		if ((iter = headers.find(_T("content-type"))) != headers.end())
+		if ((pszExpires == nullptr) && ((iter = headers.find(_T("content-type"))) != headers.end()))
 			sCanonical += iter->second.sContents + _T("\n");
 		else
 			sCanonical += _T("\n");
@@ -747,12 +775,12 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 					(void)sToken.Delete(iBlank);
 				(void)sToken.TrimRight();
 				(void)sToken.TrimLeft();
-				sCanonical += iter->first + L':' + sToken + _T("\n");
+				sCanonical += iter->first + _T(':') + sToken + _T("\n");
 			}
 		}
 		//	CanonicalizedResource;
 		CString sResource(resource);
-		int iQuestion = sResource.Find(L'?');
+		int iQuestion = sResource.Find(_T('?'));
 		if (iQuestion >= 0)
 		{
 			CString sQueryString = resource.Mid(iQuestion);
@@ -807,6 +835,242 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 			sAuthorization = _T("AWS ") + sS3KeyID + _T(":") + Outbuf.EncodeBase64();
 		else
 			sAuthorization = Outbuf.EncodeBase64();
+	}
+	catch (const CErrorInfo& E)
+	{
+		(void)E;
+		sAuthorization.Empty();
+	}
+	return sAuthorization;
+}
+
+// CreateS3SigningKey
+//	DateKey              = HMAC-SHA256("AWS4"+"<SecretAccessKey>", "<yyyymmdd>")
+//	DateRegionKey        = HMAC-SHA256(<DateKey>, "<aws-region>")
+//	DateRegionServiceKey = HMAC-SHA256(<DateRegionKey>, "<aws-service>")
+//	SigningKey           = HMAC-SHA256(<DateRegionServiceKey>, "aws4_request")
+void CECSConnection::CreateS3SigningKey(
+	const CString& secretStr,						// (i) secret access key
+	const SYSTEMTIME& stRequestTime,				// (i) request timestamp
+	CBuffer& SigningKey)							// (o) signing key
+{
+	CString sStr;
+	CAnsiString AnsiKey, AnsiContent;
+
+	//	DateKey              = HMAC-SHA256("AWS4"+"<SecretAccessKey>", "<yyyymmdd>")
+	AnsiKey.Set(_T("AWS4") + secretStr, -1, CP_UTF8);
+	AnsiKey.SetBufSize((DWORD)strlen(AnsiKey));
+	sStr.Format(_T("%04d%02d%02d"), stRequestTime.wYear, stRequestTime.wMonth, stRequestTime.wDay);
+	AnsiContent.Set(sStr, -1, CP_UTF8);
+	AnsiContent.SetBufSize((DWORD)strlen(AnsiContent));
+	CCngAES_GCM DataHash;
+	DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM, AnsiKey);
+	DataHash.AddHashData(AnsiContent);
+	CBuffer DateKey;
+	DataHash.GetHashData(DateKey);
+
+	//	DateRegionKey        = HMAC-SHA256(<DateKey>, "<aws-region>")
+	DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM, DateKey);
+	CAnsiString AWSRegion;
+	AWSRegion.Set(sS3Region, -1, CP_UTF8);
+	AWSRegion.SetBufSize((DWORD)strlen(AWSRegion));
+	DataHash.AddHashData(AWSRegion);
+	CBuffer DateRegionKey;
+	DataHash.GetHashData(DateRegionKey);
+
+	//	DateRegionServiceKey = HMAC-SHA256(<DateRegionKey>, "<aws-service>")
+	DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM, DateRegionKey);
+	DataHash.AddHashData((const BYTE *)"s3", 2);
+	CBuffer DateRegionServiceKey;
+	DataHash.GetHashData(DateRegionServiceKey);
+
+	//	SigningKey           = HMAC-SHA256(<DateRegionServiceKey>, "aws4_request")
+	DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM, DateRegionServiceKey);
+	DataHash.AddHashData((const BYTE *)"aws4_request", 12);
+	DataHash.GetHashData(SigningKey);
+
+	// now save this signing key for future use
+	{
+		FILETIME ftRequestTime;
+		(void)SystemTimeToFileTime(&stRequestTime, &ftRequestTime);
+		CSimpleRWLockAcquire lockWrite(&lwrS3V4SigningKey, true);
+
+		ftS3V4SigningKey = ftRequestTime;
+		GlobalS3V4SigningKey = SigningKey;
+	}
+}
+
+// CECSConnection::signRequestS3v4
+//
+//		<HTTPMethod>\n
+//		<CanonicalURI>\n
+//		<CanonicalQueryString>\n
+//		<CanonicalHeaders>\n
+//		<SignedHeaders>\n
+//		<HashedPayload>
+CString CECSConnection::signRequestS3v4(
+	const CString& secretStr,
+	const CString& method,
+	const CString& resource,
+	const map<CString, HEADER_STRUCT>& headers,
+	const void *pData,
+	DWORD dwDataLen,
+	E_S3_V4_PAYLOAD PayloadType,
+	ULONGLONG ullTotalLen,
+	ULONGLONG ullTotalPayloadLen,
+	CBuffer& S3SigningKey,
+	CString& sPreviousSignature,
+	const SYSTEMTIME& stRequestTime)
+{
+	CString sAuthorization;
+	try
+	{
+		// first get a hash of the payload
+		CCngAES_GCM DataHash;
+		CBuffer Hash;
+		CString sPayloadHash;
+		switch (PayloadType)
+		{
+		case E_S3_V4_PAYLOAD::Signed:
+		{
+			CBuffer PayloadHash;
+			DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM);
+			if ((pData != NULL) && (dwDataLen != 0))
+				DataHash.AddHashData((const BYTE *)pData, dwDataLen);
+			else
+				DataHash.AddHashData((const BYTE *)"", 0);
+			DataHash.GetHashData(PayloadHash);
+			sPayloadHash = BinaryToHexString(PayloadHash);
+			AddHeader(_T("x-amz-content-sha256"), sPayloadHash);
+		}
+		break;
+		case E_S3_V4_PAYLOAD::Chunked:
+		{
+			AddHeader(_T("x-amz-decoded-content-length"), FmtNum(ullTotalPayloadLen));
+			AddHeader(_T("content-encoding"), _T("aws-chunked"));
+			sPayloadHash = _T("STREAMING-AWS4-HMAC-SHA256-PAYLOAD");
+			AddHeader(_T("x-amz-content-sha256"), sPayloadHash);
+		}
+		break;
+		case E_S3_V4_PAYLOAD::Unsigned:
+		{
+			sPayloadHash = _T("UNSIGNED-PAYLOAD");
+		}
+		break;
+		default:
+			ASSERT(false);
+			break;
+		}
+		// split out the query string before the UriDecode because the resource may have a '?'
+		CString sTempResource, sFullQuery;
+		int iQuery = resource.Find(_T("?"));
+		if (iQuery >= 0)
+		{
+			sFullQuery = resource.Mid(iQuery + 1);
+			sTempResource = resource.Left(iQuery);
+		}
+		else
+			sTempResource = resource;
+		// make sure the resource is encoded for v4
+		sTempResource = UriEncode(UriDecode(sTempResource), E_URI_ENCODE::V4Auth);
+
+		//		<HTTPMethod>\n
+		CString sCanonical(method);
+		sCanonical.MakeUpper();
+		sCanonical += _T("\n");
+		//		<CanonicalURI>\n
+		if (sTempResource.IsEmpty())
+			sTempResource = _T("/");
+		sCanonical += sTempResource + _T("\n");
+		//		<CanonicalQueryString>
+		if (!sFullQuery.IsEmpty())
+		{
+			CString sQuery;
+			// each query separated by '&'
+			// each query of form: var=value
+			int iPosQuery = 0;
+			map<CString, CString> QueryMap;
+			for (;;)
+			{
+				sQuery = sFullQuery.Tokenize(_T("&"), iPosQuery);
+				if (sQuery.IsEmpty())
+					break;
+				int iEquals = sQuery.Find(_T('='));
+				pair<map<CString, CString>::iterator, bool> ret;
+				if (iEquals >= 0)
+					ret = QueryMap.insert(make_pair(UriEncode(UriDecode(sQuery.Left(iEquals)), E_URI_ENCODE::V4AuthSlash), UriEncode(UriDecode(sQuery.Mid(iEquals + 1)), E_URI_ENCODE::V4AuthSlash)));
+				else
+					ret = QueryMap.insert(make_pair(UriEncode(UriDecode(sQuery), E_URI_ENCODE::V4AuthSlash), _T("")));
+				ASSERT(ret.second);
+			}
+			for (map<CString, CString>::const_iterator itMap = QueryMap.begin(); itMap != QueryMap.end(); ++itMap)
+			{
+				if (itMap != QueryMap.begin())
+					sCanonical += _T("&");
+				sCanonical += itMap->first + _T("=") + itMap->second;
+			}
+		}
+		sCanonical += _T("\n");
+		//		<CanonicalHeaders>\n
+		//		<SignedHeaders>\n
+		CString sSignedHeaders;
+		for (map<CString, HEADER_STRUCT>::const_iterator itMap = headers.begin(); itMap != headers.end(); ++itMap)
+		{
+			if (!sSignedHeaders.IsEmpty())
+				sSignedHeaders += _T(";");
+			sSignedHeaders += itMap->first;
+			CString sLabel(itMap->first), sValue(itMap->second.sContents);
+			sCanonical += sLabel.Trim() + _T(":") + sValue.Trim() + _T("\n");
+		}
+		sCanonical += _T("\n") + sSignedHeaders + _T("\n");
+		//		<HashedPayload>
+		sCanonical += sPayloadHash;
+		// create StringToSign
+		//	"AWS4-HMAC-SHA256" + \n" +
+		//	timeStampISO8601Format + "\n" +
+		//	<Scope> +"\n" +
+		//	Hex(SHA256Hash(<CanonicalRequest>))
+		CString sStringToSign(_T("AWS4-HMAC-SHA256\n")), sStr;
+//		sStringToSign += GetCanonicalTime(&stRequestTime) + _T("\n");
+		sStringToSign += FormatISO8601Date(stRequestTime, false, false, true) + _T("\n");
+		sStr.Format(_T("%04d%02d%02d/%s/s3/aws4_request\n"), stRequestTime.wYear, stRequestTime.wMonth, stRequestTime.wDay, (LPCTSTR)sS3Region);
+		sStringToSign += sStr;
+		DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM);
+		CAnsiString AnsiCanonical;
+		AnsiCanonical.Set(sCanonical, -1, CP_UTF8);
+		AnsiCanonical.SetBufSize((DWORD)strlen(AnsiCanonical));
+		DataHash.AddHashData(AnsiCanonical);
+		DataHash.GetHashData(Hash);
+		sStringToSign += BinaryToHexString(Hash);
+		// check if we have a signing key already created for this host
+		{
+			FILETIME ftRequestTime;
+			(void)SystemTimeToFileTime(&stRequestTime, &ftRequestTime);
+			CSimpleRWLockAcquire lockRead(&lwrS3V4SigningKey, false);				// get read lock
+
+			if (!IfFTZero(ftS3V4SigningKey)
+				&& (ftS3V4SigningKey > (ftRequestTime - FT_HOURS(2))))
+			{
+				// got it! We can use the stored signing key
+				S3SigningKey = GlobalS3V4SigningKey;
+			}
+		}
+		if (S3SigningKey.IsEmpty())
+			CreateS3SigningKey(secretStr, stRequestTime, S3SigningKey);
+
+		// sign the sStringToSign
+		CAnsiString StringToSign(sStringToSign);
+		StringToSign.SetBufSize((DWORD)strlen(StringToSign));
+		CBuffer Signature;
+		DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM, S3SigningKey);
+		DataHash.AddHashData(StringToSign);
+		DataHash.GetHashData(Signature);
+
+		CString sSignature(BinaryToHexString(Signature));
+		sPreviousSignature = sSignature;
+		// format date into yyyyMMdd for the Authorization header
+		sAuthorization.Format(_T("AWS4-HMAC-SHA256 Credential=%s/%04d%02d%02d/%s/s3/aws4_request,SignedHeaders=%s,Signature=%s"),
+			(LPCTSTR)sS3KeyID, stRequestTime.wYear, stRequestTime.wMonth, stRequestTime.wDay, (LPCTSTR)sS3Region, (LPCTSTR)sSignedHeaders, (LPCTSTR)sSignature);
 	}
 	catch (const CErrorInfo& E)
 	{
@@ -1025,9 +1289,13 @@ void CECSConnection::InitHeader(void)
 	CStateRef State(this);
 	State.Ref->Headers.clear();
 	// add the list of headers common to all requests
-	CString sDate(GetCanonicalTime());
-	AddHeader(_T("Date"), sDate);
+	SYSTEMTIME stNow;
+	GetSystemTime(&stNow);
 	AddHeader(_T("host"), GetCurrentServerIP());
+	if (!IfS3v4())
+		AddHeader(_T("date"), GetCanonicalTime(&stNow));
+	else
+		AddHeader(_T("x-amz-date"), FormatISO8601Date(stNow, false, false, true));
 }
 
 void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride)
@@ -1101,10 +1369,10 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 		if (State.Ref->iIPList >= State.Ref->IPListLocal.size())
 			State.Ref->iIPList = 0;
 		// check if this entry is BAD
-		if (BadIPMap.find(BAD_IP_KEY(sHost, State.Ref->IPListLocal[State.Ref->iIPList])) != BadIPMap.end())			//lint !e864 (Info -- Expression involving variable 'CAtmosUtil::BadIPMap' possibly depends on order of evaluation)
+		if (BadIPMap.find(BAD_IP_KEY(sHost, State.Ref->IPListLocal[State.Ref->iIPList])) != BadIPMap.end())
 			bBad = true;					// bad - move to the next
 		// check if we've already tried this one
-	//	if (!bBad && (IPUsed.find(State.Ref->IPListLocal[State.Ref->iIPList]) != IPUsed.end()))				//lint !e864 (Info -- Expression involving variable 'IPUsed' possibly depends on order of evaluation)
+	//	if (!bBad && (IPUsed.find(State.Ref->IPListLocal[State.Ref->iIPList]) != IPUsed.end()))
 	//		bBad = true;
 		if (!bBad)
 			break;
@@ -1245,8 +1513,12 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 		{
 			bGotServerResponse = false;
 			// update the date header in case retries have made this time too far in the past
-			CString sDate(GetCanonicalTime());
-			AddHeader(_T("Date"), sDate);
+			SYSTEMTIME stNow;
+			GetSystemTime(&stNow);
+			if (State.Ref->Headers.find(_T("date")) != State.Ref->Headers.end())
+				AddHeader(_T("date"), GetCanonicalTime(&stNow));
+			if (State.Ref->Headers.find(_T("x-amz-date")) != State.Ref->Headers.end())
+				AddHeader(_T("x-amz-date"), FormatISO8601Date(stNow, false, false, true));
 			Error = SendRequestInternal(pszMethod, sResource, pData, dwDataLen, RetData, pHeaderReq, dwReceivedDataHint, dwBufOffset, &bGotServerResponse, pStreamSend, pStreamReceive, ullTotalLen);
 			if (!Error.IfError())
 			{
@@ -1464,6 +1736,60 @@ static bool TestAbortStatic(void *pContext)
 	return pHost->TestAbort();
 }
 
+CStringA CECSConnection::BuildV4ChunkMetadata(UINT uChunkLength, const CString& sSignature)
+{
+	CStateRef State(this);
+	CStringA sChunkPrefix;
+	sChunkPrefix.Format(State.Ref->sChunkMetadataFormatA, uChunkLength, (LPCTSTR)sSignature);
+	ASSERT((State.Ref->uS3AuthV4ChunkMetadataOffset == 0) || (sChunkPrefix.GetLength() == State.Ref->uS3AuthV4ChunkMetadataOffset));
+	return sChunkPrefix;
+}
+
+void CECSConnection::CreateS3V4ChunkMetadata(
+	CString& sPreviousSignature,
+	CBuffer& S3AuthV4SendBuf,
+	UINT& uS3AuthV4SendBufIndex,
+	const CString& sEmptySignature,
+	const CBuffer& S3SigningKey,
+	const SYSTEMTIME& stRequestTime)
+{
+	CStateRef State(this);
+	CCngAES_GCM Hash;
+	CString sSignature;
+
+	CBuffer CurrentHash;
+	CString sStringToSign(_T("AWS4-HMAC-SHA256-PAYLOAD\n")), sStr;
+	//		sStringToSign += GetCanonicalTime(&stRequestTime) + _T("\n");
+	sStringToSign += FormatISO8601Date(stRequestTime, false, false, true) + _T("\n");
+	sStr.Format(_T("%04d%02d%02d/%s/s3/aws4_request\n"), stRequestTime.wYear, stRequestTime.wMonth, stRequestTime.wDay, (LPCTSTR)sS3Region);
+	sStringToSign += sStr;
+	sStringToSign += sPreviousSignature + _T("\n");
+	sStringToSign += sEmptySignature + _T("\n");
+	if (uS3AuthV4SendBufIndex > 0)
+	{
+		Hash.CreateHash(BCRYPT_SHA256_ALGORITHM);
+		Hash.AddHashData(S3AuthV4SendBuf.GetData() + State.Ref->uS3AuthV4ChunkMetadataOffset, uS3AuthV4SendBufIndex);
+		Hash.GetHashData(CurrentHash);
+		sStringToSign += BinaryToHexString(CurrentHash);
+	}
+	else
+		sStringToSign += sEmptySignature;
+
+	// sign the sStringToSign
+	CAnsiString StringToSign(sStringToSign);
+	StringToSign.SetBufSize((DWORD)strlen(StringToSign));
+	CBuffer Signature;
+	Hash.CreateHash(BCRYPT_SHA256_ALGORITHM, S3SigningKey);
+	Hash.AddHashData(StringToSign);
+	Hash.GetHashData(Signature);
+	sSignature = BinaryToHexString(Signature);
+	sPreviousSignature = sSignature;
+
+	CStringA sChunkPrefix(BuildV4ChunkMetadata(uS3AuthV4SendBufIndex, sSignature));	CopyMemory((void *)S3AuthV4SendBuf.GetData(), (LPCSTR)sChunkPrefix, sChunkPrefix.GetLength());
+	S3AuthV4SendBuf.SetAt(State.Ref->uS3AuthV4ChunkMetadataOffset + uS3AuthV4SendBufIndex, '\r');
+	S3AuthV4SendBuf.SetAt(State.Ref->uS3AuthV4ChunkMetadataOffset + uS3AuthV4SendBufIndex + 1, '\n');
+}
+
 // SendRequestInternal
 // complete the request and send it, and get the response
 // adds the following headers:
@@ -1487,19 +1813,87 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	// use const version of pStreamSend to use "read" locks instead of "write" locks when only reading is being done
 	const STREAM_CONTEXT *pConstStreamSend = (const STREAM_CONTEXT *)pStreamSend;
 	CString sHostHeader(CString(GetCurrentServerIP()) + _T(":") + FmtNum(Port));
+	bool bS3AuthV4 = false;
+	UINT uS3AuthV4ChunkSize(DefaultS3AuthV4ChunkSize);
+	ULONGLONG ullTotalPayloadLen(ullTotalLen);
+	CBuffer S3AuthV4SendBuf;
+	UINT uS3AuthV4SendBufIndex = 0;
+	CString sPreviousSignature, sEmptySignature;
+	CBuffer S3SigningKey;
+	CCngAES_GCM Hash;
+	SYSTEMTIME stRequestTime;
+	FILETIME ftRequestTime;
+	bool bGotRequestTime = false;
+
 	try
 	{
+		bS3AuthV4 = IfS3v4(&uS3AuthV4ChunkSize);
+
+		// if V4, initialize the send buffer
+		if (bS3AuthV4)
+		{
+			CBuffer EmptySignature;
+			Hash.CreateHash(BCRYPT_SHA256_ALGORITHM);
+			Hash.AddHashData((const BYTE *)"", 0);
+			Hash.GetHashData(EmptySignature);
+			sEmptySignature = BinaryToHexString(EmptySignature);
+			if (sS3Region.IsEmpty())
+				sS3Region = _T("ECS");
+			// init the chunk variables
+			if (uS3AuthV4ChunkSize < 0x2000)
+				uS3AuthV4ChunkSize = 0x2000;			// don't let it go less than 8k
+			UINT uDigits = 0;
+			for (UINT uChunkSize = uS3AuthV4ChunkSize; uChunkSize != 0; uChunkSize >>= 4)
+				++uDigits;
+			State.Ref->sChunkMetadataFormatA.Format("%%0%dx;chunk-signature=%%S\r\n", uDigits);
+			CStringA sTestSig = BuildV4ChunkMetadata(uS3AuthV4ChunkSize, sEmptySignature);
+			State.Ref->uS3AuthV4ChunkMetadataOffset = sTestSig.GetLength();
+			State.Ref->uS3AuthV4ChunkMetadataSize = State.Ref->uS3AuthV4ChunkMetadataOffset + 2;
+			S3AuthV4SendBuf.SetBufSize(uS3AuthV4ChunkSize + State.Ref->uS3AuthV4ChunkMetadataSize);
+		}
+
 		// fixup the host header line (if it exists)
 		{
 			map<CString, HEADER_STRUCT>::iterator itHeader = State.Ref->Headers.find(_T("host"));
 			if (itHeader != State.Ref->Headers.end())
 				itHeader->second.sContents = sHostHeader;
+			// get date header if it exists
+			itHeader = State.Ref->Headers.find(_T("date"));
+			if (itHeader != State.Ref->Headers.end())
+			{
+				ftRequestTime = ParseCanonicalTime(itHeader->second.sContents);
+				FileTimeToSystemTime(&ftRequestTime, &stRequestTime);
+				bGotRequestTime = true;
+			}
+			itHeader = State.Ref->Headers.find(_T("x-amz-date"));
+			if (itHeader != State.Ref->Headers.end())
+			{
+				if (ParseISO8601Date(itHeader->second.sContents, ftRequestTime) == ERROR_SUCCESS)
+				{
+					FileTimeToSystemTime(&ftRequestTime, &stRequestTime);
+					bGotRequestTime = true;
+				}
+			}
+		}
+		if (!bGotRequestTime)
+		{
+			GetSystemTimeAsFileTime(&ftRequestTime);
+			FileTimeToSystemTime(&ftRequestTime, &stRequestTime);
 		}
 		State.Ref->dwSecureError = 0;
 		if (pbGotServerResponse != nullptr)
 			*pbGotServerResponse = false;
 		if (pConstStreamSend != nullptr)
 		{
+			if (bS3AuthV4)
+			{
+				// if v4auth, gotta take the metadata into account
+				ULONGLONG ullChunks = ullTotalLen / uS3AuthV4ChunkSize;
+				if (ullTotalLen % uS3AuthV4ChunkSize != 0)
+					++ullChunks;
+				++ullChunks;				// add in one more because of the final chunk of 0 data that must be sent
+				ullTotalLen += ullChunks * State.Ref->uS3AuthV4ChunkMetadataSize;
+			}
 			AddHeader(_T("content-length"), FmtNum(ullTotalLen));
 			if (!pConstStreamSend->bMultiPart)
 				AddHeader(_T("content-type"), _T("application/octet-stream"), false);
@@ -1512,7 +1906,12 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		// now construct the signature for the header
 		CString sMethod(pszMethod), sResource(pszResource);
 		CString sSignature;
-		sSignature = signRequestS3v2(sSecret, sMethod, sResource, State.Ref->Headers);
+		if (!bS3AuthV4)
+			sSignature = signRequestS3v2(sSecret, sMethod, sResource, State.Ref->Headers);
+		else
+			sSignature = signRequestS3v4(sSecret, sMethod, sResource,
+				State.Ref->Headers, pData, dwDataLen, pConstStreamSend != nullptr ? E_S3_V4_PAYLOAD::Chunked : E_S3_V4_PAYLOAD::Signed, ullTotalLen, ullTotalPayloadLen, S3SigningKey,
+				sPreviousSignature, stRequestTime);
 
 		DWORD dwError = InitSession();
 		if (dwError != ERROR_SUCCESS)
@@ -1643,6 +2042,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 //					DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("SendRequestInternal: %s, before WriteData, %d"), pszResource, pConstStreamSend->StreamData.IsEmpty() ? 0 : pConstStreamSend->StreamData.GetAt(0)->Data.GetBufSize());
 				// stream data available
 				bool bStreamBufAvailable = false;
+				ULONGLONG ullTotalBytesSent = 0;
 				for (;;)
 				{
 					bool bWriteDataSuccess;
@@ -1684,10 +2084,43 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 							else
 							{
 								dwDataPartLen = pConstStreamSend->StreamData.front().Data.GetBufSize() - (DWORD)ullCurDataSent;
-								if ((dwMaxWriteRequest > 0) && (dwDataPartLen > dwMaxWriteRequest))
-									dwDataPartLen = dwMaxWriteRequest;
-								PrepareCmd();
-								bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, pConstStreamSend->StreamData.front().Data.GetData() + ullCurDataSent, dwDataPartLen, nullptr) != FALSE;
+								if (bS3AuthV4)
+								{
+									UINT uFreeSpace = uS3AuthV4ChunkSize - uS3AuthV4SendBufIndex;
+									if (uFreeSpace < dwDataPartLen)
+										dwDataPartLen = uFreeSpace;
+									if (dwDataPartLen > 0)
+									{
+										memcpy_s(S3AuthV4SendBuf.GetData() + State.Ref->uS3AuthV4ChunkMetadataOffset + uS3AuthV4SendBufIndex,
+											S3AuthV4SendBuf.GetBufSize() - State.Ref->uS3AuthV4ChunkMetadataOffset - uS3AuthV4SendBufIndex,
+											pConstStreamSend->StreamData.front().Data.GetData() + ullCurDataSent,
+											dwDataPartLen);
+										uS3AuthV4SendBufIndex += dwDataPartLen;
+										ullCurDataSent += dwDataPartLen;
+									}
+									if (uS3AuthV4ChunkSize == uS3AuthV4SendBufIndex)
+									{
+										// got a full buffer. time to send it
+										// prepare string to sign
+										CreateS3V4ChunkMetadata(sPreviousSignature, S3AuthV4SendBuf, uS3AuthV4SendBufIndex, sEmptySignature, S3SigningKey, stRequestTime);
+
+										PrepareCmd();
+										bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, NULL) != FALSE;
+										bDoWriteData = true;
+									}
+									else
+									{
+										bWriteDataSuccess = true;				// got to get more data, don't write it but say it was successful
+										bDoWriteData = false;
+									}
+								}
+								else
+								{
+									if ((dwMaxWriteRequest > 0) && (dwDataPartLen > dwMaxWriteRequest))
+										dwDataPartLen = dwMaxWriteRequest;
+									PrepareCmd();
+									bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, pConstStreamSend->StreamData.front().Data.GetData() + ullCurDataSent, dwDataPartLen, nullptr) != FALSE;
+								}
 							}
 						}
 						else
@@ -1703,6 +2136,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						CleanupCmd();
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, dwError);
 					}
+					int iDataSent = 0;
 					if (bDoWriteData)
 					{
 						if (!WaitComplete(WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE))
@@ -1720,7 +2154,12 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 								(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, State.Ref->CallbackContext.dwBytesWritten);
 						}
 
-						ullCurDataSent += (ULONGLONG)State.Ref->CallbackContext.dwBytesWritten;
+						if (bS3AuthV4)
+							uS3AuthV4SendBufIndex = 0;
+						else
+							ullCurDataSent += (ULONGLONG)State.Ref->CallbackContext.dwBytesWritten;
+						iDataSent = (int)State.Ref->CallbackContext.dwBytesWritten;
+						ullTotalBytesSent += iDataSent;
 					}
 					bool bLast = false;
 					if (pConstStreamSend == nullptr)
@@ -1729,8 +2168,8 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					{
 						if (pConstStreamSend->UpdateProgressCB != nullptr)
 						{
-							pStreamSend->iAccProgress += (int)State.Ref->CallbackContext.dwBytesWritten;
-							pConstStreamSend->UpdateProgressCB((int)State.Ref->CallbackContext.dwBytesWritten, pConstStreamSend->pContext);
+							pStreamSend->iAccProgress += iDataSent;
+							pConstStreamSend->UpdateProgressCB(iDataSent, pConstStreamSend->pContext);
 						}
 						if (ullCurDataSent >= (ULONGLONG)pConstStreamSend->StreamData.front().Data.GetBufSize())
 						{
@@ -1741,7 +2180,48 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						}
 					}
 					if (bLast)
+					{
+						if (bS3AuthV4)
+						{
+							// send any remaining data
+							if (uS3AuthV4SendBufIndex > 0)
+							{
+								// prepare string to sign
+								CreateS3V4ChunkMetadata(sPreviousSignature, S3AuthV4SendBuf, uS3AuthV4SendBufIndex, sEmptySignature, S3SigningKey, stRequestTime);
+								PrepareCmd();
+								bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, NULL) != FALSE;
+								if (!bWriteDataSuccess)
+								{
+									dwError = GetLastError();
+									CleanupCmd();
+									throw CS3ErrorInfo(_T(__FILE__), __LINE__, dwError);
+								}
+								if (!WaitComplete(WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE))
+									throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
+								if (pConstStreamSend->UpdateProgressCB != nullptr)
+								{
+									pStreamSend->iAccProgress += uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize;
+									pConstStreamSend->UpdateProgressCB(uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, pConstStreamSend->pContext);
+								}
+								ullTotalBytesSent += State.Ref->CallbackContext.dwBytesWritten;
+							}
+							// now send the last packet
+							uS3AuthV4SendBufIndex = 0;
+							CreateS3V4ChunkMetadata(sPreviousSignature, S3AuthV4SendBuf, uS3AuthV4SendBufIndex, sEmptySignature, S3SigningKey, stRequestTime);
+							PrepareCmd();
+							bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, NULL) != FALSE;
+							if (!bWriteDataSuccess)
+							{
+								dwError = GetLastError();
+								CleanupCmd();
+								throw CS3ErrorInfo(_T(__FILE__), __LINE__, dwError);
+							}
+							if (!WaitComplete(WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE))
+								throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
+							ullTotalBytesSent += State.Ref->CallbackContext.dwBytesWritten;
+						}
 						break;
+					}
 					// process download throttle
 					// see if we've used up all of our quota for this interval
 					if (bUploadThrottle)
@@ -1874,7 +2354,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					CString sHeader, sContent;
 					for (list<CString>::const_iterator it = AllHeaders.begin(); it != AllHeaders.end(); ++it)
 					{
-						int iSep = it->Find(L':');
+						int iSep = it->Find(_T(':'));
 						if (iSep >= 0)
 						{
 							sHeader = it->Left(iSep);
@@ -2119,6 +2599,13 @@ void CECSConnection::SetSecret(LPCTSTR pszSecret)		// set shared secret string i
 {
 	if (sSecret != pszSecret)
 	{
+		{
+			CSimpleRWLockAcquire lockWrite(&lwrS3V4SigningKey, true);		// write lock
+
+			// clear out the signing key so it will get recreated with the new secret
+			GlobalS3V4SigningKey.Empty();
+			ZeroFT(ftS3V4SigningKey);
+		}
 		sSecret = pszSecret;
 		KillHostSessions();
 	}
@@ -2175,6 +2662,25 @@ void CECSConnection::SetSSL(bool bSSLParam)
 		Port = PortParam;
 		KillHostSessions();
 	}
+}
+
+void CECSConnection::SetHostAuth(bool bAuthV4, UINT uS3AuthV4ChunkSize)
+{
+	if (!sHost.IsEmpty())
+	{
+		CSimpleRWLockAcquire lockWrite(&lwrS3V4SigningKey, true);		// write lock
+
+		bS3AuthV4 = bAuthV4;
+		uS3AuthV4ChunkSize = uS3AuthV4ChunkSize;
+	}
+}
+
+bool CECSConnection::IfS3v4(UINT *puChunkSize) const
+{
+	CSimpleRWLockAcquire lockRead(&lwrS3V4SigningKey, false);				// get read lock
+	if (puChunkSize != nullptr)
+		*puChunkSize = uS3AuthV4ChunkSize;
+	return bS3AuthV4;
 }
 
 void CECSConnection::SetRegion(LPCTSTR pszS3Region)
@@ -2286,7 +2792,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 	if (sOldPathS3.IsEmpty() || sNewPathS3.IsEmpty())
 		return ERROR_INVALID_NAME;
 
-	if (sOldPathS3[sOldPathS3.GetLength() - 1] != L'/')
+	if (sOldPathS3[sOldPathS3.GetLength() - 1] != _T('/'))
 	{
 		deque<ACL_ENTRY> Acls;
 		// first get the ACL of the "before" object
@@ -2385,7 +2891,7 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVe
 			return S3_ERROR(ERROR_INVALID_NAME);
 		CBuffer RetData;
 		// if folder, do bulk delete
-		if (sPath[sPath.GetLength() - 1] == L'/')
+		if (sPath[sPath.GetLength() - 1] == _T('/'))
 		{
 			list<CECSConnection::S3_DELETE_ENTRY> PathList;
 			PathList.push_back(CECSConnection::S3_DELETE_ENTRY(pszPath, pszVersionId));
@@ -2394,8 +2900,8 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVe
 		InitHeader();
 		CString sResource(UriEncode(sPath));
 		if (pszVersionId != nullptr)
-			sResource += CString(L"?versionId=") + pszVersionId;
-		Error = SendRequest(L"DELETE", sResource, NULL, 0, RetData);
+			sResource += CString(_T("?versionId=")) + pszVersionId;
+		Error = SendRequest(_T("DELETE"), sResource, NULL, 0, RetData);
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -2429,7 +2935,7 @@ void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY
 	list<CECSConnection::S3_DELETE_ENTRY>::const_iterator itPath;
 	for (itPath = PathList.begin(); itPath != PathList.end(); ++itPath)
 	{
-		if (itPath->sKey[itPath->sKey.GetLength() - 1] == L'/')
+		if (itPath->sKey[itPath->sKey.GetLength() - 1] == _T('/'))
 		{
 			list<CECSConnection::S3_DELETE_ENTRY> PathListAdd;
 			DirEntryList_t DirList;
@@ -2575,13 +3081,13 @@ void CECSConnection::DeleteS3Send()
 		// extract the bucket
 		if (sBucket.IsEmpty())
 		{
-			int iSlash = itPath->sKey.Find(L'/', 1);
+			int iSlash = itPath->sKey.Find(_T('/'), 1);
 			if (iSlash < 0)
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_DATA);
 			sBucket = itPath->sKey.Mid(1, iSlash - 1);
 		}
 		// verify we are always in the same bucket
-		if (itPath->sKey.Find(L'/' + sBucket + L'/') != 0)
+		if (itPath->sKey.Find(_T('/') + sBucket + _T('/')) != 0)
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_INVALID_DATA);
 		sKey = itPath->sKey.Mid(sBucket.GetLength() + 2);
 		if (FAILED(pWriter->WriteStartElement(nullptr, L"Object", nullptr)))
@@ -2848,7 +3354,7 @@ HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXml
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
 				if (!pInfo->Rec.sName.IsEmpty())
 				{
-					if (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/')
+					if (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == _T('/'))
 					{
 						(void)pInfo->Rec.sName.Delete(pInfo->Rec.sName.GetLength() - 1);
 						pInfo->Rec.bDir = true;
@@ -2898,7 +3404,7 @@ HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXml
 				if (pInfo->sPrefixNoObj == psValue->Left(pInfo->sPrefixNoObj.GetLength()))
 				{
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
-					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/'))
+					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == _T('/')))
 						(void)pInfo->Rec.sName.Delete(pInfo->Rec.sName.GetLength() - 1);
 				}
 				pInfo->Rec.bDir = true;
@@ -3027,7 +3533,7 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
 				if (!pInfo->Rec.sName.IsEmpty())
 				{
-					if (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/')
+					if (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == _T('/'))
 					{
 						(void)pInfo->Rec.sName.Delete(pInfo->Rec.sName.GetLength() - 1);
 						pInfo->Rec.bDir = true;
@@ -3062,7 +3568,7 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 				if (pInfo->sPrefixNoObj == psValue->Left(pInfo->sPrefixNoObj.GetLength()))
 				{
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
-					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == L'/'))
+					if (!pInfo->Rec.sName.IsEmpty() && (pInfo->Rec.sName[pInfo->Rec.sName.GetLength() - 1] == _T('/')))
 						(void)pInfo->Rec.sName.Delete(pInfo->Rec.sName.GetLength() - 1);
 				}
 				pInfo->Rec.bDir = true;
@@ -3165,7 +3671,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 			{
 				// gotta take the bucket off the first component of the path
 				CString sBucket, sPrefix;
-				int iSlash = Context.sPathIn.Find(L'/', 1);
+				int iSlash = Context.sPathIn.Find(_T('/'), 1);
 				if (iSlash < 0)
 					sBucket = Context.sPathIn;
 				else
@@ -3173,7 +3679,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					CString sObjName(pszObjName);
 					sBucket = Context.sPathIn.Left(iSlash);					// don't include terminating slash
 					sPrefix = Context.sPathIn.Mid(iSlash + 1) + sObjName;
-					sPrefix = UriEncode(sPrefix, true);
+					sPrefix = UriEncode(sPrefix, E_URI_ENCODE::AllSAFE);
 				}
 				sResource = sBucket + _T("/");
 				if (bS3Versions)
@@ -3194,11 +3700,11 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 				if (!sPrefix.IsEmpty())
 					sResource += _T("&prefix=") + sPrefix;
 				if (!sS3NextMarker.IsEmpty())
-					sResource += _T("&marker=") + UriEncode(sS3NextMarker, true);
+					sResource += _T("&marker=") + UriEncode(sS3NextMarker, E_URI_ENCODE::AllSAFE);
 				if (!sS3NextKeyMarker.IsEmpty())
-					sResource += _T("&key-marker=") + UriEncode(sS3NextKeyMarker, true);
+					sResource += _T("&key-marker=") + UriEncode(sS3NextKeyMarker, E_URI_ENCODE::AllSAFE);
 				if (!sS3NextVersionIdMarker.IsEmpty())
-					sResource += _T("&version-id-marker=") + UriEncode(sS3NextVersionIdMarker, true);
+					sResource += _T("&version-id-marker=") + UriEncode(sS3NextVersionIdMarker, E_URI_ENCODE::AllSAFE);
 				if (pdwGetECSRetention != nullptr)
 				{
 					Req.push_back(HEADER_REQ(_T("x-emc-retention-period")));
@@ -3413,7 +3919,7 @@ CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 			if (iEnd < 0)
 				break;
 			(void)sMsg.Delete(iEnd);
-			sMsg.SetAt(iEnd, L' ');
+			sMsg.SetAt(iEnd, _T(' '));
 		} 
 		for (;;)
 		{
@@ -3421,21 +3927,21 @@ CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 			if (iEnd < 0)
 				break;
 			(void)sMsg.Delete(iEnd);
-			sMsg.SetAt(iEnd, L' ');
+			sMsg.SetAt(iEnd, _T(' '));
 		}
 		for (;;)
 		{
 			iEnd = sMsg.Find(_T("\n"));
 			if (iEnd < 0)
 				break;
-			sMsg.SetAt(iEnd, L' ');
+			sMsg.SetAt(iEnd, _T(' '));
 		}
 		for (;;)
 		{
 			iEnd = sMsg.Find(_T("\r"));
 			if (iEnd < 0)
 				break;
-			sMsg.SetAt(iEnd, L' ');
+			sMsg.SetAt(iEnd, _T(' '));
 		}
 	}
 	return sMsg;
@@ -3662,7 +4168,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 		// now construct the new metadata list
 		if (ullObjSize < GIGABYTES(5ULL))
 		{
-			CString sSrcPath(UriEncode(pszSrcPath, true));
+			CString sSrcPath(UriEncode(pszSrcPath, E_URI_ENCODE::AllSAFE));
 			if (pszVersionId != nullptr)
 				sSrcPath += CString(_T("?versionId=")) + pszVersionId;
 			AddHeader(_T("x-amz-copy-source"), sSrcPath);							// specify source of copy
@@ -3676,7 +4182,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 						AddHeader(itList->sHeader, itList->sContents);
 				}
 			}
-			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath, true), nullptr, 0, RetData, &Req);
+			Error = SendRequest(_T("PUT"), UriEncode(pszTargetPath), nullptr, 0, RetData, &Req);
 			return Error;
 		}
 		Error = S3MultiPartInitiate(pszTargetPath, MultiPartInfo, pMDList);
@@ -3730,7 +4236,7 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 		list<HEADER_REQ> Req;
 		CString sPath(pszPath);
 		InitHeader();
-		Error = SendRequest(_T("HEAD"), UriEncode(sPath, true), nullptr, 0, RetData, &Req);
+		Error = SendRequest(_T("HEAD"), UriEncode(sPath), nullptr, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 
@@ -3767,10 +4273,10 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 				(void)State.Ref->Headers.erase(sTag);
 			}
 		}
-		AddHeader(_T("x-amz-copy-source"), UriEncode(sPath, true));							// copy it to itself
+		AddHeader(_T("x-amz-copy-source"), UriEncode(sPath, E_URI_ENCODE::AllSAFE));							// copy it to itself
 		AddHeader(_T("x-amz-metadata-directive"), _T("REPLACE"));
 		// now compare with the original metadata to see if there has been a change
-		Error = SendRequest(_T("PUT"), UriEncode(sPath, true), nullptr, 0, RetData, &Req);
+		Error = SendRequest(_T("PUT"), UriEncode(sPath), nullptr, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 	}
@@ -4257,10 +4763,43 @@ DWORD CECSConnection::GetSecureError(void)
 	return State.Ref->dwSecureError;
 }
 
-CString CECSConnection::signS3ShareableURL(const CString& sResource, const CString& sExpire)
+CString CECSConnection::signS3ShareableURL(CString& sResource, const CString& sExpire, const CString& sHostPort)
 {
 	CStateRef State(this);
-	CString sSignature(signRequestS3v2(sSecret, _T("GET"), sResource, State.Ref->Headers, sExpire));
+	CString sSignature;
+
+	if (!IfS3v4())
+		sSignature = signRequestS3v2(sSecret, _T("GET"), sResource, State.Ref->Headers, sExpire);
+	else
+	{
+		// we need to create a new signing key so that it can go for the 7 day maximum
+		{
+			CSimpleRWLockAcquire lockRead(&lwrS3V4SigningKey, true);				// get write lock
+			GlobalS3V4SigningKey.Empty();
+			ZeroFT(ftS3V4SigningKey);
+		}
+		InitHeader();
+		AddHeader(_T("host"), sHostPort);
+		FILETIME ftRequestTime;
+		SYSTEMTIME stRequestTime;
+		CBuffer S3SigningKey;
+		// remove date header if it exists
+		(void)State.Ref->Headers.erase(_T("date"));
+		(void)State.Ref->Headers.erase(_T("x-amz-date"));
+		GetSystemTimeAsFileTime(&ftRequestTime);
+		FileTimeToSystemTime(&ftRequestTime, &stRequestTime);
+		CString sQueryString, sCredential;
+		sCredential.Format(_T("%s/%04d%02d%02d/%s/s3/aws4_request"),
+			(LPCTSTR)sS3KeyID, stRequestTime.wYear, stRequestTime.wMonth, stRequestTime.wDay, (LPCTSTR)sS3Region);
+		sQueryString = CString(_T("?X-Amz-Algorithm=AWS4-HMAC-SHA256"))
+			+ _T("&X-Amz-Credential=") + UriEncode(sCredential, E_URI_ENCODE::V4AuthSlash)
+			+ _T("&X-Amz-Date=") + FormatISO8601Date(ftRequestTime, false, false, true)
+			+ _T("&X-Amz-Expires=") + sExpire
+			+ _T("&X-Amz-SignedHeaders=host");
+		sResource += sQueryString;
+		(void)signRequestS3v4(sSecret, _T("GET"), sResource,
+			State.Ref->Headers, nullptr, 0, E_S3_V4_PAYLOAD::Unsigned, 0, 0, S3SigningKey, sSignature, stRequestTime);
+	}
 	return sSignature;
 }
 
@@ -4279,7 +4818,17 @@ CString CECSConnection::GenerateShareableURL(
 			sIP = IPListHost[0];
 		}
 		CTime Time(*pstExpire);
-		CString sExpire(FmtNum(Time.GetTime()));
+		CString sExpire;
+		if (IfS3v4())
+		{
+			CTime CurTime = CTime::GetCurrentTime();
+			__time64_t Duration = Time.GetTime() - CurTime.GetTime();
+			if (Duration > 604800)
+				Duration = 604800LL;
+			sExpire = FmtNum(Duration);
+		}
+		else
+			sExpire = FmtNum(Time.GetTime());
 		CString sSignature;
 		if (bSSL)
 			sURL = _T("https:");
@@ -4289,9 +4838,20 @@ CString CECSConnection::GenerateShareableURL(
 		if ((bSSL && (Port != INTERNET_DEFAULT_HTTPS_PORT))
 				|| (!bSSL && (Port != INTERNET_DEFAULT_HTTP_PORT)))
 			sPort = _T(":") + FmtNum(Port);
-		sSignature = UriEncodeS3(signS3ShareableURL(UriEncode(sPath), sExpire), true);
-		sURL += _T("//") + sIP + sPort + sPath + _T("?AWSAccessKeyId=") + sS3KeyID + _T("&Expires=") + sExpire + _T("&Signature");
-		sURL = EncodeSpecialChars(UriEncode(sURL)) + _T("=") + sSignature;
+		CString sResource = UriEncode(sPath);
+		if (!IfS3v4())
+		{
+			sSignature = UriEncode(signS3ShareableURL(sResource, sExpire, sIP + sPort), E_URI_ENCODE::V4AuthSlash);
+			CString sURLPart(sIP + sPort + sResource + _T("?AWSAccessKeyId=") + UriEncode(sS3KeyID) + _T("&Expires=") + sExpire + _T("&Signature"));
+			sURLPart = EncodeSpecialChars(sURLPart) + _T("=") + sSignature;
+			sURL += _T("//") + sURLPart;
+		}
+		else
+		{
+			sSignature = UriEncode(signS3ShareableURL(sResource, sExpire, sIP + sPort), E_URI_ENCODE::V4AuthSlash);
+			sURL += _T("//") + sIP + sPort + sResource + _T("&X-Amz-Signature");
+			sURL = EncodeSpecialChars(sURL) + _T("=") + sSignature;
+		}
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -4507,19 +5067,19 @@ bool CECSConnection::ValidateS3BucketName(LPCTSTR pszBucketName)
 	//		There can be only one period between labels.
 	if ((sBucket.GetLength() < 3)
 		|| (sBucket.GetLength() > 63)
-		|| (sBucket[0] == L'.')
-		|| (sBucket[sBucket.GetLength() - 1] == L'.')
+		|| (sBucket[0] == _T('.'))
+		|| (sBucket[sBucket.GetLength() - 1] == _T('.'))
 		|| (sBucket.Find(_T("..")) >= 0))
 		return false;
 	for (int i = 0; i < sBucket.GetLength(); i++)
 	{
 		TCHAR ch = sBucket[i];
-		if ((ch != L'.')
-			&& (ch != L'-')
+		if ((ch != _T('.'))
+			&& (ch != _T('-'))
 			&& !iswdigit(ch)
 			&& !iswlower(ch)
 			&& !iswupper(ch)			// relax rules - allow upper case
-			&& (ch != L'_'))			// relax rules - allow underscore
+			&& (ch != _T('_')))			// relax rules - allow underscore
 			return false;
 	}
 	// verify that the name doesn't look like an IP address
@@ -4531,7 +5091,7 @@ bool CECSConnection::ValidateS3BucketName(LPCTSTR pszBucketName)
 	for (int i = 0; i < sBucket.GetLength(); i++)
 	{
 		TCHAR ch = sBucket[i];
-		if (ch == L'.')
+		if (ch == _T('.'))
 			iDots++;
 		if (!iswdigit(ch))
 			bAllNum = true;
@@ -4576,9 +5136,9 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 		if (pOptions != nullptr)
 		{
 			if (pOptions->dwRetention != 0)
-				AddHeader(L"x-emc-retention-period", FmtNum(pOptions->dwRetention));
-			AddHeader(L"x-emc-file-system-access-enabled", pOptions->bEnableFS ? L"true" : L"false");
-			AddHeader(L"x-emc-is-stale-allowed", pOptions->bTempSiteOutage ? L"true" : L"false");
+				AddHeader(_T("x-emc-retention-period"), FmtNum(pOptions->dwRetention));
+			AddHeader(_T("x-emc-file-system-access-enabled"), pOptions->bEnableFS ? _T("true") : _T("false"));
+			AddHeader(_T("x-emc-is-stale-allowed"), pOptions->bTempSiteOutage ? _T("true") : _T("false"));
 			CString sIndexFields;
 			for (list<CECSConnection::S3_BUCKET_INDEX_ENTRY>::const_iterator it = pOptions->IndexFieldList.begin();
 				it != pOptions->IndexFieldList.end(); ++it)
@@ -4586,7 +5146,7 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 				if (SystemMDSet.find(it->sFieldName) != SystemMDSet.end())
 				{
 					if (!sIndexFields.IsEmpty())
-						sIndexFields += L",";
+						sIndexFields += _T(",");
 					sIndexFields += it->sFieldName;
 				}
 				else
@@ -4596,20 +5156,20 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 						&& (it->Type != E_MD_SEARCH_TYPE::Unknown))								// a type is needed
 					{
 						if (!sIndexFields.IsEmpty())
-							sIndexFields += L",";
-						sIndexFields += it->sFieldName + L";" + TranslateSearchFieldType(it->Type);
+							sIndexFields += _T(",");
+						sIndexFields += it->sFieldName + _T(";") + TranslateSearchFieldType(it->Type);
 					}
 					else
 					{
 						Error.S3Error = S3_ERROR_MetadataSearchNotEnabled;
 						Error.dwHttpError = HTTP_STATUS_BAD_REQUEST;
-						Error.sDetails = L"Invalid search field: " + it->sFieldName + L" Type: " + TranslateSearchFieldType(it->Type);
+						Error.sDetails = _T("Invalid search field: ") + it->sFieldName + _T(" Type: ") + TranslateSearchFieldType(it->Type);
 						return Error;
 					}
 				}
 			}
 			if (!sIndexFields.IsEmpty())
-				AddHeader(L"x-emc-metadata-search", sIndexFields);
+				AddHeader(_T("x-emc-metadata-search"), sIndexFields);
 		}
 
 		// set location constraint if any other region except for us-east-1
@@ -4627,10 +5187,10 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteStartDocument(XmlStandalone_Omit)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
-			if (FAILED(pWriter->WriteStartElement(nullptr, L"CreateBucketConfiguration", L"http://s3.amazonaws.com/doc/2006-03-01/")))
+			if (FAILED(pWriter->WriteStartElement(nullptr, _T("CreateBucketConfiguration"), _T("http://s3.amazonaws.com/doc/2006-03-01/"))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
-			if (FAILED(pWriter->WriteStartElement(nullptr, L"LocationConstraint", nullptr)))
+			if (FAILED(pWriter->WriteStartElement(nullptr, _T("LocationConstraint"), nullptr)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 			if (FAILED(pWriter->WriteString(TO_UNICODE(sS3Region))))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -4752,7 +5312,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 		}
 	}
 	AddHeader(_T("content-type"), _T("application/octet-stream"));
-	Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource, true) + _T("?uploads"), nullptr, 0, RetData);
+	Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploads"), nullptr, 0, RetData);
 	if (Error.IfError())
 		return Error;
 	// parse XML
@@ -4872,7 +5432,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
 
 		InitHeader();
-		Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource, true) + _T("?uploadId=") + MultiPartInfo.sUploadId, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
+		Error = SendRequest(_T("POST"), UriEncode(MultiPartInfo.sResource) + _T("?uploadId=") + MultiPartInfo.sUploadId, XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
 		if (!Error.IfError() && !RetData.IsEmpty())
 		{
 			{
@@ -4906,7 +5466,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartAbort(const S3_UPLOAD_PART_I
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
-	Error = SendRequest(_T("DELETE"), UriEncode(MultiPartInfo.sResource, true) + _T("?uploadId=") + MultiPartInfo.sUploadId, nullptr, 0, RetData);
+	Error = SendRequest(_T("DELETE"), UriEncode(MultiPartInfo.sResource) + _T("?uploadId=") + MultiPartInfo.sUploadId, nullptr, 0, RetData);
 	return Error;
 }
 
@@ -5012,7 +5572,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartList(LPCTSTR pszBucketName, 
 	{
 		CString sTempResource(sResource);
 		if (!Context.sNextKeyMarker.IsEmpty())
-			sTempResource += _T("&key-marker=") + UriEncode(Context.sNextKeyMarker, true);
+			sTempResource += _T("&key-marker=") + UriEncode(Context.sNextKeyMarker, E_URI_ENCODE::AllSAFE);
 		if (!Context.sNextUploadIdMarker.IsEmpty())
 			sTempResource += _T("&upload-id-marker=") + Context.sNextUploadIdMarker;
 		Error = SendRequest(_T("GET"), sTempResource, nullptr, 0, RetData);
@@ -5079,14 +5639,14 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 	
 	// extract the bucket
 	CString sBucket;
-	int iSlash = MultiPartInfo.sResource.Find(L'/', 1);
+	int iSlash = MultiPartInfo.sResource.Find(_T('/'), 1);
 	sBucket = MultiPartInfo.sResource.Mid(1, iSlash - 1);
 	CString sResource;
-	sResource = L'/' + sBucket + UriEncode(MultiPartInfo.sResource.Mid(iSlash), true);
+	sResource = _T('/') + sBucket + UriEncode(MultiPartInfo.sResource.Mid(iSlash));
 	sResource += _T("?partNumber=") + FmtNum(PartEntry.uPartNum) + _T("&uploadId=") + MultiPartInfo.sUploadId;
 	if (pszCopySource != nullptr)
 	{
-		CString sSource(UriEncode(pszCopySource, true));
+		CString sSource(UriEncode(pszCopySource));
 		if ((pszVersionId != nullptr) && (*pszVersionId != NUL))
 			sSource += CString(_T("?versionId=")) + pszVersionId;
 		AddHeader(_T("x-amz-copy-source"), sSource);
@@ -5626,7 +6186,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetKeysForUser(LPCTSTR pszUser,
 		sMethod += pszUser;
 		if ((pszNamespace != nullptr) && (*pszNamespace != NUL))
 			sMethod += CString(_T("/")) + pszNamespace;
-		Error = SendRequest(_T("GET"), UriEncode(sMethod, true), nullptr, 0, RetData, &Req);
+		Error = SendRequest(_T("GET"), UriEncode(sMethod, E_URI_ENCODE::AllSAFE), nullptr, 0, RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
 		{
@@ -5718,7 +6278,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
 		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
-		Error = SendRequest(_T("POST"), UriEncode(_T("/object/user-secret-keys/") + User.sUser, true), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
+		Error = SendRequest(_T("POST"), UriEncode(_T("/object/user-secret-keys/") + User.sUser, E_URI_ENCODE::AllSAFE), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData, &Req);
 		SetPort(wSavePort);
 		if (!Error.IfError())
 		{
@@ -6131,14 +6691,14 @@ CECSConnection::S3_ERROR CECSConnection::S3SearchMD(
 			}
 			sStr = BinaryToHexString(Buf);
 			// now reconstruct the string, changing the ` to a "
-			CString sNewStr(sExpr.Left(iOpen) + L'"' + sStr + L'"' + sExpr.Mid(iClose + 1));
+			CString sNewStr(sExpr.Left(iOpen) + _T('"') + sStr + _T('"') + sExpr.Mid(iClose + 1));
 			sExpr = sNewStr;
 		}
-		CString sResource = CString(_T("/")) + UriEncode(Params.sBucket) + _T("/?query=") + UriEncode(sExpr, true);
+		CString sResource = CString(_T("/")) + UriEncode(Params.sBucket) + _T("/?query=") + UriEncode(sExpr, E_URI_ENCODE::AllSAFE);
 		if (!Params.sAttributes.IsEmpty())
-			sResource += _T("&attributes=") + UriEncode(Params.sAttributes, true);
+			sResource += _T("&attributes=") + UriEncode(Params.sAttributes, E_URI_ENCODE::AllSAFE);
 		if (!Params.sSorted.IsEmpty())
-			sResource += _T("&sorted=") + UriEncode(Params.sSorted, true);
+			sResource += _T("&sorted=") + UriEncode(Params.sSorted, E_URI_ENCODE::AllSAFE);
 		if (Params.bOlderVersions)
 			sResource += CString(_T("&include-older-versions=")) + (Params.bOlderVersions ? _T("true") : _T("false"));
 		CString sMarker;
@@ -6707,7 +7267,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 			pReq = &Req;
 		Properties.Empty();
 		InitHeader();
-		CString sPath(UriEncode(pszPath, true));
+		CString sPath(UriEncode(pszPath));
 		// first get the complete list of system metadata for this object
 		if ((pszVersionId != nullptr) && (*pszVersionId != NUL))
 			sPath += CString(_T("?versionId=")) + pszVersionId;
@@ -6885,8 +7445,8 @@ CString CECSConnection::DumpBadIPMap(void)
 
 	for (map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); ++itMap)
 	{
-		sEntry = L"Host: " + itMap->first.sHostName;
-		sEntry.Format(L"Host: %s\r\nIP: %s\r\nTime: %s\r\nError: %s\r\n\r\n",
+		sEntry = _T("Host: ") + itMap->first.sHostName;
+		sEntry.Format(_T("Host: %s\r\nIP: %s\r\nTime: %s\r\nError: %s\r\n\r\n"),
 			(LPCTSTR)itMap->first.sHostName,
 			(LPCTSTR)itMap->first.sIP,
 			(LPCTSTR)DateTimeStr(&itMap->second.ftError, true, true, true, false, true, true),

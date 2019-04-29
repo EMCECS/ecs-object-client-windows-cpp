@@ -17,4 +17,4 @@
 
 #define ECSUTIL_COPYRIGHT _T("Copyright © 2019 Dell Inc. or its subsidiaries.")
 
-#define ECSUTIL_VERSION "v1.0.5.3"
+#define ECSUTIL_VERSION "v1.0.6.1"

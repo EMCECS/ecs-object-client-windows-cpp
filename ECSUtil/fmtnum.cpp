@@ -97,7 +97,7 @@ CString DateTimeStr(const FILETIME *pFT, bool bSeconds, bool bDate, bool bTime, 
 // output 2 hex characters for each byte (uppercase)
 CString BinaryToHexString(const BYTE *pData, ULONG uData)
 {
-	const WCHAR DEC2HEX[16 + 1] = L"0123456789ABCDEF";
+	const WCHAR DEC2HEX[16 + 1] = L"0123456789abcdef";
 	CString sOut;
 	sOut.Preallocate(uData * 2 + 1);				// save some time by allocating it all in one shot
 
