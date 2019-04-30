@@ -42,6 +42,7 @@ _T("   /port <port number>                 Rest API Port\n")
 _T("   /user <user ID>                     ECS object user\n")
 _T("   /secret <secret>                    ECS object secret\n")
 _T("   /proxy <proxy> <port>               To enable for Fiddler: 127.0.0.1 8888\n")
+_T("   /v4                                 Use v4 authentication. Otherwise use v2\n")
 _T("   /list <path, starting with bucket>  Object listing\n")
 _T("   /listbuckets                        Dump all buckets and endpoints\n")
 _T("   /create <localfile> <ECSpath>       Create ECS object and initialize with file\n")
@@ -67,6 +68,7 @@ const TCHAR * const CMD_OPTION_SECRET = _T("/secret");
 const TCHAR * const CMD_OPTION_HTTPS = _T("/https");
 const TCHAR * const CMD_OPTION_HTTP = _T("/http");
 const TCHAR * const CMD_OPTION_PROXY = _T("/proxy");
+const TCHAR * const CMD_OPTION_V4 = _T("/v4");
 const TCHAR * const CMD_OPTION_LIST = _T("/list");
 const TCHAR * const CMD_OPTION_LISTBUCKETS = _T("/listbuckets");
 const TCHAR * const CMD_OPTION_CREATE = _T("/create");
@@ -111,6 +113,7 @@ bool bCert = false;
 bool bSetCert = false;
 bool bMPU = false;
 bool bListBuckets = false;
+bool bV4 = false;
 INTERNET_PORT wPort = 9021;
 DWORD dwRetention = 0;					// retention in seconds
 
@@ -255,6 +258,10 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 		else if (itParam->CompareNoCase(CMD_OPTION_HTTP) == 0)
 		{
 			bHttps = false;
+		}
+		else if (itParam->CompareNoCase(CMD_OPTION_V4) == 0)
+		{
+			bV4 = true;
 		}
 		else if (itParam->CompareNoCase(CMD_OPTION_PROXY) == 0)
 		{
@@ -459,7 +466,10 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				CmdArgs.push_back(CString(argv[i]));
 
 			if (!ParseArguments(CmdArgs, sOutMessage))
+			{
 				_tprintf(_T("%s\n"), (LPCTSTR)sOutMessage);
+				return 1;
+			}
 			nRetCode = DoTest(sOutMessage);
 			ECSTermLib();
 		}
@@ -486,7 +496,7 @@ static void ProgressCallBack(int iProgress, void *pContext)
 {
 	PROGRESS_CONTEXT *pProg = (PROGRESS_CONTEXT *)pContext;
 	pProg->ullOffset += iProgress;
-	_tprintf(L"%s: %-20I64d\r", (LPCTSTR)pProg->sTitle, pProg->ullOffset);
+	_tprintf(L"%s: %20s\r", (LPCTSTR)pProg->sTitle, (LPCTSTR)FmtNum(pProg->ullOffset, 0, false, false, true));
 }
 
 static int DoTest(CString& sOutMessage)
@@ -530,6 +540,8 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetUserAgent(_T("TestApp/1.0"));
 	Conn.SetRetries(10, SECONDS(2), SECONDS(4));
 	Conn.SetHttpsProtocol(WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2);
+	Conn.SetRegion(_T("us-east-1"));
+	Conn.SetHostAuth(bV4);
 //	Conn.SetHTTPSecurityFlags(/*SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | */SECURITY_FLAG_IGNORE_UNKNOWN_CA/* | SECURITY_FLAG_IGNORE_CERT_CN_INVALID*/);
 //	Conn.SetHTTPSecurityFlags(SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_UNKNOWN_CA);
 	if (!sProxyAddr.IsEmpty() && (wProxyPort != 0))

@@ -25,6 +25,8 @@
 #include <iomanip>
 #include "cbuffer.h"
 
+ECSUTIL_EXT_API CString InsertCommas(LPCTSTR szNum);	// insert commas into the number dependent on the current locale
+
 //
 // formatting functions to be used with the CString library
 //
@@ -51,7 +53,8 @@ inline CString FmtNum(
 	T t,							// value to translate
 	int width = 0,					// minimum field width
 	bool lead_zero = false,			// true pad with leading zeroes, false pad with spaces
-	bool hex_flag = false)			// true hex, false decimal
+	bool hex_flag = false,			// true hex, false decimal
+	bool comma_flag = false)		// true: insert comma's dependent on the locale
 {
 #ifdef _UNICODE
 	wchar_t fillch = lead_zero ? L'0' : L' ';
@@ -61,6 +64,8 @@ inline CString FmtNum(
 	std::basic_ostringstream<char> o;
 #endif
 	o << std::setw(width) << std::setfill(fillch) << std::setbase(hex_flag ? 16 : 10) << t;
+	if (comma_flag)
+		return InsertCommas(o.str().c_str());
 	return CString(o.str().c_str());
 }
 

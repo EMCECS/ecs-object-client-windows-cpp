@@ -113,3 +113,27 @@ CString BinaryToHexString(const CBuffer& Data)
 {
 	return BinaryToHexString(Data.GetData(), Data.GetBufSize());
 }
+
+//
+// InsertCommas
+// insert commas to make the number readable
+//
+CString InsertCommas(LPCTSTR szNum)
+{
+	static CCriticalSection csLocale;
+	CSingleLock lock(&csLocale, true);
+	CString sFmtNum;
+	LPTSTR pBuf;
+	int iStrLen;
+	TCHAR Digits[10], NoDigits[] = TEXT("0");
+
+	(void)GetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_IDIGITS, Digits, _countof(Digits));
+	(void)SetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_IDIGITS, NoDigits);
+	// first figure out the size of the buffer;
+	iStrLen = GetNumberFormat(LOCALE_USER_DEFAULT, 0, szNum, NULL, NULL, 0);
+	pBuf = sFmtNum.GetBuffer(iStrLen + 2);
+	(void)GetNumberFormat(LOCALE_USER_DEFAULT, 0, szNum, NULL, pBuf, iStrLen + 2);
+	sFmtNum.ReleaseBuffer();
+	(void)SetLocaleInfo(LOCALE_USER_DEFAULT, LOCALE_IDIGITS, Digits);
+	return sFmtNum;
+}
