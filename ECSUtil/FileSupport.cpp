@@ -427,41 +427,55 @@ CECSConnection::S3_ERROR S3Write(
 		WriteThread.CreateThread();				// create the thread
 		WriteThread.StartWork();					// kick it off
 
-		bool bDone = false;
 		LARGE_INTEGER liOffset;
-		liOffset.QuadPart = 0LL;
-		dwError = pStream->Seek(liOffset, STREAM_SEEK_SET, nullptr);
-		if (dwError != S_OK)
-			throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
-		while (!bDone)
-		{
-			if (WriteThread.bWorkerDone)
-				break;
-			if (Conn.TestAbort())
-				break;
-			dwError = pStream->Read(WriteBuf.GetData(), WriteBuf.GetBufSize(), &dwBytesRead);
-			if ((dwError != S_OK) && (dwError != S_FALSE))
-				throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
-			if ((dwError == S_FALSE) || (dwBytesRead == 0))
-				bDone = WriteRec.bLast = true;
-			WriteRec.Data.Load(WriteBuf.GetData(), dwBytesRead);
-			WriteRec.ullOffset = liOffset.QuadPart;
-			liOffset.QuadPart += dwBytesRead;
-			WriteThread.WriteContext.StreamData.push_back(WriteRec, dwMaxQueueSize, TestShutdownWriteThread, &WriteThread);
-		}
-		// wait for the worker thread to finish the S3 command
 		for (;;)
 		{
-			if (WriteThread.bWorkerDone)
-				break;
-			dwError = WaitForSingleObject(WriteThread.evWriteComplete.m_hObject, SECONDS(2));
-			if (dwError == WAIT_OBJECT_0)
-				break;
-			if (dwError != WAIT_TIMEOUT)
+			liOffset.QuadPart = 0LL;
+			dwError = pStream->Seek(liOffset, STREAM_SEEK_SET, nullptr);
+			if (dwError != S_OK)
 				throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
-			// check for thread exit (but not if we are waiting for the handle to close)
-			if (Conn.TestAbort())
-				throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_OPERATION_ABORTED);
+			WriteThread.WriteContext.StreamData.clear();
+			bool bDone = false;
+			while (!bDone)
+			{
+				if (WriteThread.bWorkerDone)
+					break;
+				if (Conn.TestAbort())
+					break;
+				if (WriteThread.WriteContext.bResetSendPtrs)
+					break;
+				dwError = pStream->Read(WriteBuf.GetData(), WriteBuf.GetBufSize(), &dwBytesRead);
+				if ((dwError != S_OK) && (dwError != S_FALSE))
+					throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
+				if ((dwError == S_FALSE) || (dwBytesRead == 0))
+					bDone = WriteRec.bLast = true;
+				WriteRec.Data.Load(WriteBuf.GetData(), dwBytesRead);
+				WriteRec.ullOffset = liOffset.QuadPart;
+				liOffset.QuadPart += dwBytesRead;
+				WriteThread.WriteContext.StreamData.push_back(WriteRec, dwMaxQueueSize, TestShutdownWriteThread, &WriteThread);
+			}
+			// wait for the worker thread to finish the S3 command
+			for (;;)
+			{
+				if (WriteThread.bWorkerDone)
+					break;
+				if (WriteThread.WriteContext.bResetSendPtrs)
+					break;
+				dwError = WaitForSingleObject(WriteThread.evWriteComplete.m_hObject, SECONDS(2));
+				if (dwError == WAIT_OBJECT_0)
+					break;
+				if (dwError != WAIT_TIMEOUT)
+					throw CErrorInfo(_T(__FILE__), __LINE__, dwError);
+				// check for thread exit (but not if we are waiting for the handle to close)
+				if (Conn.TestAbort())
+					throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_OPERATION_ABORTED);
+			}
+			if (WriteThread.WriteContext.bResetSendPtrs)
+			{
+				WriteThread.WriteContext.bResetSendPtrs = false;
+				continue;
+			}
+			break;
 		}
 		if (WriteThread.FileSize.QuadPart != liOffset.QuadPart)
 		{
@@ -877,6 +891,12 @@ bool DoS3MultiPartUpload(
 						if (!bDeleteEntry)
 						{
 							lock.Unlock();
+							if (pPartEntry->StreamQueue.bResetSendPtrs)
+							{
+								pPartEntry->StreamQueue.bResetSendPtrs = false;
+								pPartEntry->ullCursor = 0ULL;
+								pPartEntry->StreamQueue.StreamData.clear();
+							}
 							LARGE_INTEGER liOffset;
 							liOffset.QuadPart = pPartEntry->ullBaseOffset + pPartEntry->ullCursor;
 							dwError = pStream->Seek(liOffset, STREAM_SEEK_SET, nullptr);

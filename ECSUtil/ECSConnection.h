@@ -451,12 +451,14 @@ public:
 		void *pContext;
 		int iAccProgress;						// how much data has been read so far
 		bool bMultiPart;
+		bool bResetSendPtrs;					// set if the request needs to be reset, the caller should reset the stream and all counters and then reset this flag
 		ULONGLONG ullTotalSize;					// on receive, keep track of the total size of the transfer
 		STREAM_CONTEXT()
 			: UpdateProgressCB(nullptr)
 			, pContext(nullptr)
 			, iAccProgress(0)
 			, bMultiPart(false)
+			, bResetSendPtrs(false)
 			, ullTotalSize(0ULL)
 		{}
 	};
@@ -1499,6 +1501,7 @@ private:
 	void DeleteS3Send(void);
 	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG ullObjSize, const list<HEADER_STRUCT> *pMDList);
+	void ResendRequest(STREAM_CONTEXT *pStreamSend, const CSharedQueueEvent& MsgEvent, int iLine);
 
 public:
 	CECSConnection();

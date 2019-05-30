@@ -1790,6 +1790,38 @@ void CECSConnection::CreateS3V4ChunkMetadata(
 	S3AuthV4SendBuf.SetAt(State.Ref->uS3AuthV4ChunkMetadataOffset + uS3AuthV4SendBufIndex + 1, '\n');
 }
 
+// ResendRequest
+// reset all send pointers to be able to resend the same request
+void CECSConnection::ResendRequest(STREAM_CONTEXT *pStreamSend, const CSharedQueueEvent& MsgEvent, int iLine)
+{
+	{
+		FILETIME ftNow;
+		GetSystemTimeAsFileTime(&ftNow);
+		_tprintf(L"CECSConnection::ResendRequest: entry %s, line:%d\n", (LPCTSTR)DateTimeStr(&ftNow, true, false, true, false, true, true), iLine);
+	}
+	if (pStreamSend == nullptr)
+		return;
+	pStreamSend->bResetSendPtrs = true;
+	// wait then check if we are terminating
+	DWORD dwError;
+	while (pStreamSend->bResetSendPtrs)
+	{
+		dwError = WaitForSingleObject(MsgEvent.Event.evQueue.m_hObject, SECONDS(5));
+		if (dwError == WAIT_TIMEOUT)
+			break;
+	}
+	{
+		FILETIME ftNow;
+		GetSystemTimeAsFileTime(&ftNow);
+		_tprintf(L"CECSConnection::ResendRequest: exit: bResetSendPtrs:%d, %s, line:%d\n", (int)pStreamSend->bResetSendPtrs, (LPCTSTR)DateTimeStr(&ftNow, true, false, true, false, true, true), iLine);
+	}
+	if (pStreamSend->bResetSendPtrs)
+	{
+		pStreamSend->bResetSendPtrs = false;
+		throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_WINHTTP_RESEND_REQUEST);
+	}
+}
+
 // SendRequestInternal
 // complete the request and send it, and get the response
 // adds the following headers:
@@ -1979,6 +2011,15 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				if (!WinHttpSetCredentials(State.Ref->hRequest, WINHTTP_AUTH_TARGET_SERVER, State.Ref->dwAuthScheme, TO_UNICODE(State.Ref->sHTTPUser), TO_UNICODE(State.Ref->sHTTPPassword), nullptr))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 			}
+			CSharedQueueEvent MsgEvent;		// event that a new message arrived on pStreamSend
+			if (pConstStreamSend != nullptr)
+			{
+				MsgEvent.Link(&pStreamSend->StreamData);					// link the queue to the event
+				MsgEvent.DisableAllTriggerEvents();
+				MsgEvent.EnableTriggerEvents(TRIGGEREVENTS_PUSH | TRIGGEREVENTS_INSERTAT | TRIGGEREVENTS_EMPTY);
+				MsgEvent.SetAllEvents();
+				MsgEvent.Enable();
+			}
 			{
 				DWORD dwDataPartLen = dwDataLen;
 				ULONGLONG ullCurDataSent = 0ULL;
@@ -2029,15 +2070,6 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
 				}
 				ullCurDataSent += (ULONGLONG)dwDataPartLen;
-				CSharedQueueEvent MsgEvent;		// event that a new message arrived on pStreamSend
-				if (pConstStreamSend != nullptr)
-				{
-					MsgEvent.Link(&pStreamSend->StreamData);					// link the queue to the event
-					MsgEvent.DisableAllTriggerEvents();
-					MsgEvent.EnableTriggerEvents(TRIGGEREVENTS_PUSH | TRIGGEREVENTS_INSERTAT);
-					MsgEvent.SetAllEvents();
-					MsgEvent.Enable();
-				}
 //				if (pConstStreamSend != nullptr)
 //					DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("SendRequestInternal: %s, before WriteData, %d"), pszResource, pConstStreamSend->StreamData.IsEmpty() ? 0 : pConstStreamSend->StreamData.GetAt(0)->Data.GetBufSize());
 				// stream data available
@@ -2277,6 +2309,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			if (!WinHttpReceiveResponse(State.Ref->hRequest, nullptr))
 			{
 				dwError = GetLastError();
+				if (dwError == ERROR_WINHTTP_RESEND_REQUEST)
+				{
+					ResendRequest(pStreamSend, MsgEvent, __LINE__);
+					continue;
+				}
 				if (IfServerReached(dwError) && (pbGotServerResponse != nullptr))
 					*pbGotServerResponse = true;
 				CleanupCmd();
@@ -2284,6 +2321,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			}
 			if (!WaitComplete(WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE))
 			{
+				if (State.Ref->CallbackContext.Result.dwError == ERROR_WINHTTP_RESEND_REQUEST)
+				{
+					ResendRequest(pStreamSend, MsgEvent, __LINE__);
+					continue;
+				}
 				if (IfServerReached(State.Ref->CallbackContext.Result.dwError) && (pbGotServerResponse != nullptr))
 					*pbGotServerResponse = true;
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, State.Ref->CallbackContext.Result.dwError);
