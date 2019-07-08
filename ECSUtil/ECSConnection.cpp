@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1994 - 2017, EMC Corporation. All Rights Reserved.
+ * Copyright (c) 2017 - 2019, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -3621,6 +3621,12 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 	return 0;
 }
 
+inline void AppendQuery(CString& sResource, bool& bContinuation, const CString& sQuery)
+{
+	sResource += (bContinuation ? _T("&") : _T("?")) + sQuery;
+	bContinuation = true;
+}
+
 CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	LPCTSTR pszPathIn,
 	DirEntryList_t& DirList,
@@ -3630,7 +3636,8 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	bool bSingle,							// if true, don't keep going back for more files. we just want to know if there are SOME
 	DWORD *pdwGetECSRetention,				// if non-nullptr, check for ECS bucket retention. return retention period
 	LPCTSTR pszObjName,
-	LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker)	// if non-nullptr, only one request is done at a time. this holds the next marker for the next page of entries
+	LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker,	// if non-nullptr, only one request is done at a time. this holds the next marker for the next page of entries
+	TCHAR cDelimiter)						// defaults to L'/'. if NUL, then don't do a delimiter listing
 {
 	CStateRef State(this);
 	S3_ERROR Error;
@@ -3682,10 +3689,11 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					sPrefix = UriEncode(sPrefix, E_URI_ENCODE::AllSAFE);
 				}
 				sResource = sBucket + _T("/");
+				bool bContinuation = false;
 				if (bS3Versions)
-					sResource += _T("?versions&delimiter=/");
-				else
-					sResource += _T("?delimiter=/");
+					AppendQuery(sResource, bContinuation, _T("versions"));
+				if (cDelimiter != _T('\0'))
+					AppendQuery(sResource, bContinuation, CString(_T("delimiter=")) + cDelimiter);
 				{
 					DWORD dwMaxKeys = 0;
 					if ((pNextRequestMarker != nullptr) && (pNextRequestMarker->dwMaxNum != 0))
@@ -3695,16 +3703,16 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					else if ((dwS3BucketListingMax >= 10) && (dwS3BucketListingMax < 1000))
 						dwMaxKeys = dwS3BucketListingMax;
 					if (dwMaxKeys != 0)
-						sResource += _T("&max-keys=") + FmtNum(dwMaxKeys);
+						AppendQuery(sResource, bContinuation, _T("max-keys=") + FmtNum(dwMaxKeys));
 				}
 				if (!sPrefix.IsEmpty())
-					sResource += _T("&prefix=") + sPrefix;
+					AppendQuery(sResource, bContinuation, _T("prefix=") + sPrefix);
 				if (!sS3NextMarker.IsEmpty())
-					sResource += _T("&marker=") + UriEncode(sS3NextMarker, E_URI_ENCODE::AllSAFE);
+					AppendQuery(sResource, bContinuation, _T("marker=") + UriEncode(sS3NextMarker, E_URI_ENCODE::AllSAFE));
 				if (!sS3NextKeyMarker.IsEmpty())
-					sResource += _T("&key-marker=") + UriEncode(sS3NextKeyMarker, E_URI_ENCODE::AllSAFE);
+					AppendQuery(sResource, bContinuation, _T("key-marker=") + UriEncode(sS3NextKeyMarker, E_URI_ENCODE::AllSAFE));
 				if (!sS3NextVersionIdMarker.IsEmpty())
-					sResource += _T("&version-id-marker=") + UriEncode(sS3NextVersionIdMarker, E_URI_ENCODE::AllSAFE);
+					AppendQuery(sResource, bContinuation, _T("version-id-marker=") + UriEncode(sS3NextVersionIdMarker, E_URI_ENCODE::AllSAFE));
 				if (pdwGetECSRetention != nullptr)
 				{
 					Req.push_back(HEADER_REQ(_T("x-emc-retention-period")));
@@ -3827,16 +3835,16 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker)
+CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pdwGetECSRetention, pszObjName, pNextRequestMarker);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pdwGetECSRetention, pszObjName, pNextRequestMarker, cDelimiter);
 }
 
-CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker)
+CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr, pszObjName, pNextRequestMarker);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr, pszObjName, pNextRequestMarker, cDelimiter);
 }
 
 CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const

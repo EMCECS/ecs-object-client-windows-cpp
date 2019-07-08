@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1994 - 2017, EMC Corporation. All Rights Reserved.
+ * Copyright (c) 2017 - 2019, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -1493,7 +1493,7 @@ private:
 	DWORD ChooseAuthScheme(DWORD dwSupportedSchemes);
 	CString FormatAuthScheme(void);
 	// internal version of DirListing allowing it to search for a single file/dir and not return the whole list
-	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker);
+	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter);
 	CString signS3ShareableURL(CString& sResource, const CString& sExpire, const CString& sHostPort);
 	void KillHostSessions(void);
 	void DeleteS3Send(void);
@@ -1573,8 +1573,8 @@ public:
 	S3_ERROR DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId = nullptr);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
-	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr);
-	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr);
+	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr, TCHAR cDelimiter = _T('/'));
+	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr, TCHAR cDelimiter = _T('/'));
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
 	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data);
 	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr);
