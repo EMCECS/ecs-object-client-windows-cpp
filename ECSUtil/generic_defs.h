@@ -284,3 +284,32 @@ inline ULONGLONG GetUniqueInt64()
 		new_id = InterlockedIncrement64(&next_id);
 	return new_id;
 }
+
+//
+// BuildGUIDString
+// convert GUID to string format
+//
+inline CString BuildGUIDString(
+	const UUID *pGUID)
+{
+	CString sGUID;
+	LPTSTR pStringUuid;
+	DWORD dwError = UuidToString(const_cast<UUID *> (pGUID), (unsigned short **)&pStringUuid);
+	if (dwError == RPC_S_OK)
+	{
+		sGUID = pStringUuid;
+		(void)RpcStringFree((unsigned short **)&pStringUuid);
+	}
+	return sGUID;
+}
+
+//
+// CreateGUIDString
+// create a unique GUID, return the string format
+//
+inline CString CreateGUIDString(void)
+{
+	UUID Uuid;
+	(void)UuidCreate(&Uuid);		// just hope it succeeds. if it doesn't i don't know what to do about it
+	return BuildGUIDString(&Uuid);
+}

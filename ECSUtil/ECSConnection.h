@@ -827,27 +827,26 @@ public:
 
 	struct ECSUTIL_EXT_CLASS S3_SYSTEM_METADATA
 	{
-		FILETIME ftLastMod;		// Last user-data modification time
-		ULONGLONG llSize;		// Object size in bytes (size)
-		bool bIsLatest;			// only used for S3 versions: indicates it is the latest version
-		bool bDeleted;			// object has been deleted
-		CString sVersionId;		// only used for S3 versions: version ID of object
-		CString sETag;			// S3: unique key used to determine if the file has changed
-		CString sOwnerDisplayName;	// S3: owner display name
-		CString sOwnerID;		// S3: owner ID
+		FILETIME ftLastMod;				// Last user-data modification time
+		ULONGLONG llSize = 0ULL;		// Object size in bytes (size)
+		DWORD dwRetentionSeconds = 0;	// value of x-emc-retention-period. For HEAD on a bucket, this is the bucket-level retention period
+		bool bIsLatest = false;			// only used for S3 versions: indicates it is the latest version
+		bool bDeleted = false;			// object has been deleted
+		CString sVersionId;				// only used for S3 versions: version ID of object
+		CString sETag;					// S3: unique key used to determine if the file has changed
+		CString sOwnerDisplayName;		// S3: owner display name
+		CString sOwnerID;				// S3: owner ID
 
 		S3_SYSTEM_METADATA()
 		{
 			ZeroFT(ftLastMod);
-			llSize = 0;
-			bIsLatest = false;
-			bDeleted = false;
 		}
 
 		void Empty()
 		{
 			ZeroFT(ftLastMod);
-			llSize = 0;
+			llSize = 0ULL;
+			dwRetentionSeconds = 0;
 			sETag.Empty();
 			sOwnerDisplayName.Empty();
 			bIsLatest = false;
@@ -859,6 +858,7 @@ public:
 		{
 			return (ftLastMod == rec.ftLastMod)
 				&& (llSize == rec.llSize)
+				&& (dwRetentionSeconds == rec.dwRetentionSeconds)
 				&& (sETag == rec.sETag)
 				&& (sOwnerDisplayName == rec.sOwnerDisplayName)
 				&& (sOwnerID == rec.sOwnerID)
@@ -1493,7 +1493,7 @@ private:
 	DWORD ChooseAuthScheme(DWORD dwSupportedSchemes);
 	CString FormatAuthScheme(void);
 	// internal version of DirListing allowing it to search for a single file/dir and not return the whole list
-	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter);
+	S3_ERROR DirListingInternal(LPCTSTR pszPathIn, DirEntryList_t& DirList, LPCTSTR pszSearchName, CString& sRetSearchName, bool bS3Versions, bool bSingle, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter);
 	CString signS3ShareableURL(CString& sResource, const CString& sExpire, const CString& sHostPort);
 	void KillHostSessions(void);
 	void DeleteS3Send(void);
@@ -1573,7 +1573,7 @@ public:
 	S3_ERROR DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId = nullptr);
 	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
-	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, DWORD *pdwGetECSRetention = nullptr, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr, TCHAR cDelimiter = _T('/'));
+	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr, TCHAR cDelimiter = _T('/'));
 	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr, TCHAR cDelimiter = _T('/'));
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
 	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data);

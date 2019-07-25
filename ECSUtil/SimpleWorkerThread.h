@@ -212,7 +212,7 @@ public:
 	void RemoveTermEvent(CEvent *pEvent);
 	void RemoveAllTermEvent(void);
 
-	static void CSimpleWorkerThread::AllTerminate();
+	static void AllTerminate();
 	static void DumpHandles(CString& sHandleMsg);
 	static CSimpleWorkerThread *CurrentThread(void);
 	static CCriticalSection *GetGlobalListCriticalSection(void);
@@ -239,7 +239,7 @@ template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& r
 		{
 			CRWLockAcquire lock(&rwlThreadList, true);
 
-			for (list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
+			for (typename list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
 				if (!bDontKillThis || (dwThisThreadID != it->GetCurrentThreadID()))
 					it->KillThread();
 		}
@@ -259,7 +259,7 @@ template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& r
 			{
 				CRWLockAcquire lock(&rwlThreadList, true);
 
-				for (list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
+				for (typename list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
 				{
 					if (!bDontKillThis || (dwThisThreadID != it->GetCurrentThreadID()))
 					{
@@ -282,7 +282,7 @@ template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& r
 			if (bAllStopped)
 			{
 				// remove the events from the thread objects
-				for (list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
+				for (typename list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
 					it->pThread->RemoveAllTermEvent();
 				break;
 			}
@@ -292,7 +292,7 @@ template<class T> inline void KillThreadQueueSRW(list<T> &ThreadList, CRWLock& r
 				// since this is testing at most 60 there is a chance that even if all threads die, there may be additional ones
 				DWORD dwResult = ::WaitForMultipleObjects(dwEvents, Events, TRUE, SECONDS(1));
 				// now remove the events
-				for (list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
+				for (typename list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
 					it->pThread->RemoveAllTermEvent();
 				if (dwResult == WAIT_FAILED)
 					break;									// something is seriously wrong

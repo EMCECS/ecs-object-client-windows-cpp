@@ -3634,7 +3634,6 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	CString& sRetSearchName,
 	bool bS3Versions,
 	bool bSingle,							// if true, don't keep going back for more files. we just want to know if there are SOME
-	DWORD *pdwGetECSRetention,				// if non-nullptr, check for ECS bucket retention. return retention period
 	LPCTSTR pszObjName,
 	LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker,	// if non-nullptr, only one request is done at a time. this holds the next marker for the next page of entries
 	TCHAR cDelimiter)						// defaults to L'/'. if NUL, then don't do a delimiter listing
@@ -3713,34 +3712,10 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					AppendQuery(sResource, bContinuation, _T("key-marker=") + UriEncode(sS3NextKeyMarker, E_URI_ENCODE::AllSAFE));
 				if (!sS3NextVersionIdMarker.IsEmpty())
 					AppendQuery(sResource, bContinuation, _T("version-id-marker=") + UriEncode(sS3NextVersionIdMarker, E_URI_ENCODE::AllSAFE));
-				if (pdwGetECSRetention != nullptr)
-				{
-					Req.push_back(HEADER_REQ(_T("x-emc-retention-period")));
-					*pdwGetECSRetention = 0;
-				}
 			}
 			Error = SendRequest(_T("GET"), (LPCTSTR)sResource, nullptr, 0, RetData, &Req);
 			if (Error.IfError())
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
-			if (pdwGetECSRetention != nullptr)
-			{
-				// get the retention status of this bucket
-				CString sRetentionPeriod;
-				for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
-				{
-					if (it->sHeader == _T("x-emc-retention-period"))
-					{
-						for (list<CString>::const_iterator itResp = it->ContentList.begin(); itResp != it->ContentList.end(); ++itResp)
-						{
-							sRetentionPeriod = *itResp;
-							sRetentionPeriod.TrimLeft();
-							sRetentionPeriod.TrimRight();
-							*pdwGetECSRetention = (DWORD)_ttoi(sRetentionPeriod);
-							break;
-						}
-					}
-				}
-			}
 			if (RetData.IsEmpty())
 			{
 				// it returns SUCCESS but there is no data!
@@ -3835,16 +3810,16 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, DWORD *pdwGetECSRetention, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter)
+CECSConnection::S3_ERROR CECSConnection::DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pdwGetECSRetention, pszObjName, pNextRequestMarker, cDelimiter);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, false, bSingle, pszObjName, pNextRequestMarker, cDelimiter);
 }
 
 CECSConnection::S3_ERROR CECSConnection::DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker, TCHAR cDelimiter)
 {
 	CString sRetSearchName;
-	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, nullptr, pszObjName, pNextRequestMarker, cDelimiter);
+	return DirListingInternal(pszPath, DirList, nullptr, sRetSearchName, true, false, pszObjName, pNextRequestMarker, cDelimiter);
 }
 
 CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
@@ -7295,19 +7270,11 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 			}
 			else if ((it->sHeader.CompareNoCase(_T("Content-Length")) == 0) && !it->ContentList.empty())
 			{
-#ifdef _UNICODE
-				wistringstream In;
-#else
-				istringstream In;
-#endif
-				In.str((LPCTSTR)it->ContentList.front());
-				In >> Properties.llSize;
-				if (In.fail())
-				{
-					Error.sDetails = _T("Content-Length=") + it->ContentList.front();
-					Error.dwError = ERROR_INVALID_DATA;
-					return Error;
-				}
+				_stscanf_s(it->ContentList.front(), _T("%I64u"), &Properties.llSize);
+			}
+			else if ((it->sHeader.CompareNoCase(_T("x-emc-retention-period")) == 0) && !it->ContentList.empty())
+			{
+				Properties.dwRetentionSeconds = _ttoi(it->ContentList.front());
 			}
 			else if ((pMDList != nullptr) && (it->sHeader.Find(sAmzMetaPrefix) == 0))
 			{

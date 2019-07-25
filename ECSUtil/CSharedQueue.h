@@ -29,6 +29,7 @@
 #include <set>
 #include <memory>
 #include <deque>
+#include <list>
 #include "CRWLock.h"
 
 #define TRIGGEREVENTS_PUSH			 0x01
@@ -177,25 +178,25 @@ public:
 		return list<T>::empty();
 	};
 
-	reference front()
+	list<T>::reference front()
 	{	// return first element of mutable sequence
 		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), true);			// write lock
 		return list<T>::front();
 	}
 
-	const_reference front() const
+	list<T>::const_reference front() const
 	{	// return first element of nonmutable sequence
 		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), false);			// read lock
 		return list<T>::front();
 	}
 
-	reference back()
+	list<T>::reference back()
 	{	// return last element of mutable sequence
 		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), true);			// write lock
 		return list<T>::back();
 	}
 
-	const_reference back() const
+	list<T>::const_reference back() const
 	{	// return last element of nonmutable sequence
 		CRWLockAcquire lockQueue(const_cast<CRWLock *>(&rwlQueue), false);			// read lock
 		return list<T>::back();
