@@ -1217,10 +1217,12 @@ private:
 
 		// copy constructor
 		CECSConnectionState(const CECSConnectionState& src)
-			: pECSConnection(nullptr)
+			: ulReferenceCount(0)
+			, pECSConnection(nullptr)
 			, hRequest(nullptr)
 			, bCallbackRegistered(false)
 			, bS3Admin(false)
+			, bSaveCertInfo(false)
 			, iIPList(0)
 			, dwCurrentThread(0)
 			, dwProxyAuthScheme(0)
@@ -1234,6 +1236,7 @@ private:
 			, uS3AuthV4ChunkMetadataOffset(src.uS3AuthV4ChunkMetadataOffset)
 		{
 			(void)src;
+			ZeroFT(ftLastUsed);
 		};
 
 		const CECSConnectionState& operator =(const CECSConnectionState& src)

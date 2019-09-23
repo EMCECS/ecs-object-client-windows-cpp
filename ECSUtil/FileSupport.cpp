@@ -662,7 +662,7 @@ bool DoS3MultiPartUpload(
 		}
 		Buf.SetBufSize(dwBufSize);
 		S3PartList.clear();
-		if ((FileStat.cbSize.QuadPart < MEGABYTES(dwPartSize)))
+		if ((FileStat.cbSize.QuadPart < MEGABYTES((ULONGLONG)dwPartSize)))
 			return false;
 		ULONGLONG ullPartLength = ALIGN_ANY(MEGABYTES((ULONGLONG)dwPartSize), 0x10000);
 		// don't let the number of parts go over dwMaxParts

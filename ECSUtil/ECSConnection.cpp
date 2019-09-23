@@ -492,6 +492,7 @@ CECSConnection::CECSConnection()
 	, pullPerfBytesSent(nullptr)
 	, pullPerfBytesRcv(nullptr)
 {
+	ZeroFT(ftS3V4SigningKey);
 	CSingleLock lock(&csThrottleMap, true);
 	ECSConnectionList.push_back(this);
 }
@@ -2022,11 +2023,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
 						{
 							if (it->pullBytesSent != NULL)
-								(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
+								(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, (LONG64)sHeaders.GetLength() + dwDataPartLen);
 						}
 					}
 					if (pullPerfBytesSent != NULL)
-						(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, (DWORD)sHeaders.GetLength() + dwDataPartLen);
+						(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, (LONG64)sHeaders.GetLength() + dwDataPartLen);
 				}
 				ullCurDataSent += (ULONGLONG)dwDataPartLen;
 				CSharedQueueEvent MsgEvent;		// event that a new message arrived on pStreamSend
@@ -2972,6 +2973,10 @@ struct XML_DELETES3_ENTRY
 	CString sMessage;
 	CString sRequestId;
 	CString sHostId;
+
+	XML_DELETES3_ENTRY()
+		: Error(S3_ERROR_UNKNOWN)
+	{}
 
 	void Clear(void)
 	{
@@ -3994,6 +3999,10 @@ struct XML_S3_SERVICE_INFO_CONTEXT
 {
 	CECSConnection::S3_SERVICE_INFO *pServiceInfo;
 	CECSConnection::S3_BUCKET_INFO Entry;
+
+	XML_S3_SERVICE_INFO_CONTEXT()
+		: pServiceInfo(nullptr)
+	{}
 };
 
 const WCHAR * const XML_S3_SERVICE_OWNER_ID = L"//ListAllMyBucketsResult/Owner/ID";
@@ -6311,6 +6320,10 @@ struct XML_S3_METADATA_SEARCH_FIELDS_CONTEXT
 {
 	CECSConnection::S3_METADATA_SEARCH_FIELDS *pMDFields;
 	CECSConnection::S3_METADATA_SEARCH_ENTRY Rec;
+
+	XML_S3_METADATA_SEARCH_FIELDS_CONTEXT()
+		: pMDFields(nullptr)
+	{}
 };
 
 const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_ATTRIBUTES_ATTRIBUTE = L"//MetadataSearchList/OptionalAttributes/Attribute";
@@ -6418,6 +6431,10 @@ struct XML_S3_METADATA_SEARCH_FIELDS_BUCKET_CONTEXT
 {
 	CECSConnection::S3_METADATA_SEARCH_FIELDS_BUCKET *pMDFieldBucket;
 	CECSConnection::S3_METADATA_SEARCH_ENTRY Rec;
+
+	XML_S3_METADATA_SEARCH_FIELDS_BUCKET_CONTEXT()
+		: pMDFieldBucket(nullptr)
+	{}
 };
 
 
@@ -6830,6 +6847,10 @@ struct XML_S3_ENDPOINT_INFO_CONTEXT
 {
 	CECSConnection::S3_ENDPOINT_INFO *pEndpointInfo;
 	CString sLastDataNode;
+
+	XML_S3_ENDPOINT_INFO_CONTEXT()
+		: pEndpointInfo(nullptr)
+	{}
 };
 
 const WCHAR * const XML_S3_ENDPOINT_INFO_DATA_NODE = L"//ListDataNode/DataNodes";
@@ -6911,6 +6932,10 @@ struct XML_S3_LIFECYCLE_INFO_CONTEXT
 {
 	CECSConnection::S3_LIFECYCLE_INFO *pLifecycleInfo;
 	CECSConnection::S3_LIFECYCLE_RULE LastRule;
+
+	XML_S3_LIFECYCLE_INFO_CONTEXT()
+		: pLifecycleInfo(nullptr)
+	{}
 };
 
 const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE = L"//LifecycleConfiguration/Rule";
