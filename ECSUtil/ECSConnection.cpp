@@ -222,13 +222,14 @@ shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWOR
 	if (dwThreadID == 0)
 		dwThreadID = GetCurrentThreadId();
 
-	CSimpleRWLockAcquire lock(&StateList.rwlStateMap, false);			// read lock
+	CRWLockAcquire lock(&StateList.rwlStateMap, false);			// read lock
 																		// this will either insert it or if it already exists, return the existing entry for this thread
 	map<DWORD, shared_ptr<CECSConnectionState>>::iterator itState = StateList.StateMap.find(dwThreadID);
 	if (itState == StateList.StateMap.end())
 	{
 		lock.Unlock();
 		lock.Lock(true);									// get write lock
+		size_t MapSize = StateList.StateMap.size();
 		pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_unique<CECSConnectionState>()));
 		if (ret.second)
 			ret.first->second->pECSConnection = this;
@@ -236,7 +237,14 @@ shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWOR
 			InterlockedIncrement(&ret.first->second->ulReferenceCount);
 		ASSERT(ret.first->second->pECSConnection == this);
 		SetPerfStateSize(1);
-		return ret.first->second;
+		shared_ptr<CECSConnection::CECSConnectionState> StateRet = ret.first->second;
+		// if the map is getting large, don't wait for the periodic garbage collection. do it now
+		if (MapSize > 500)
+		{
+			lock.Unlock();
+			GarbageCollect();
+		}
+		return StateRet;
 	}
 	ASSERT(itState->second->pECSConnection == this);
 	if (bIncRef)
@@ -452,7 +460,7 @@ void CECSConnection::CThrottleTimerThread::DoWork()
 		{
 			if ((*itList)->sHost == itMap->first)
 			{
-				CSimpleRWLockAcquire lockStateMap(&(*itList)->StateList.rwlStateMap, false);
+				CRWLockAcquire lockStateMap(&(*itList)->StateList.rwlStateMap, false);
 				map<DWORD,shared_ptr<CECSConnectionState>>::iterator itStateMap;
 				for (itStateMap = (*itList)->StateList.StateMap.begin(); itStateMap != (*itList)->StateList.StateMap.end(); ++itStateMap)
 					VERIFY(itStateMap->second->evThrottle.SetEvent());
@@ -693,7 +701,7 @@ void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, U
 	// get the current state info
 	if (pulStateMapSize != nullptr)
 	{
-		CSimpleRWLockAcquire lock(&StateList.rwlStateMap, true);			// write lock
+		CRWLockAcquire lock(&StateList.rwlStateMap, true);			// write lock
 		SetPerfStateSize((LONG)StateList.StateMap.size());
 	}
 }
@@ -4542,7 +4550,7 @@ bool CECSConnection::TestAbort(void)
 	CStateRef State(this);
 	if (!bCheckShutdown)
 		return false;
-	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, false);			// read lock
+	CRWLockAcquire lock(&State.Ref->rwlAbortList, false);			// read lock
 	for (list<ABORT_ENTRY>::const_iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); ++itList)
 	{
 		if ((itList->ShutdownCB != nullptr) && (itList->ShutdownCB)(itList->pShutdownContext))
@@ -4571,14 +4579,14 @@ void CECSConnection::RegisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *
 	ABORT_ENTRY Rec;
 	Rec.ShutdownCB = ShutdownParamCB;
 	Rec.pShutdownContext = pContext;
-	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	CRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
 	State.Ref->AbortList.push_back(Rec);
 }
 
 void CECSConnection::UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void *pContext)
 {
 	CStateRef State(this);
-	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	CRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
 	for (list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
 	{
 		if ((itList->ShutdownCB == ShutdownParamCB) && (itList->pShutdownContext == pContext))
@@ -4594,14 +4602,14 @@ void CECSConnection::RegisterAbortPtr(const bool *pbAbort, bool bAbortTrue)
 	ABORT_ENTRY Rec;
 	Rec.pbAbort = pbAbort;
 	Rec.bAbortIfTrue = bAbortTrue;
-	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	CRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
 	State.Ref->AbortList.push_back(Rec);
 }
 
 void CECSConnection::UnregisterAbortPtr(const bool *pbAbort)
 {
 	CStateRef State(this);
-	CSimpleRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
+	CRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
 	for (list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
 	{
 		if (itList->pbAbort == pbAbort)
@@ -5030,7 +5038,7 @@ void CECSConnection::GarbageCollect()
 		CSingleLock lockThrottle(&csThrottleMap, true);
 		for (list<CECSConnection *>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
 		{
-			CSimpleRWLockAcquire lockState(&(*itConn)->StateList.rwlStateMap, true);			// write lock
+			CRWLockAcquire lockState(&(*itConn)->StateList.rwlStateMap, true);			// write lock
 			if ((*itConn)->StateList.StateMap.size() > 100)							// don't bother until this gets big
 			{
 				for (map<DWORD, shared_ptr<CECSConnectionState>>::iterator itMap = (*itConn)->StateList.StateMap.begin(); itMap != (*itConn)->StateList.StateMap.end(); )

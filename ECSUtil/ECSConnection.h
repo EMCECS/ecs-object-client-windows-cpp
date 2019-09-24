@@ -1030,6 +1030,7 @@ private:
 
 		HTTP_CALLBACK_CONTEXT()
 		{
+			ZeroMemory(&Result, sizeof(Result));
 			Reset();
 		}
 
@@ -1178,7 +1179,7 @@ private:
 		CString sHTTPPassword;					// for HTTP authentication
 		CString sX_SDS_AUTH_TOKEN;				// for HTTP authentication: after login this contains the auth token used on subsequent calls
 		list<ABORT_ENTRY> AbortList;			// list of abort entries
-		mutable CSimpleRWLock rwlAbortList;		// lock used for AbortList
+		mutable CRWLock rwlAbortList;			// lock used for AbortList
 
 		// v4 auth chunk info
 		UINT uS3AuthV4ChunkMetadataSize;
@@ -1250,7 +1251,7 @@ private:
 
 	struct CECSConnectionStateCS
 	{
-		mutable CSimpleRWLock rwlStateMap;		// lock for StateMap
+		mutable CRWLock rwlStateMap;		// lock for StateMap
 		mutable map<DWORD, shared_ptr<CECSConnectionState>> StateMap;
 
 		CECSConnectionStateCS()

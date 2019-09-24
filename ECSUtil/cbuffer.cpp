@@ -111,6 +111,8 @@ void CBuffer::Grow(
 		return;
 	}
 	ASSERT(pInfo != nullptr);
+	if (pInfo == nullptr)
+		AfxThrowMemoryException();
 	// if the buffer is too big, don't bother to reallocate
 	if (!bForce && (nNewSize <= pInfo->m_nAllocSize))
 	{
@@ -187,6 +189,8 @@ void CBuffer::SetAt(DWORD nIndex, BYTE newElement)
 	DWORD nSize = pInfo == nullptr ? 0 : pInfo->m_nSize;
 	Grow(nIndex >= nSize ? nIndex + 1 : nSize);
 	ASSERT(m_pData != nullptr);
+	if (m_pData == nullptr)
+		AfxThrowMemoryException();
 	m_pData[nIndex] = newElement;
 }
 
@@ -233,6 +237,8 @@ CBuffer &CBuffer::operator +=(
 		DWORD OldSize = GetBufSize();
 		Grow(GetBufSize() + b.GetBufSize());
 		ASSERT(m_pData != nullptr);
+		if (m_pData == nullptr)
+			AfxThrowMemoryException();
 		memcpy(&m_pData[OldSize], b.m_pData, b.GetBufSize());
 	}
 	return(*this);
