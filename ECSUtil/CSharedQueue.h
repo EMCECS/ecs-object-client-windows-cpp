@@ -25,7 +25,6 @@
 
 
 #include <afxmt.h>
-#include <typeinfo.h>
 #include <set>
 #include <memory>
 #include <deque>
