@@ -230,7 +230,7 @@ shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWOR
 		lock.Unlock();
 		lock.Lock(true);									// get write lock
 		size_t MapSize = StateList.StateMap.size();
-		pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_unique<CECSConnectionState>()));
+		pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_shared<CECSConnectionState>()));
 		if (ret.second)
 			ret.first->second->pECSConnection = this;
 		if (bIncRef)
