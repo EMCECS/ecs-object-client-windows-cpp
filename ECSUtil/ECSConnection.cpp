@@ -1053,12 +1053,14 @@ CString CECSConnection::signRequestS3v4(
 		sStringToSign += BinaryToHexString(Hash);
 		// check if we have a signing key already created for this host
 		{
-			FILETIME ftRequestTime;
-			(void)SystemTimeToFileTime(&stRequestTime, &ftRequestTime);
 			CSimpleRWLockAcquire lockRead(&lwrS3V4SigningKey, false);				// get read lock
 
-			if (!IfFTZero(ftS3V4SigningKey)
-				&& (ftS3V4SigningKey > (ftRequestTime - FT_HOURS(2))))
+			// if the date is the same, we can use the signing key
+			SYSTEMTIME stS3SigningKey;
+			FileTimeToSystemTime(&ftS3V4SigningKey, &stS3SigningKey);
+			if ((stRequestTime.wYear == stS3SigningKey.wYear)
+				&& (stRequestTime.wMonth == stS3SigningKey.wMonth)
+				&& (stRequestTime.wDay == stS3SigningKey.wDay))
 			{
 				// got it! We can use the stored signing key
 				S3SigningKey = GlobalS3V4SigningKey;
@@ -3899,7 +3901,7 @@ CString CECSConnection::S3_ERROR_BASE::Format(bool bOneLine) const
 			sMsg += sLineEnd;
 		sMsg += _T("Details: ") + sDetails;
 	}
-	if (!sHostAddr.IsEmpty())
+	if (!sHostAddr.IsEmpty() && IfError())
 	{
 		if (!sMsg.IsEmpty())
 			sMsg += sLineEnd;
