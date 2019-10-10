@@ -215,50 +215,47 @@ CECSConnection::S3_ERROR S3Read(
 			dwMainThreadError = ERROR_OPERATION_ABORTED;
 			break;
 		}
-		if (ReadThread.bWorkerDone)
+		if (dwError == WAIT_FAILED)
+		{
+			dwMainThreadError = GetLastError();
 			break;
-		// check if the background thread has ended with an error
-		if (!ReadThread.IfActive() && ReadThread.Error.IfError())
-			break;
+		}
+			// got an event that something was pushed on the queue
+		while (!ReadThread.ReadContext.StreamData.empty())
+		{
+			CECSConnection::STREAM_DATA_ENTRY StreamData;
+			DWORD dwNumWritten;
+			{
+				CRWLockAcquire lockQueue(&ReadThread.ReadContext.StreamData.GetLock(), true);			// write lock
+				StreamData = ReadThread.ReadContext.StreamData.front();
+				ReadThread.ReadContext.StreamData.pop_front();
+			}
+			// write out the data
+			if (!StreamData.Data.IsEmpty())
+			{
+				dwError = pStream->Write(StreamData.Data.GetData(), StreamData.Data.GetBufSize(), &dwNumWritten);
+				if (dwError != S_OK)
+					return dwError;
+				if (UpdateProgressCB != nullptr)
+					UpdateProgressCB(dwNumWritten, pContext);
+			}
+			if (StreamData.bLast)
+			{
+				bDone = true;
+				break;								// done!
+			}
+		}
 		if (ReadThread.GetExitFlag())
 		{
 			// the thread has called KillThread()
 			dwMainThreadError = ERROR_OPERATION_ABORTED;
 			break;
 		}
-		if (dwError == WAIT_FAILED)
-		{
-			dwMainThreadError = GetLastError();
+		if (ReadThread.bWorkerDone)
 			break;
-		}
-		if (dwError == WAIT_OBJECT_0)
-		{
-			// got an event that something was pushed on the queue
-			while (!ReadThread.ReadContext.StreamData.empty())
-			{
-				CECSConnection::STREAM_DATA_ENTRY StreamData;
-				DWORD dwNumWritten;
-				{
-					CRWLockAcquire lockQueue(&ReadThread.ReadContext.StreamData.GetLock(), true);			// write lock
-					StreamData = ReadThread.ReadContext.StreamData.front();
-					ReadThread.ReadContext.StreamData.pop_front();
-				}
-				// write out the data
-				if (!StreamData.Data.IsEmpty())
-				{
-					dwError = pStream->Write(StreamData.Data.GetData(), StreamData.Data.GetBufSize(), &dwNumWritten);
-					if (dwError != S_OK)
-						return dwError;
-					if (UpdateProgressCB != nullptr)
-						UpdateProgressCB(dwNumWritten, pContext);
-				}
-				if (StreamData.bLast)
-				{
-					bDone = true;
-					break;								// done!
-				}
-			}
-		}
+		// check if the background thread has ended with an error
+		if (!ReadThread.IfActive() && ReadThread.Error.IfError())
+			break;
 	}
 							// now wait for the worker thread to terminate to get its error code
 	ReadThread.KillThreadWait();
