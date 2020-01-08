@@ -275,6 +275,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <ModuleDefinitionFile>.\ECSUtil.def</ModuleDefinitionFile>
+      <AdditionalOptions>/NATVIS:"$(SolutionDir)Visualizer\ECSUtil.natvis" %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -362,6 +363,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <ModuleDefinitionFile>.\ECSUtil.def</ModuleDefinitionFile>
+      <AdditionalOptions>/NATVIS:"$(SolutionDir)Visualizer\ECSUtil.natvis" %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
