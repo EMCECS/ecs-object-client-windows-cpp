@@ -235,7 +235,10 @@ CECSConnection::S3_ERROR S3Read(
 			{
 				dwError = pStream->Write(StreamData.Data.GetData(), StreamData.Data.GetBufSize(), &dwNumWritten);
 				if (dwError != S_OK)
-					return dwError;
+				{
+					dwMainThreadError = dwError;
+					break;
+				}
 				if (UpdateProgressCB != nullptr)
 					UpdateProgressCB(dwNumWritten, pContext);
 			}
@@ -251,6 +254,8 @@ CECSConnection::S3_ERROR S3Read(
 			dwMainThreadError = ERROR_OPERATION_ABORTED;
 			break;
 		}
+		if (dwMainThreadError != ERROR_SUCCESS)
+			break;
 		if (ReadThread.bWorkerDone)
 			break;
 		// check if the background thread has ended with an error
