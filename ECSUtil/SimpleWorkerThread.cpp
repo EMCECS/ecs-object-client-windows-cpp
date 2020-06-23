@@ -50,6 +50,7 @@ CSimpleWorkerThread::CSimpleWorkerThread()
 	, bRunning(false)
 	, bTerminate(false)
 	, bAlertable(false)
+	, bThreadInitialized(false)
 	, dwEventRet(0)
 {
 	ZeroFT(ftEndThreadTime);
@@ -164,22 +165,25 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 	}
 	if (!pSimpleThread->InitInstance())
 		pSimpleThread->bTerminate = true;
-	while (!pSimpleThread->bTerminate)
 	{
-		// create handle list
-		iEvent = 0;
-		for (UINT i=0 ; (i<pSimpleThread->EventList.size()) && (i < (MAXIMUM_WAIT_OBJECTS - 1)) ; i++)
-			EventArray[iEvent++] = pSimpleThread->EventList[i]->m_hObject;
-		EventArray[iEvent++] = pSimpleThread->Events.m_pWorkEvent->m_hObject;		// the first is the default event
-		pSimpleThread->dwEventRet = WaitForMultipleObjectsEx(iEvent, EventArray, false, pSimpleThread->dwWaitTime, pSimpleThread->bAlertable);
-		if (pSimpleThread->dwEventRet == WAIT_FAILED)
+		CBoolSet SetInitialized(&pSimpleThread->bThreadInitialized);
+		while (!pSimpleThread->bTerminate)
 		{
-			DWORD dwWaitError = GetLastError();
-			if (pSimpleThread->WaitFailed(dwWaitError))
-				LogMessage(_T(__FILE__), __LINE__, _T("WaitForMultipleObjectsEx error"), dwWaitError);
+			// create handle list
+			iEvent = 0;
+			for (UINT i = 0; (i < pSimpleThread->EventList.size()) && (i < (MAXIMUM_WAIT_OBJECTS - 1)); i++)
+				EventArray[iEvent++] = pSimpleThread->EventList[i]->m_hObject;
+			EventArray[iEvent++] = pSimpleThread->Events.m_pWorkEvent->m_hObject;		// the first is the default event
+			pSimpleThread->dwEventRet = WaitForMultipleObjectsEx(iEvent, EventArray, false, pSimpleThread->dwWaitTime, pSimpleThread->bAlertable);
+			if (pSimpleThread->dwEventRet == WAIT_FAILED)
+			{
+				DWORD dwWaitError = GetLastError();
+				if (pSimpleThread->WaitFailed(dwWaitError))
+					LogMessage(_T(__FILE__), __LINE__, _T("WaitForMultipleObjectsEx error"), dwWaitError);
+			}
+			else
+				pSimpleThread->DoWork();
 		}
-		else
-			pSimpleThread->DoWork();
 	}
 	pSimpleThread->ExitInstance();
 	{
@@ -455,4 +459,9 @@ void CSimpleWorkerThread::AllTerminate()
 		CSimpleWorkerThread::pcsGlobalThreadSet = nullptr;
 		CSimpleWorkerThread::pGlobalThreadSet = nullptr;
 	}
+}
+
+bool CSimpleWorkerThread::GetThreadInitialized(void) const
+{
+	return bThreadInitialized;
 }

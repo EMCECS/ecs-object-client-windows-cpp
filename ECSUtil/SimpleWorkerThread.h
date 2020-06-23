@@ -173,6 +173,7 @@ private:
 	bool bRunning;
 	bool bTerminate;
 	bool bAlertable;
+	bool bThreadInitialized;
 	list<CEvent *> TermEventList;	// events to signal during process termination
 	static UINT ThreadProc(LPVOID pParam);
 
@@ -211,6 +212,7 @@ public:
 	bool AddTermEvent(CEvent *pEvent);							// if return true, then event was queued, otherwise thread is dead and event not queued
 	void RemoveTermEvent(CEvent *pEvent);
 	void RemoveAllTermEvent(void);
+	bool GetThreadInitialized(void) const;
 
 	static void AllTerminate();
 	static void DumpHandles(CString& sHandleMsg);
