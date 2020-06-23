@@ -275,11 +275,15 @@ void CECSConnection::PrepareCmd()
 	CStateRef State(this);
 	ASSERT(State.Ref->dwCurrentThread == 0);
 	State.Ref->dwCurrentThread = GetCurrentThreadId();
-	VERIFY(State.Ref->CallbackContext.Event.evCmd.ResetEvent());
-	State.Ref->CallbackContext.Reset();
-	State.Ref->CallbackContext.bDisableSecureLog = State.Ref->bDisableSecureLog;
-	State.Ref->CallbackContext.dwSecureError = State.Ref->dwSecureError;
-	State.Ref->CallbackContext.pHost = this;
+	{
+		CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
+
+		VERIFY(State.Ref->CallbackContext.Event.evCmd.ResetEvent());
+		State.Ref->CallbackContext.Reset();
+		State.Ref->CallbackContext.bDisableSecureLog = State.Ref->bDisableSecureLog;
+		State.Ref->CallbackContext.dwSecureError = State.Ref->dwSecureError;
+		State.Ref->CallbackContext.pHost = this;
+	}
 }
 
 void CECSConnection::CleanupCmd()
@@ -287,6 +291,8 @@ void CECSConnection::CleanupCmd()
 	CStateRef State(this);
 	ASSERT(State.Ref->dwCurrentThread != 0);
 	State.Ref->dwCurrentThread = 0;
+	CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, false);			// read lock
+
 	State.Ref->dwSecureError = State.Ref->CallbackContext.dwSecureError;		// any security error is passed back to the main class
 }
 
@@ -304,7 +310,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		// check for thread exit (but not if we are waiting for the handle to close)
 		if ((dwCallbackExpected != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) && TestAbort())
 		{
-			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
+			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
 			State.Ref->CallbackContext.Result.dwError = ERROR_OPERATION_ABORTED;
 			State.Ref->CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
@@ -312,12 +318,15 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		}
 		if (dwError == WAIT_OBJECT_0)
 		{
-			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
+			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
 			bool bGotIt = false;
 			// command finished!
-			for (UINT i=0 ; i<State.Ref->CallbackContext.CallbacksReceived.size() ; i++)
-				if (State.Ref->CallbackContext.CallbacksReceived[i] == dwCallbackExpected)
+			for (list<CMD_RECEIVED>::const_iterator it = State.Ref->CallbackContext.CallbacksReceived.begin()
+				; it != State.Ref->CallbackContext.CallbacksReceived.end(); ++it)
+			{
+				if (it->dwInternetStatus == dwCallbackExpected)
 					bGotIt = true;
+			}
 			State.Ref->CallbackContext.CallbacksReceived.clear();
 			// if it is waiting for WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING, don't exit until we get it
 			// if it is waiting for anything else, return on failure, or the receipt of the correct callback
@@ -334,7 +343,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		}
 		else if (dwError == WAIT_TIMEOUT)
 		{
-			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
+			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
 			iTimeout++;
 			if (iTimeout > iTimeoutMax)
 			{
@@ -346,7 +355,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		}
 		else if (dwError == WAIT_FAILED)
 		{
-			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
+			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
 			State.Ref->CallbackContext.Result.dwError = GetLastError();
 			State.Ref->CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
@@ -477,28 +486,6 @@ bool CECSConnection::CThrottleTimerThread::InitInstance()
 }
 
 CECSConnection::CECSConnection()
-	: Port(INTERNET_DEFAULT_HTTP_PORT)
-	, bSSL(false)
-	, bUseDefaultProxy(true)
-	, bTestConnection(false)
-	, dwProxyPort(0)
-	, dwHttpsProtocol(0)
-	, bCheckShutdown(true)
-	, bS3AuthV4(true)
-	, uS3AuthV4ChunkSize(DefaultS3AuthV4ChunkSize)
-	, DisconnectCB(nullptr)
-	, sS3Region(_T("us-east-1"))
-	, dwWinHttpOptionConnectRetries(0)
-	, dwWinHttpOptionConnectTimeout(0)
-	, dwWinHttpOptionReceiveResponseTimeout(0)
-	, dwWinHttpOptionReceiveTimeout(0)
-	, dwWinHttpOptionSendTimeout(0)
-	, dwLongestTimeout(0)
-	, dwBadIPAddrAge(0)
-	, dwMaxWriteRequest(MaxWriteRequest)
-	, dwHttpSecurityFlags(0)
-	, pullPerfBytesSent(nullptr)
-	, pullPerfBytesRcv(nullptr)
 {
 	ZeroFT(ftS3V4SigningKey);
 	CSingleLock lock(&csThrottleMap, true);
@@ -944,7 +931,7 @@ CString CECSConnection::signRequestS3v4(
 		{
 			CBuffer PayloadHash;
 			DataHash.CreateHash(BCRYPT_SHA256_ALGORITHM);
-			if ((pData != NULL) && (dwDataLen != 0))
+			if ((pData != nullptr) && (dwDataLen != 0))
 				DataHash.AddHashData((const BYTE *)pData, dwDataLen);
 			else
 				DataHash.AddHashData((const BYTE *)"", 0);
@@ -1080,7 +1067,7 @@ CString CECSConnection::signRequestS3v4(
 		CString sSignature(BinaryToHexString(Signature));
 		sPreviousSignature = sSignature;
 		// format date into yyyyMMdd for the Authorization header
-		sAuthorization.Format(_T("AWS4-HMAC-SHA256 Credential=%s/%04d%02d%02d/%s/s3/aws4_request,SignedHeaders=%s,Signature=%s"),
+		sAuthorization.Format(_T("AWS4-HMAC-SHA256 Credential=%s/%04u%02u%02u/%s/s3/aws4_request,SignedHeaders=%s,Signature=%s"),
 			(LPCTSTR)sS3KeyID, stRequestTime.wYear, stRequestTime.wMonth, stRequestTime.wDay, (LPCTSTR)sS3Region, (LPCTSTR)sSignedHeaders, (LPCTSTR)sSignature);
 	}
 	catch (const CErrorInfo& E)
@@ -1099,14 +1086,20 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 	__in  DWORD dwStatusInformationLength)
 {
 	(void)hInternet;
-	HTTP_CALLBACK_CONTEXT *pContext = (HTTP_CALLBACK_CONTEXT *)dwContext;
+	HTTP_CALLBACK_CONTEXT* pContext = (HTTP_CALLBACK_CONTEXT*)dwContext;
 	ASSERT(pContext != nullptr);
-	CSingleLock lock(&pContext->csContext, true);
-#ifdef DEBUG
-	if (dwInternetStatus != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING)
+	// this callback can run on any thread, so this needs to be synchronized with the initiating thread (SendRequestInternal)
+	// it has been possible that the lock (pContext->rwlContext) is not fully destroyed before the destructor is called on the HTTP_CALLBACK_CONTEXT structure
+	// the lock is put in its own block and a flag and event are used to make sure the caller doesn't exit until the lock below is fully destroyed
 	{
-		ASSERT(!pContext->bComplete);
-		ASSERT((dwInternetStatus == WINHTTP_CALLBACK_STATUS_SECURE_FAILURE)
+		CRWLockAcquire lock(&pContext->rwlContext, true);
+		pContext->Event.evExit.ResetEvent();						// reset exit event
+		InterlockedExchange(&pContext->lExitFlag, 0);				// reset exit flag
+#ifdef DEBUG
+		if (dwInternetStatus != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING)
+		{
+			ASSERT(!pContext->bComplete);
+			ASSERT((dwInternetStatus == WINHTTP_CALLBACK_STATUS_SECURE_FAILURE)
 				|| (dwInternetStatus == WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE)
 				|| (dwInternetStatus == WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE)
 				|| (dwInternetStatus == WINHTTP_CALLBACK_STATUS_READ_COMPLETE)
@@ -1115,90 +1108,94 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 				|| (dwInternetStatus == WINHTTP_CALLBACK_STATUS_REQUEST_ERROR)
 				|| (dwInternetStatus == WINHTTP_CALLBACK_STATUS_HANDLE_CREATED)
 				|| (dwInternetStatus == WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING));
-	}
+		}
 #endif
-	pContext->CallbacksReceived.push_back(dwInternetStatus);
-	switch (dwInternetStatus)
-	{
-	case WINHTTP_CALLBACK_STATUS_SECURE_FAILURE:
+		CMD_RECEIVED RcvdRec;
+		RcvdRec.dwInternetStatus = dwInternetStatus;
+		GetSystemTimeAsFileTime(&RcvdRec.ftCmdTime);
+		pContext->CallbacksReceived.push_back(RcvdRec);
+		switch (dwInternetStatus)
 		{
-			ASSERT((dwStatusInformationLength == sizeof(DWORD)) && (lpvStatusInformation != nullptr));
-			if ((dwStatusInformationLength == sizeof(DWORD)) && (lpvStatusInformation != nullptr))
+		case WINHTTP_CALLBACK_STATUS_SECURE_FAILURE:
 			{
-				DWORD dwStatus = *((DWORD *)lpvStatusInformation);
-				pContext->dwSecureError |= dwStatus;
+				ASSERT((dwStatusInformationLength == sizeof(DWORD)) && (lpvStatusInformation != nullptr));
+				if ((dwStatusInformationLength == sizeof(DWORD)) && (lpvStatusInformation != nullptr))
+				{
+					DWORD dwStatus = *((DWORD*)lpvStatusInformation);
+					pContext->dwSecureError |= dwStatus;
+				}
 			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE:				// WinHttpQueryDataAvailable finished
+			{
+				ASSERT(dwStatusInformationLength == 4);
+				pContext->dwReadLength = *((DWORD*)lpvStatusInformation);
+				pContext->bComplete = true;
+				VERIFY(pContext->Event.evCmd.SetEvent());
+			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE:				// WinHttpReceiveResponse finished
+			{
+				pContext->bHeadersAvail = true;
+				pContext->bComplete = true;
+				VERIFY(pContext->Event.evCmd.SetEvent());
+			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_READ_COMPLETE:					// WinHttpReadData finished
+			{
+				pContext->pReadData = (BYTE*)lpvStatusInformation;
+				pContext->dwReadLength = dwStatusInformationLength;
+				pContext->bComplete = true;
+				VERIFY(pContext->Event.evCmd.SetEvent());
+			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE:			// WinHttpSendRequest finished
+			{
+				pContext->bSendRequestComplete = true;
+				pContext->bComplete = true;
+				VERIFY(pContext->Event.evCmd.SetEvent());
+			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE:				// WinHttpWriteData finished
+			{
+				ASSERT(dwStatusInformationLength == 4);
+				pContext->dwBytesWritten = *((DWORD*)lpvStatusInformation);
+				pContext->bComplete = true;
+				VERIFY(pContext->Event.evCmd.SetEvent());
+			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_REQUEST_ERROR:					// Any of the above functions when an error occurs.
+			{
+				pContext->bFailed = true;
+				pContext->bComplete = true;
+				pContext->Result = *((WINHTTP_ASYNC_RESULT*)lpvStatusInformation);
+				VERIFY(pContext->Event.evCmd.SetEvent());
+			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_HANDLE_CREATED:
+			{
+				ASSERT(dwStatusInformationLength == sizeof(HINTERNET));
+				HINTERNET hIntHandle = *((HINTERNET*)lpvStatusInformation);
+				(void)hIntHandle;
+				pContext->bHandleCreated = true;
+			}
+			break;
+		case WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING:
+			{
+				ASSERT(dwStatusInformationLength == sizeof(HINTERNET));
+				HINTERNET hIntHandle = *((HINTERNET*)lpvStatusInformation);
+				pContext->bHandleClosing = true;
+				pContext->bComplete = true;
+				VERIFY(pContext->Event.evCmd.SetEvent());
+			}
+			break;
+		default:
+			break;
 		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE:				// WinHttpQueryDataAvailable finished
-		{
-			ASSERT(dwStatusInformationLength == 4);
-			pContext->dwReadLength = *((DWORD *)lpvStatusInformation);
-			pContext->bComplete = true;
-			VERIFY(pContext->Event.evCmd.SetEvent());
-		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE:				// WinHttpReceiveResponse finished
-		{
-			pContext->bHeadersAvail = true;
-			pContext->bComplete = true;
-			VERIFY(pContext->Event.evCmd.SetEvent());
-		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_READ_COMPLETE:					// WinHttpReadData finished
-		{
-			pContext->pReadData = (BYTE *)lpvStatusInformation;
-			pContext->dwReadLength = dwStatusInformationLength;
-			pContext->bComplete = true;
-			VERIFY(pContext->Event.evCmd.SetEvent());
-		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE:			// WinHttpSendRequest finished
-		{
-			pContext->bSendRequestComplete = true;
-			pContext->bComplete = true;
-			VERIFY(pContext->Event.evCmd.SetEvent());
-		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE:				// WinHttpWriteData finished
-		{
-			ASSERT(dwStatusInformationLength == 4);
-			pContext->dwBytesWritten = *((DWORD *)lpvStatusInformation);
-			pContext->bComplete = true;
-			VERIFY(pContext->Event.evCmd.SetEvent());
-		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_REQUEST_ERROR:					// Any of the above functions when an error occurs.
-		{
-			pContext->bFailed = true;
-			pContext->bComplete = true;
-			pContext->Result = *((WINHTTP_ASYNC_RESULT *)lpvStatusInformation);
-			VERIFY(pContext->Event.evCmd.SetEvent());
-		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_HANDLE_CREATED:
-		{
-			ASSERT(dwStatusInformationLength == sizeof(HINTERNET));
-			HINTERNET hIntHandle = *((HINTERNET *)lpvStatusInformation);
-			(void)hIntHandle;
-			pContext->bHandleCreated = true;
-		}
-		break;
-	case WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING:
-		{
-			ASSERT(dwStatusInformationLength == sizeof(HINTERNET));
-			HINTERNET hIntHandle = *((HINTERNET *)lpvStatusInformation);
-			pContext->bHandleClosing = true;
-			pContext->bComplete = true;
-			(void)WinHttpSetStatusCallback(hIntHandle, nullptr, WINHTTP_CALLBACK_FLAG_ALL_NOTIFICATIONS, NULL);
-			if (pContext->pbCallbackRegistered != nullptr)
-				*(pContext->pbCallbackRegistered) = false;
-			VERIFY(pContext->Event.evCmd.SetEvent());
-		}
-		break;
-	default:
-		break;
 	}
+	// now signal the caller that the callback is done
+	InterlockedExchange(&pContext->lExitFlag, 1);			// set exit flag
+	pContext->Event.evExit.SetEvent();						// set exit event
 }
 
 DWORD CECSConnection::InitSession()
@@ -1348,7 +1345,7 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 	CStateRef State(this);
 	if (dwBadIPAddrAge == 0)
 	{
-		dwBadIPAddrAge = HOURS(2);
+		dwBadIPAddrAge = MINUTES(12);
 	}
 	__int64 liBadIPAge = (__int64)dwBadIPAddrAge * 10000;			// convert to FILETIME units
 	if (State.Ref->IPListLocal.empty())
@@ -1518,8 +1515,10 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 		{
 			TestAllIPBad();					// if first time through and there are no IPs it could be that they are all marked bad
 			if (!GetNextECSIP(IPUsed))
-				throw CS3ErrorInfo((DWORD)SEC_E_NO_IP_ADDRESSES);		// no IP addresses!
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, (DWORD)SEC_E_NO_IP_ADDRESSES);		// no IP addresses!
 		}
+		if (bTestConnection)
+			dwMaxRetryCount = __min(2UL, dwMaxRetryCount);
 		for (UINT i = 0; i < dwMaxRetryCount; i++)
 		{
 			bGotServerResponse = false;
@@ -1555,11 +1554,13 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			if ((Error.dwHttpError < HTTP_STATUS_SERVER_ERROR)
 				&& (bGotServerResponse || (Error.dwError == ERROR_WINHTTP_SECURE_FAILURE)))
 			{
-				throw CS3ErrorInfo(Error);					// if we got through to the server, no need to retry
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);					// if we got through to the server, no need to retry
 			}
-			// if timeout, try reducing the max write size
+			// if timeout, don't retry more than twice. this takes forever
+			if ((Error.dwError == ERROR_WINHTTP_TIMEOUT) && (i > 1))
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 			if ((!bInitialized || bTestConnection) && (Error.dwError == ERROR_WINHTTP_TIMEOUT))
-				throw CS3ErrorInfo(Error);					// during initialization - don't retry. if it fails right away too bad
+				throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);					// during initialization - don't retry. if it fails right away too bad
 			if (Error.dwError == ERROR_OPERATION_ABORTED)		// if aborted, don't retry.
 				return Error;
 			// if this is some TCP/IP type error, try marking the IP bad
@@ -1586,21 +1587,21 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 	catch (const CS3ErrorInfo& E)
 	{
 		Error = E.Error;
-	}
-	// must be some kind of comm error, call the "disconnect" callback
-	if (Error.IfError() && (DisconnectCB != NULL) && !bTestConnection)
-	{
-		if (!bGotServerResponse
-			|| (Error.S3Error == S3_ERROR_InvalidAccessKeyId)
-			|| (Error.S3Error == S3_ERROR_RequestTimeTooSkewed))
+		// must be some kind of comm error, call the "disconnect" callback
+		if (Error.IfError() && (DisconnectCB != nullptr) && !bTestConnection)
 		{
-			if ((Error.dwError != ERROR_OPERATION_ABORTED)
-				&& (Error.dwError != ERROR_WINHTTP_INVALID_SERVER_RESPONSE)
-				&& (Error.dwError != ERROR_WINHTTP_CONNECTION_ERROR))
+			if (!bGotServerResponse
+				|| (Error.S3Error == S3_ERROR_InvalidAccessKeyId)
+				|| (Error.S3Error == S3_ERROR_RequestTimeTooSkewed))
 			{
-				CS3ErrorInfo ErrorInfo(Error);
-				ErrorInfo.sAdditionalInfo = CString(pszMethod) + _T("|") + sResource;
-				DisconnectCB(this, &ErrorInfo, nullptr);
+				if ((Error.dwError != ERROR_OPERATION_ABORTED)
+					&& (Error.dwError != ERROR_WINHTTP_INVALID_SERVER_RESPONSE)
+					&& (Error.dwError != ERROR_WINHTTP_CONNECTION_ERROR))
+				{
+					CS3ErrorInfo ErrorInfo(E);
+					ErrorInfo.sAdditionalInfo = CString(pszMethod) + _T("|") + sResource;
+					DisconnectCB(this, &ErrorInfo, nullptr);
+				}
 			}
 		}
 	}
@@ -1796,7 +1797,8 @@ void CECSConnection::CreateS3V4ChunkMetadata(
 	sSignature = BinaryToHexString(Signature);
 	sPreviousSignature = sSignature;
 
-	CStringA sChunkPrefix(BuildV4ChunkMetadata(uS3AuthV4SendBufIndex, sSignature));	CopyMemory((void *)S3AuthV4SendBuf.GetData(), (LPCSTR)sChunkPrefix, sChunkPrefix.GetLength());
+	CStringA sChunkPrefix(BuildV4ChunkMetadata(uS3AuthV4SendBufIndex, sSignature));
+	CopyMemory((void *)S3AuthV4SendBuf.GetData(), (LPCSTR)sChunkPrefix, sChunkPrefix.GetLength());
 	S3AuthV4SendBuf.SetAt(State.Ref->uS3AuthV4ChunkMetadataOffset + uS3AuthV4SendBufIndex, '\r');
 	S3AuthV4SendBuf.SetAt(State.Ref->uS3AuthV4ChunkMetadataOffset + uS3AuthV4SendBufIndex + 1, '\n');
 }
@@ -1835,9 +1837,18 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	SYSTEMTIME stRequestTime;
 	FILETIME ftRequestTime;
 	bool bGotRequestTime = false;
+	DWORD dwMaxStreamQueueSizeRecv = 1000;	// give it something. get a better number if pStreamReceive used
 
 	try
 	{
+		// determine the max size of the receive queue
+		if (pStreamReceive != nullptr)
+		{
+			// assume that each entry in the stream receive queue, coming from WinHttp, is 8k
+			dwMaxStreamQueueSizeRecv = DefaultMaxStreamQueueSizeRecv;
+			if (dwMaxStreamQueueSizeRecv == 0)
+				dwMaxStreamQueueSizeRecv = 1000;
+		}
 		bS3AuthV4 = IfS3v4(&uS3AuthV4ChunkSize);
 
 		// if V4, initialize the send buffer
@@ -2032,11 +2043,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
 						for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
 						{
-							if (it->pullBytesSent != NULL)
+							if (it->pullBytesSent != nullptr)
 								(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, (LONG64)sHeaders.GetLength() + dwDataPartLen);
 						}
 					}
-					if (pullPerfBytesSent != NULL)
+					if (pullPerfBytesSent != nullptr)
 						(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, (LONG64)sHeaders.GetLength() + dwDataPartLen);
 				}
 				ullCurDataSent += (ULONGLONG)dwDataPartLen;
@@ -2049,8 +2060,6 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					MsgEvent.SetAllEvents();
 					MsgEvent.Enable();
 				}
-//				if (pConstStreamSend != nullptr)
-//					DumpDebugFileFmt(_T(__FILE__), __LINE__, _T("SendRequestInternal: %s, before WriteData, %d"), pszResource, pConstStreamSend->StreamData.IsEmpty() ? 0 : pConstStreamSend->StreamData.GetAt(0)->Data.GetBufSize());
 				// stream data available
 				bool bStreamBufAvailable = false;
 				ULONGLONG ullTotalBytesSent = 0;
@@ -2116,7 +2125,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 										CreateS3V4ChunkMetadata(sPreviousSignature, S3AuthV4SendBuf, uS3AuthV4SendBufIndex, sEmptySignature, S3SigningKey, stRequestTime);
 
 										PrepareCmd();
-										bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, NULL) != FALSE;
+										bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, nullptr) != FALSE;
 										bDoWriteData = true;
 									}
 									else
@@ -2157,11 +2166,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 								CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
 								for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
 								{
-									if (it->pullBytesSent != NULL)
+									if (it->pullBytesSent != nullptr)
 										(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, State.Ref->CallbackContext.dwBytesWritten);
 								}
 							}
-							if (pullPerfBytesSent != NULL)
+							if (pullPerfBytesSent != nullptr)
 								(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesSent, State.Ref->CallbackContext.dwBytesWritten);
 						}
 
@@ -2200,7 +2209,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 								// prepare string to sign
 								CreateS3V4ChunkMetadata(sPreviousSignature, S3AuthV4SendBuf, uS3AuthV4SendBufIndex, sEmptySignature, S3SigningKey, stRequestTime);
 								PrepareCmd();
-								bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, NULL) != FALSE;
+								bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, nullptr) != FALSE;
 								if (!bWriteDataSuccess)
 								{
 									dwError = GetLastError();
@@ -2220,7 +2229,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 							uS3AuthV4SendBufIndex = 0;
 							CreateS3V4ChunkMetadata(sPreviousSignature, S3AuthV4SendBuf, uS3AuthV4SendBufIndex, sEmptySignature, S3SigningKey, stRequestTime);
 							PrepareCmd();
-							bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, NULL) != FALSE;
+							bWriteDataSuccess = WinHttpWriteData(State.Ref->hRequest, S3AuthV4SendBuf.GetData(), uS3AuthV4SendBufIndex + State.Ref->uS3AuthV4ChunkMetadataSize, nullptr) != FALSE;
 							if (!bWriteDataSuccess)
 							{
 								dwError = GetLastError();
@@ -2443,7 +2452,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						RcvBuf.ullOffset = dwLen;
 						RcvBuf.bLast = true;
 						pStreamReceive->StreamData.push_back(RcvBuf,
-							MaxStreamQueueSize,
+							dwMaxStreamQueueSizeRecv,
 							TestAbortStatic,
 							this);
 					}
@@ -2482,11 +2491,11 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
 					for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
 					{
-						if (it->pullBytesRcv != NULL)
+						if (it->pullBytesRcv != nullptr)
 							(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesRcv, dwDownloaded);
 					}
 				}
-				if (pullPerfBytesRcv != NULL)
+				if (pullPerfBytesRcv != nullptr)
 					(void)InterlockedExchangeAdd64((LONG64 *)pullPerfBytesRcv, dwDownloaded);
 			}
 			if (pStreamReceive != nullptr)
@@ -2498,7 +2507,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					pStreamReceive->ullTotalSize += (ULONGLONG)dwDownloaded;
 					State.Ref->ullReadBytes += (ULONGLONG)dwDownloaded;
 					pStreamReceive->StreamData.push_back(RcvBuf,
-						MaxStreamQueueSize,
+						dwMaxStreamQueueSizeRecv,
 						TestAbortStatic,
 						this);
 				}
@@ -2598,12 +2607,24 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			Error.dwSecureError = State.Ref->dwSecureError;
 			GetCertInfo(Error.CertInfo);
 		}
+		WaitForCallbackDone(*State.Ref);
 		return Error;
 	}
 	State.Ref->CloseRequest();
 	State.Ref->Session.ReleaseSession();
 	Error.sHostAddr = sHostHeader;
+	// wait for the callback to be completely finished
+	WaitForCallbackDone(*State.Ref);
 	return Error;
+}
+
+void CECSConnection::WaitForCallbackDone(CECSConnectionState& State)
+{
+	// wait for lExitFlag to be 1
+	while (InterlockedAdd(&State.CallbackContext.lExitFlag, 0) == 0)
+	{
+		WaitForSingleObject(State.CallbackContext.Event.evExit.m_hObject, SECONDS(1));
+	}
 }
 
 void CECSConnection::SetSecret(LPCTSTR pszSecret)		// set shared secret string in base64
@@ -2823,7 +2844,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 			InitHeader();
 			// read all the headers of the source file
 			list<HEADER_REQ> Req;
-			CString sHeadPath(sOldPathS3);
+			CString sHeadPath(UriEncode(sOldPathS3));
 			if (pszVersionId != nullptr)
 				sHeadPath += CString(_T("?versionId=")) + pszVersionId;
 			Error = SendRequest(_T("HEAD"), UriEncode(sHeadPath), nullptr, 0, RetData, &Req);
@@ -2912,7 +2933,7 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVe
 		CString sResource(UriEncode(sPath));
 		if (pszVersionId != nullptr)
 			sResource += CString(_T("?versionId=")) + pszVersionId;
-		Error = SendRequest(_T("DELETE"), sResource, NULL, 0, RetData);
+		Error = SendRequest(_T("DELETE"), sResource, nullptr, 0, RetData);
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -3975,6 +3996,14 @@ void CECSConnection::SetThrottle(
 		if (!TimerThread.IfActive())
 			(void)TimerThread.CreateThread();
 		TimerThread.StartWork();
+		// wait for the thread to start, so we don't have another thread trying to start it during this period
+		// don't wait more than a couple seconds
+		for (UINT i = 0; i < 200; i++)
+		{
+			if (TimerThread.GetThreadInitialized())
+				break;
+			Sleep(10);
+		}
 	}
 }
 
@@ -4412,7 +4441,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadACL(
 	{
 		InitHeader();
 		list<HEADER_REQ> Req;
-		CString sResource(UriEncode(CString(pszPath) + _T("?acl")));
+		CString sResource(UriEncode(pszPath) + L"?acl");
 		CString sVersion(pszVersion);
 		if (!sVersion.IsEmpty())
 			sResource += _T("&versionId=") + sVersion;
@@ -4534,7 +4563,7 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 		CAnsiString XmlUTF8(sXmlOut);
 #endif
 		XmlUTF8.SetBufSize((DWORD)strlen(XmlUTF8));
-		CString sResource(UriEncode(CString(pszPath) + _T("?acl")));
+		CString sResource(UriEncode(pszPath) + L"?acl");
 		CString sVersion(pszVersion);
 		if (!sVersion.IsEmpty())
 			sResource += _T("&versionId=") + sVersion;
@@ -5024,7 +5053,7 @@ void CECSConnection::GarbageCollect()
 		{
 			if (!itMap->second.bInUse)
 			{
-				if (ftNow > (itMap->second.ftIdleTime + FT_MINUTES(2)))
+				if (ftNow > (itMap->second.ftIdleTime + FT_HOURS(4)))
 				{
 					itMap = SessionMap.erase(itMap);
 					continue;
@@ -5036,7 +5065,7 @@ void CECSConnection::GarbageCollect()
 	{
 		FILETIME ftExpire;
 		GetSystemTimeAsFileTime(&ftExpire);
-		ftExpire = ftExpire - FT_MINUTES(2);						// any entries not touched for a while are removed
+		ftExpire = ftExpire - FT_HOURS(4);						// any entries not touched for a while are removed
 		CSingleLock lockThrottle(&csThrottleMap, true);
 		for (list<CECSConnection *>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
 		{
@@ -6466,7 +6495,7 @@ HRESULT XmlS3GetMDSearchFieldsBucketCB(const CStringW& sXmlPath, void *pContext,
 	case XmlNodeType_Text:
 		if (sXmlPath.CompareNoCase(XML_S3_METADATA_SEARCH_FIELDS_BUCKET_SEARCHENABLED) == 0)
 		{
-			if ((psValue != NULL) && !psValue->IsEmpty())
+			if ((psValue != nullptr) && !psValue->IsEmpty())
 				pInfo->pMDFieldBucket->bSearchEnabled = psValue->CompareNoCase(L"true") == 0;
 		}
 		else if (sXmlPath.CompareNoCase(XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_NAME) == 0)
@@ -7124,6 +7153,10 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 			if (FAILED(pWriter->WriteFullEndElement()))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
+			// check if the Expiration clause has anything in it
+			if (!IfFTZero(it->ftDate)
+				|| (it->dwDays != 0)
+				|| it->bExpiredDeleteMarkers)
 			{
 				if (FAILED(pWriter->WriteStartElement(nullptr, L"Expiration", nullptr)))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -7149,7 +7182,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 				}
 				if (it->bExpiredDeleteMarkers)
 				{
-					if (FAILED(pWriter->WriteStartElement(NULL, L"ExpiredObjectDeleteMarker", NULL)))
+					if (FAILED(pWriter->WriteStartElement(nullptr, L"ExpiredObjectDeleteMarker", nullptr)))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 					if (FAILED(pWriter->WriteString(L"true")))
 						throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -7180,11 +7213,11 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 			if (it->dwAbortIncompleteMultipartUploadDays != 0)
 			{
 				// abort incomplete multipart uploads
-				if (FAILED(pWriter->WriteStartElement(NULL, L"AbortIncompleteMultipartUpload", NULL)))
+				if (FAILED(pWriter->WriteStartElement(nullptr, L"AbortIncompleteMultipartUpload", nullptr)))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
 				// specify # of days
-				if (FAILED(pWriter->WriteStartElement(NULL, L"DaysAfterInitiation", NULL)))
+				if (FAILED(pWriter->WriteStartElement(nullptr, L"DaysAfterInitiation", nullptr)))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 				if (FAILED(pWriter->WriteString(TO_UNICODE(FmtNum(it->dwAbortIncompleteMultipartUploadDays)))))
 					throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -7365,12 +7398,12 @@ DWORD CECSConnection::SetRootCertificate(
 		0,
 		dwCertOpenFlags,
 		pszStoreName);
-	if (hCertStore == NULL)
+	if (hCertStore == nullptr)
 		return GetLastError();
 
 	// add the certificate
 	if (!CertAddSerializedElementToStore(hCertStore, CertInfo.SerializedCert.GetData(), CertInfo.SerializedCert.GetBufSize(),
-		CERT_STORE_ADD_REPLACE_EXISTING, 0, CERT_STORE_CERTIFICATE_CONTEXT_FLAG, NULL, NULL))
+		CERT_STORE_ADD_REPLACE_EXISTING, 0, CERT_STORE_CERTIFICATE_CONTEXT_FLAG, nullptr, nullptr))
 	{
 		dwError = GetLastError();
 		(void)CertCloseStore(hCertStore, 0);

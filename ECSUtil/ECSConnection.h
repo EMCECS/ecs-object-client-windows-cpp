@@ -30,7 +30,7 @@ const UINT MaxRetryCount = 5;
 const UINT MaxWriteRequest = 0;
 const UINT MaxWriteRequestThrottle = 8192;
 const UINT MaxS3DeleteObjects = 1000;				// maximum number of objects to delete in one command (S3)
-const UINT MaxStreamQueueSize = 30;					// maximum size of stream queue. if there is a mismatch between the queue feed and consumer, you don't want it to grow too big
+const UINT DefaultMaxStreamQueueSizeRecv = 1024;	// maximum size of stream queue. if there is a mismatch between the queue feed and consumer, you don't want it to grow too big
 const UINT DefaultS3AuthV4ChunkSize = 0x200000;		// default chunk size when using v4 auth. this ends up being the buffer size when streaming writes
 
 
@@ -987,9 +987,11 @@ private:
 	struct HTTP_CALLBACK_EVENT
 	{
 		CEvent evCmd;								// event is fired when async callback is received
+		CEvent evExit;								// event is fired when callback has cleared all destructors
 
 		HTTP_CALLBACK_EVENT()
 			: evCmd(false, true)
+			, evExit(false, true)
 		{
 		}
 
@@ -1007,26 +1009,37 @@ private:
 		};		//lint !e1539	// members not assigned by assignment operator
 	};
 
+	struct CMD_RECEIVED
+	{
+		DWORD dwInternetStatus = 0;
+		FILETIME ftCmdTime;
+		CMD_RECEIVED()
+		{
+			ZeroFT(ftCmdTime);
+		}
+	};
+
 	// http async context
 	struct HTTP_CALLBACK_CONTEXT
 	{
-		CCriticalSection csContext;
+		CRWLock rwlContext;
 		HTTP_CALLBACK_EVENT Event;					// event is fired when async callback is received
 		WINHTTP_ASYNC_RESULT Result;				// if error, this contains the error code
-		vector<DWORD> CallbacksReceived;			// the last callbacks received
-		DWORD dwReadLength;							// WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE, WINHTTP_CALLBACK_STATUS_READ_COMPLETE
-		DWORD dwBytesWritten;						// WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE
-		DWORD dwSecureError;						// explanation for SSL errors (WINHTTP_CALLBACK_STATUS_FLAG_...)
-		bool bHeadersAvail;							// WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE
-		bool bSendRequestComplete;					// WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE
-		bool bFailed;								// WINHTTP_CALLBACK_STATUS_REQUEST_ERROR
-		bool bComplete;								// set if the command has completed
-		bool bHandleCreated;						// WINHTTP_CALLBACK_STATUS_HANDLE_CREATED
-		bool bHandleClosing;						// WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING
-		bool *pbCallbackRegistered;					// pointer to flag indicating the callback has been registered
-		bool bDisableSecureLog;						// if set, don't log security errors in the callback
-		BYTE *pReadData;							// WINHTTP_CALLBACK_STATUS_READ_COMPLETE
-		CECSConnection *pHost;							// allow access to the host record
+		list<CMD_RECEIVED> CallbacksReceived;		// the last callbacks received
+		DWORD dwReadLength = 0;						// WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE, WINHTTP_CALLBACK_STATUS_READ_COMPLETE
+		DWORD dwBytesWritten = 0;					// WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE
+		DWORD dwSecureError = 0;					// explanation for SSL errors (WINHTTP_CALLBACK_STATUS_FLAG_...)
+		long lExitFlag = 0;							// set nonzero when callback has run all destructors and the underlying structure can be deleted - use Interlock routines for access
+		bool bHeadersAvail = false;					// WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE
+		bool bSendRequestComplete = false;			// WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE
+		bool bFailed = false;						// WINHTTP_CALLBACK_STATUS_REQUEST_ERROR
+		bool bComplete = false;						// set if the command has completed
+		bool bHandleCreated = false;				// WINHTTP_CALLBACK_STATUS_HANDLE_CREATED
+		bool bHandleClosing = false;				// WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING
+		bool *pbCallbackRegistered = false;			// pointer to flag indicating the callback has been registered
+		bool bDisableSecureLog = false;				// if set, don't log security errors in the callback
+		BYTE *pReadData = nullptr;					// WINHTTP_CALLBACK_STATUS_READ_COMPLETE
+		CECSConnection *pHost = nullptr;			// allow access to the host record
 
 		HTTP_CALLBACK_CONTEXT()
 		{
@@ -1036,7 +1049,7 @@ private:
 
 		void Reset()
 		{
-			CSingleLock lock(&csContext, true);
+			CRWLockAcquire lock(&rwlContext, true);
 			ZeroMemory(&Result, sizeof(Result));
 			dwReadLength = 0;
 			dwBytesWritten = 0;
@@ -1052,6 +1065,7 @@ private:
 			bDisableSecureLog = false;
 			dwSecureError = 0;
 			pHost = nullptr;
+			Event.evCmd.ResetEvent();
 		}
 	};
 
@@ -1278,23 +1292,24 @@ private:
 	CString sUserAgent;
 	deque<CString> IPListHost;				// list of IP addresses/DNS host names to access this server. protected by rwlIPListHost
 	mutable CSimpleRWLock rwlIPListHost;	// lock for IPListHost
-	INTERNET_PORT Port;
-	bool bSSL;								// use HTTPS if set
-	bool bUseDefaultProxy;					// if set and sProxy is empty, use default proxy (see netsh winhttp)
-	bool bTestConnection;					// if test connection, timeout quickly and don't do anything unnecessary for the test
+	INTERNET_PORT Port = INTERNET_DEFAULT_HTTP_PORT;
+	bool bSSL = false;								// use HTTPS if set
+	bool bUseDefaultProxy = true;					// if set and sProxy is empty, use default proxy (see netsh winhttp)
+	bool bTestConnection = false;					// if test connection, timeout quickly and don't do anything unnecessary for the test
 	CString sProxy;							// optional proxy server
-	DWORD dwProxyPort;						// if sProxy not emtpy, contains the port for the proxy
+	DWORD dwProxyPort = 0;						// if sProxy not emtpy, contains the port for the proxy
 	CString sProxyUser;						// proxy server authentication
 	CString sProxyPassword;					// proxy server password
-	DWORD dwHttpsProtocol;					// bit field of acceptable protocols
-	bool bCheckShutdown;					// if set, then abort request if during service shutdown (default)
-	ECS_DISCONNECT_CB DisconnectCB;			// disconnect callback
+	DWORD dwHttpsProtocol = 0;					// bit field of acceptable protocols
+	bool bCheckShutdown = true;					// if set, then abort request if during service shutdown (default)
+	ECS_DISCONNECT_CB DisconnectCB = nullptr;			// disconnect callback
+	DWORD dwMaxStreamQueueSizeRecv = DefaultMaxStreamQueueSizeRecv;	// maximum receive queue size
 
 	// S3 settings
 	CString sS3KeyID;						// S3 Key ID
-	CString sS3Region;						// S3 region (ie us-east-1)
-	bool bS3AuthV4;							// true if S3 V4 authorization
-	UINT uS3AuthV4ChunkSize;				// if S3 V4 auth, the size of the chunks
+	CString sS3Region = _T("us-east-1");						// S3 region (ie us-east-1)
+	bool bS3AuthV4 = true;							// true if S3 V4 authorization
+	UINT uS3AuthV4ChunkSize = DefaultS3AuthV4ChunkSize;				// if S3 V4 auth, the size of the chunks
 
 	mutable CSimpleRWLock lwrS3V4SigningKey;// critical section protecting GlobalS3V4SigningKey
 	CBuffer GlobalS3V4SigningKey;			// if S3 V4, calculated signing key (good for a week)
@@ -1303,17 +1318,17 @@ private:
 	CECSConnectionStateCS StateList;		// this is in a substruct because we don't want the state list to be assigned or copied
 
 	// timeout values
-	DWORD dwWinHttpOptionConnectRetries;
-	DWORD dwWinHttpOptionConnectTimeout;	// default 60 sec
-	DWORD dwWinHttpOptionReceiveResponseTimeout;	// default 90 sec
-	DWORD dwWinHttpOptionReceiveTimeout;	// default 30 sec
-	DWORD dwWinHttpOptionSendTimeout;		// default 30 sec
-	DWORD dwLongestTimeout;					// use this to determine the longest time to wait for any one command to finish
-	DWORD dwBadIPAddrAge;					// how long a bad IP entry in the host entry will stay bad before being put back into service (seconds)
+	DWORD dwWinHttpOptionConnectRetries = 0;
+	DWORD dwWinHttpOptionConnectTimeout = 0;	// default 60 sec
+	DWORD dwWinHttpOptionReceiveResponseTimeout = 0;	// default 90 sec
+	DWORD dwWinHttpOptionReceiveTimeout = 0;	// default 30 sec
+	DWORD dwWinHttpOptionSendTimeout = 0;		// default 30 sec
+	DWORD dwLongestTimeout = 0;					// use this to determine the longest time to wait for any one command to finish
+	DWORD dwBadIPAddrAge = 0;					// how long a bad IP entry in the host entry will stay bad before being put back into service (seconds)
 
-	DWORD dwMaxWriteRequest;				// if non-zero, this specifies the maximum write request. larger requests should be broken into smaller ones
+	DWORD dwMaxWriteRequest = MaxWriteRequest;				// if non-zero, this specifies the maximum write request. larger requests should be broken into smaller ones
 
-	DWORD dwHttpSecurityFlags;				// global default for security flags (see WinHttpSetOption, WINHTTP_OPTION_SECURITY_FLAGS)
+	DWORD dwHttpSecurityFlags = 0;				// global default for security flags (see WinHttpSetOption, WINHTTP_OPTION_SECURITY_FLAGS)
 
 	// throttle info
 
@@ -1503,6 +1518,7 @@ private:
 	void DeleteS3Send(void);
 	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG ullObjSize, const list<HEADER_STRUCT> *pMDList);
+	void WaitForCallbackDone(CECSConnectionState& State);
 
 public:
 	CECSConnection();
