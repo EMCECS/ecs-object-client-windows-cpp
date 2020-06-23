@@ -32,7 +32,7 @@ static char THIS_FILE[] = __FILE__;
 
 // initialize strings: all special characters that are SAFE (not encoded)
 // alphanumerics are always safe
-const char *pSAFEInit = "-_./";		// naming rules: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
+const char *pSAFEInit = "-./_~";		// naming rules: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
 const char *pSAFEAllInit = "/";
 const char *pSAFEv4AuthInit = "-./_~";
 const char *pSAFEv4AuthSlashInit = "-._~";
