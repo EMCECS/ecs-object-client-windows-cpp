@@ -33,7 +33,7 @@
 CWinApp theApp;
 
 
-const TCHAR * const USAGE =
+const TCHAR* const USAGE =
 _T("Usage:\n\n")
 _T("   /http                               Don't use SSL\n")
 _T("   /https                              Use SSL (default)\n")
@@ -55,7 +55,12 @@ _T("   /cert                               Display certificate even if connect s
 _T("   /setcert                            Prompt user to install certificate\n")
 _T("   /dtquery <namespace> <bucket> <object> DT Query for object\n")
 _T("   /createbucket <bucket>              Create ECS bucket\n")
-_T("   /retention <seconds>                Used with /createbucket to set bucket-level retention\n");
+_T("   /retention <seconds>                Used with /createbucket to set bucket-level retention\n")
+_T("   /ignoresslerror <error>             Ignore specified error. Options are:\n")
+_T("                                          SECURITY_FLAG_IGNORE_UNKNOWN_CA\n")
+_T("                                          SECURITY_FLAG_IGNORE_CERT_DATE_INVALID\n")
+_T("                                          SECURITY_FLAG_IGNORE_CERT_CN_INVALID\n")
+_T("                                          SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE\n");
 
 
 const TCHAR * const CMD_OPTION_ENDPOINT = _T("/endpoint");
@@ -85,6 +90,7 @@ const TCHAR * const CMD_OPTION_RETENTION = _T("/retention");
 const TCHAR * const CMD_OPTION_HELP1 = _T("--help");
 const TCHAR * const CMD_OPTION_HELP2 = _T("-h");
 const TCHAR * const CMD_OPTION_HELP3 = _T("/?");
+const TCHAR * const CMD_OPTION_IGNORE_SSL_ERROR = _T("/ignoresslerror");
 
 WSADATA WsaData;
 
@@ -107,6 +113,8 @@ CString sCreateBucket;
 
 CString sProxyAddr;
 WORD wProxyPort = 0;
+
+DWORD dwSSLIgnoreError = 0;
 
 bool bHttps = true;
 bool bCert = false;
@@ -421,6 +429,28 @@ static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
 			}
 			dwRetention = _wtol(*itParam);
 		}
+		else if (itParam->CompareNoCase(CMD_OPTION_IGNORE_SSL_ERROR) == 0)
+		{
+			++itParam;
+			if (itParam == CmdArgs.end())
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+			if (itParam->CompareNoCase(_T("SECURITY_FLAG_IGNORE_UNKNOWN_CA")) == 0)
+				dwSSLIgnoreError |= SECURITY_FLAG_IGNORE_UNKNOWN_CA;
+			else if (itParam->CompareNoCase(_T("SECURITY_FLAG_IGNORE_CERT_DATE_INVALID")) == 0)
+				dwSSLIgnoreError |= SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+			else if (itParam->CompareNoCase(_T("SECURITY_FLAG_IGNORE_CERT_CN_INVALID")) == 0)
+				dwSSLIgnoreError |= SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
+			else if (itParam->CompareNoCase(_T("SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE")) == 0)
+				dwSSLIgnoreError |= SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE;
+			else
+			{
+				sOutMessage = USAGE;
+				return false;
+			}
+		}
 		else if (itParam->CompareNoCase(CMD_OPTION_HELP1) == 0 ||
 			itParam->CompareNoCase(CMD_OPTION_HELP2) == 0 ||
 			itParam->CompareNoCase(CMD_OPTION_HELP3) == 0 ||
@@ -542,8 +572,8 @@ static int DoTest(CString& sOutMessage)
 	Conn.SetHttpsProtocol(WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2);
 	Conn.SetRegion(_T("us-east-1"));
 	Conn.SetHostAuth(bV4);
-//	Conn.SetHTTPSecurityFlags(/*SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | */SECURITY_FLAG_IGNORE_UNKNOWN_CA/* | SECURITY_FLAG_IGNORE_CERT_CN_INVALID*/);
-//	Conn.SetHTTPSecurityFlags(SECURITY_FLAG_IGNORE_CERT_DATE_INVALID | SECURITY_FLAG_IGNORE_UNKNOWN_CA);
+	if (dwSSLIgnoreError != 0)
+		Conn.SetHTTPSecurityFlags(dwSSLIgnoreError);
 	if (!sProxyAddr.IsEmpty() && (wProxyPort != 0))
 		Conn.SetProxy(false, sProxyAddr, wProxyPort, nullptr, nullptr);
 	Conn.SetTimeouts(10, SECONDS(180), SECONDS(180), SECONDS(180), SECONDS(180), 10);
