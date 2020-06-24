@@ -32,6 +32,7 @@ using namespace std;
 #include "UriUtils.h"
 #include "NTERRTXT.H"
 #include "ECSConnection.h"
+#include "GetAllThreads.h"
 
 #pragma comment(lib, "Winhttp.lib")
 #pragma comment(lib, "Crypt32.lib")
@@ -5062,10 +5063,12 @@ void CECSConnection::GarbageCollect()
 			++itMap;
 		}
 	}
+	map<DWORD, THREADENTRY32> ThreadMap;
+	if (GetAllThreadsForProcess(GetCurrentProcessId(), ThreadMap) == ERROR_SUCCESS)
 	{
 		FILETIME ftExpire;
 		GetSystemTimeAsFileTime(&ftExpire);
-		ftExpire = ftExpire - FT_HOURS(4);						// any entries not touched for a while are removed
+		ftExpire = ftExpire - FT_MINUTES(15);						// any entries not touched for a while are removed
 		CSingleLock lockThrottle(&csThrottleMap, true);
 		for (list<CECSConnection *>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
 		{
@@ -5075,9 +5078,16 @@ void CECSConnection::GarbageCollect()
 				for (map<DWORD, shared_ptr<CECSConnectionState>>::iterator itMap = (*itConn)->StateList.StateMap.begin(); itMap != (*itConn)->StateList.StateMap.end(); )
 				{
 					if ((itMap->second->ulReferenceCount == 0) && !IfFTZero(itMap->second->ftLastUsed) && (itMap->second->ftLastUsed < ftExpire))
-						itMap = (*itConn)->StateList.StateMap.erase(itMap);
-					else
-						++itMap;
+					{
+						// if thread no longer exists, remove the entry
+						const auto itThrd = ThreadMap.find(itMap->first);
+						if (itThrd == ThreadMap.end())
+						{
+							itMap = (*itConn)->StateList.StateMap.erase(itMap);
+							continue;
+						}
+					}
+					++itMap;
 				}
 			}
 		}

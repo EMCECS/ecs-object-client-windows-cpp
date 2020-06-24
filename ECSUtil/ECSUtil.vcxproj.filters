@@ -69,6 +69,9 @@
     <ClCompile Include="ECSGlobal.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="GetAllThreads.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ECSUtil.h">
@@ -150,6 +153,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="dyndll.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GetAllThreads.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
