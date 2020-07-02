@@ -1022,7 +1022,7 @@ private:
 	// http async context
 	struct HTTP_CALLBACK_CONTEXT
 	{
-		CRWLock rwlContext;
+		CCriticalSection csContext;
 		HTTP_CALLBACK_EVENT Event;					// event is fired when async callback is received
 		WINHTTP_ASYNC_RESULT Result;				// if error, this contains the error code
 		list<CMD_RECEIVED> CallbacksReceived;		// the last callbacks received
@@ -1049,7 +1049,7 @@ private:
 
 		void Reset()
 		{
-			CRWLockAcquire lock(&rwlContext, true);
+			CSingleLock lock(&csContext, true);
 			ZeroMemory(&Result, sizeof(Result));
 			dwReadLength = 0;
 			dwBytesWritten = 0;

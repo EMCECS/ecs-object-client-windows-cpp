@@ -277,7 +277,7 @@ void CECSConnection::PrepareCmd()
 	ASSERT(State.Ref->dwCurrentThread == 0);
 	State.Ref->dwCurrentThread = GetCurrentThreadId();
 	{
-		CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
+		CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 
 		VERIFY(State.Ref->CallbackContext.Event.evCmd.ResetEvent());
 		State.Ref->CallbackContext.Reset();
@@ -292,7 +292,7 @@ void CECSConnection::CleanupCmd()
 	CStateRef State(this);
 	ASSERT(State.Ref->dwCurrentThread != 0);
 	State.Ref->dwCurrentThread = 0;
-	CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, false);			// read lock
+	CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 
 	State.Ref->dwSecureError = State.Ref->CallbackContext.dwSecureError;		// any security error is passed back to the main class
 }
@@ -311,7 +311,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		// check for thread exit (but not if we are waiting for the handle to close)
 		if ((dwCallbackExpected != WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING) && TestAbort())
 		{
-			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 			State.Ref->CallbackContext.Result.dwError = ERROR_OPERATION_ABORTED;
 			State.Ref->CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
@@ -319,7 +319,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		}
 		if (dwError == WAIT_OBJECT_0)
 		{
-			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 			bool bGotIt = false;
 			// command finished!
 			for (list<CMD_RECEIVED>::const_iterator it = State.Ref->CallbackContext.CallbacksReceived.begin()
@@ -344,7 +344,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		}
 		else if (dwError == WAIT_TIMEOUT)
 		{
-			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 			iTimeout++;
 			if (iTimeout > iTimeoutMax)
 			{
@@ -356,7 +356,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 		}
 		else if (dwError == WAIT_FAILED)
 		{
-			CRWLockAcquire lock(&State.Ref->CallbackContext.rwlContext, true);
+			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 			State.Ref->CallbackContext.Result.dwError = GetLastError();
 			State.Ref->CallbackContext.Result.dwResult = 0;
 			CleanupCmd();
@@ -1090,10 +1090,10 @@ void CALLBACK CECSConnection::HttpStatusCallback(
 	HTTP_CALLBACK_CONTEXT* pContext = (HTTP_CALLBACK_CONTEXT*)dwContext;
 	ASSERT(pContext != nullptr);
 	// this callback can run on any thread, so this needs to be synchronized with the initiating thread (SendRequestInternal)
-	// it has been possible that the lock (pContext->rwlContext) is not fully destroyed before the destructor is called on the HTTP_CALLBACK_CONTEXT structure
+	// it has been possible that the lock (pContext->csContext) is not fully destroyed before the destructor is called on the HTTP_CALLBACK_CONTEXT structure
 	// the lock is put in its own block and a flag and event are used to make sure the caller doesn't exit until the lock below is fully destroyed
 	{
-		CRWLockAcquire lock(&pContext->rwlContext, true);
+		CSingleLock lock(&pContext->csContext, true);
 		pContext->Event.evExit.ResetEvent();						// reset exit event
 		InterlockedExchange(&pContext->lExitFlag, 0);				// reset exit flag
 #ifdef DEBUG
@@ -2624,7 +2624,7 @@ void CECSConnection::WaitForCallbackDone(CECSConnectionState& State)
 	// wait for lExitFlag to be 1
 	while (InterlockedAdd(&State.CallbackContext.lExitFlag, 0) == 0)
 	{
-		WaitForSingleObject(State.CallbackContext.Event.evExit.m_hObject, SECONDS(1));
+		WaitForSingleObject(State.CallbackContext.Event.evExit.m_hObject, 10);
 	}
 }
 
