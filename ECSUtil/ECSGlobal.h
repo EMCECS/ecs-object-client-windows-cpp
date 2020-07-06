@@ -22,5 +22,5 @@
 #include "SimpleWorkerThread.h"
 
 
-void ECSUTIL_EXT_API ECSInitLib(DWORD dwGarbageCollectInterval = MINUTES(1));
+void ECSUTIL_EXT_API ECSInitLib(DWORD dwGarbageCollectInterval = MINUTES(5));
 void ECSUTIL_EXT_API ECSTermLib(void);

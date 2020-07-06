@@ -238,14 +238,7 @@ shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWOR
 			InterlockedIncrement(&ret.first->second->ulReferenceCount);
 		ASSERT(ret.first->second->pECSConnection == this);
 		SetPerfStateSize(1);
-		shared_ptr<CECSConnection::CECSConnectionState> StateRet = ret.first->second;
-		// if the map is getting large, don't wait for the periodic garbage collection. do it now
-		if (MapSize > 500)
-		{
-			lock.Unlock();
-			GarbageCollect();
-		}
-		return StateRet;
+		return ret.first->second;
 	}
 	ASSERT(itState->second->pECSConnection == this);
 	if (bIncRef)
@@ -5063,6 +5056,7 @@ void CECSConnection::GarbageCollect()
 			++itMap;
 		}
 	}
+	// make sure this section doesn't get called frequently. GetAllThreadsForProcess() takes a relatively LONG time
 	map<DWORD, THREADENTRY32> ThreadMap;
 	if (GetAllThreadsForProcess(GetCurrentProcessId(), ThreadMap) == ERROR_SUCCESS)
 	{
