@@ -1166,7 +1166,7 @@ private:
 	// all state fields. These are not copied during assignment or copy constructor
 	struct CECSConnectionState
 	{
-		ULONG ulReferenceCount;					// if 0, no threads are using this record
+		volatile LONG ulReferenceCount;			// if 0, no threads are using this record
 		FILETIME ftLastUsed;					// time of last use. used in garbage collect
 		CECSConnection *pECSConnection;			// pointer to parent record
 		CECSConnectionSession Session;			// current allocated session (cached hSession and hConnect)
@@ -1265,7 +1265,7 @@ private:
 
 	struct CECSConnectionStateCS
 	{
-		mutable CRWLock rwlStateMap;		// lock for StateMap
+		mutable CSimpleRWLock rwlStateMap;		// lock for StateMap
 		mutable map<DWORD, shared_ptr<CECSConnectionState>> StateMap;
 
 		CECSConnectionStateCS()
@@ -1460,6 +1460,7 @@ private:
 		CStateRef(CECSConnection *pConnParam = nullptr);
 		~CStateRef();
 	};
+
 	static CCriticalSection csBadIPMap;
 	static map<BAD_IP_KEY,BAD_IP_ENTRY> BadIPMap;
 	static map<CString,UINT> LoadBalMap;					// global IP selector for all entries
@@ -1474,7 +1475,7 @@ private:
 	volatile ULONG *pulMaxStateMapSize = nullptr;
 	void SetPerfStateSize(long lDiff);
 
-	shared_ptr<CECSConnectionState> GetStateBuf(DWORD dwThreadID = 0, bool bIncRef = false);
+	shared_ptr<CECSConnectionState> GetStateBuf();
 	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCTSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
 	static CString GetCanonicalTime(const SYSTEMTIME *pstTime = nullptr);
 	static FILETIME ParseCanonicalTime(LPCTSTR pszCanonTime);
@@ -1638,6 +1639,16 @@ public:
 	S3_ERROR ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, bool bShowValue, LPCTSTR pszRandom, DT_QUERY_RESPONSE& Response);
 
 	static DWORD MaxMetadataBinarySize(void);
+
+	class CStateReserve
+	{
+	private:
+		CStateRef State;
+	public:
+		CStateReserve(CECSConnection* pConn = nullptr)
+			: State(pConn)
+		{}
+	};
 };
 
 ECSUTIL_EXT_API extern std::wostream& operator<<(std::wostream& os, const CECSConnection::S3_SYSTEM_METADATA& Rec);

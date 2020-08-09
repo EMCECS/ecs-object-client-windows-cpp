@@ -182,6 +182,7 @@ CECSConnection::S3_ERROR S3Read(
 	void *pContext,											// context for UpdateProgressCB
 	ULONGLONG *pullReturnedLength)					// optional output returned size
 {
+	CECSConnection::CStateReserve StateReserve(&Conn);
 	CS3ReadThread ReadThread;						// thread object
 	CSharedQueueEvent MsgEvent;						// event that new data was pushed on the read queue
 	DWORD dwError;
@@ -399,6 +400,7 @@ CECSConnection::S3_ERROR S3Write(
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext)											// context for UpdateProgressCB
 {
+	CECSConnection::CStateReserve StateReserve(&Conn);
 	CS3WriteThread WriteThread;						// thread object
 	CECSConnection::STREAM_DATA_ENTRY WriteRec;
 	CBuffer WriteBuf;
@@ -640,6 +642,7 @@ bool DoS3MultiPartUpload(
 	void *pContext,											// context for UpdateProgressCB
 	CECSConnection::S3_ERROR& Error)						// returned error
 {
+	CECSConnection::CStateReserve StateReserve(&Conn);
 	const DWORD dwMaxParts = 1000;							// don't go over 1000 parts
 	CSyncObject *EventArray[MAXIMUM_WAIT_OBJECTS];
 	DWORD nEventList;
@@ -949,6 +952,7 @@ bool DoS3MultiPartUpload(
 
 bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<CMPUPoolMsg>& Msg)
 {
+	CECSConnection::CStateReserve StateReserve(&Msg->Conn);
 	{
 		CSingleLock lock(&Pending.csPendingList, true);
 		// check if this request has already been aborted

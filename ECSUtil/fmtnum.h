@@ -23,30 +23,10 @@
 #include "exportdef.h"
 #include <sstream>
 #include <iomanip>
+#include <type_traits>
 #include "cbuffer.h"
 
 ECSUTIL_EXT_API CString InsertCommas(LPCTSTR szNum);	// insert commas into the number dependent on the current locale
-
-//
-// formatting functions to be used with the CString library
-//
-template <class T, class chartype>
-inline std::basic_string<chartype> numToTString(T t)
-{
-	std::basic_ostringstream<chartype> o;
-	o << t;
-	return o.str();
-}
-template <class T>
-inline std::string numToString(T t)
-{
-	return numToTString<T,char>(t);
-}
-template <class T>
-inline std::wstring numToString(T t)
-{
-	return numToTString<T,wchar_t>(t);
-}
 
 template <class T>
 inline CString FmtNum(
@@ -56,17 +36,28 @@ inline CString FmtNum(
 	bool hex_flag = false,			// true hex, false decimal
 	bool comma_flag = false)		// true: insert comma's dependent on the locale
 {
-#ifdef _UNICODE
-	wchar_t fillch = lead_zero ? L'0' : L' ';
-	std::basic_ostringstream<wchar_t> o;
-#else
-	char fillch = lead_zero ? '0' : ' ';
-	std::basic_ostringstream<char> o;
-#endif
-	o << std::setw(width) << std::setfill(fillch) << std::setbase(hex_flag ? 16 : 10) << t;
+	if (!std::is_integral<T>::value)
+		return _T("Bad Type");
+	if ((sizeof(T) == 1) && (sizeof(T) == 2) && (sizeof(T) == 4) && (sizeof(T) == 8))
+		return _T("Bad Size");
+	// %[flags][width][size]type
+	CString sOut;
+	TCHAR FmtStr[20];
+	TCHAR WidthStr[20];
+	WidthStr[0] = _T('\0');
+	if (width > 0)
+		_itot_s(width, WidthStr, 10);
+	_tcscpy_s(FmtStr, _T("%"));
+	if (lead_zero && (width > 0))
+		_tcscat_s(FmtStr, _T("0"));
+	_tcscat_s(FmtStr, WidthStr);
+	_tcscat_s(FmtStr, (sizeof(T) == 1) ? _T("hh") : (sizeof(T) == 2) ? _T("h") : (sizeof(T) == 4) ? _T("l") : _T("ll"));
+	_tcscat_s(FmtStr, hex_flag ? _T("x") : (std::is_signed<T>::value) ? _T("d") : _T("u"));
+	sOut.Format(FmtStr, t);
+
 	if (comma_flag)
-		return InsertCommas(o.str().c_str());
-	return CString(o.str().c_str());
+		return InsertCommas(sOut);
+	return sOut;
 }
 
 //

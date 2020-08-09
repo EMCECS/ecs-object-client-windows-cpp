@@ -218,12 +218,11 @@ void CECSConnection::SetPerfStateSize(long lDiff)
 	}
 }
 
-shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWORD dwThreadID, bool bIncRef)
+shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf()
 {
-	if (dwThreadID == 0)
-		dwThreadID = GetCurrentThreadId();
+	DWORD dwThreadID = GetCurrentThreadId();
 
-	CRWLockAcquire lock(&StateList.rwlStateMap, false);			// read lock
+	CSimpleRWLockAcquire lock(&StateList.rwlStateMap, false);			// read lock
 																		// this will either insert it or if it already exists, return the existing entry for this thread
 	map<DWORD, shared_ptr<CECSConnectionState>>::iterator itState = StateList.StateMap.find(dwThreadID);
 	if (itState == StateList.StateMap.end())
@@ -233,16 +232,23 @@ shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf(DWOR
 		size_t MapSize = StateList.StateMap.size();
 		pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_shared<CECSConnectionState>()));
 		if (ret.second)
+		{
 			ret.first->second->pECSConnection = this;
-		if (bIncRef)
-			InterlockedIncrement(&ret.first->second->ulReferenceCount);
+			SetPerfStateSize(1);
+		}
+		InterlockedIncrement(&ret.first->second->ulReferenceCount);
 		ASSERT(ret.first->second->pECSConnection == this);
-		SetPerfStateSize(1);
-		return ret.first->second;
+		shared_ptr<CECSConnection::CECSConnectionState> StateRet = ret.first->second;
+		// if the map is getting large, don't wait for the periodic garbage collection. do it now
+		if (MapSize > 500)
+		{
+			lock.Unlock();
+			GarbageCollect();
+		}
+		return StateRet;
 	}
 	ASSERT(itState->second->pECSConnection == this);
-	if (bIncRef)
-		InterlockedIncrement(&itState->second->ulReferenceCount);
+	InterlockedIncrement(&itState->second->ulReferenceCount);
 	return itState->second;
 }
 
@@ -251,7 +257,7 @@ CECSConnection::CStateRef::CStateRef(CECSConnection *pConnParam)
 {
 	if (pConn != nullptr)
 	{
-		Ref = pConn->GetStateBuf(0, true);
+		Ref = pConn->GetStateBuf();
 	}
 }
 
@@ -259,8 +265,9 @@ CECSConnection::CStateRef::~CStateRef()
 {
 	if (Ref)
 	{
-		InterlockedDecrement(&Ref->ulReferenceCount);
+		// ftLastUsed is read only if ulReferenceCount is 0
 		GetSystemTimeAsFileTime(&Ref->ftLastUsed);		// no lock needed since only this thread will update these fields
+		InterlockedDecrement(&Ref->ulReferenceCount);
 	}
 }
 
@@ -463,7 +470,7 @@ void CECSConnection::CThrottleTimerThread::DoWork()
 		{
 			if ((*itList)->sHost == itMap->first)
 			{
-				CRWLockAcquire lockStateMap(&(*itList)->StateList.rwlStateMap, false);
+				CSimpleRWLockAcquire lockStateMap(&(*itList)->StateList.rwlStateMap, false);
 				map<DWORD,shared_ptr<CECSConnectionState>>::iterator itStateMap;
 				for (itStateMap = (*itList)->StateList.StateMap.begin(); itStateMap != (*itList)->StateList.StateMap.end(); ++itStateMap)
 					VERIFY(itStateMap->second->evThrottle.SetEvent());
@@ -682,7 +689,7 @@ void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, U
 	// get the current state info
 	if (pulStateMapSize != nullptr)
 	{
-		CRWLockAcquire lock(&StateList.rwlStateMap, true);			// write lock
+		CSimpleRWLockAcquire lock(&StateList.rwlStateMap, true);			// write lock
 		SetPerfStateSize((LONG)StateList.StateMap.size());
 	}
 }
@@ -2692,13 +2699,10 @@ void CECSConnection::SetSSL(bool bSSLParam)
 
 void CECSConnection::SetHostAuth(bool bAuthV4, UINT uS3AuthV4ChunkSize)
 {
-	if (!sHost.IsEmpty())
-	{
-		CSimpleRWLockAcquire lockWrite(&lwrS3V4SigningKey, true);		// write lock
+	CSimpleRWLockAcquire lockWrite(&lwrS3V4SigningKey, true);		// write lock
 
-		bS3AuthV4 = bAuthV4;
-		uS3AuthV4ChunkSize = uS3AuthV4ChunkSize;
-	}
+	bS3AuthV4 = bAuthV4;
+	uS3AuthV4ChunkSize = uS3AuthV4ChunkSize;
 }
 
 bool CECSConnection::IfS3v4(UINT *puChunkSize) const
@@ -2775,6 +2779,7 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 	list <HEADER_REQ> *pReq)							// if non-nullptr, return headers from result of PUT call
 {
 	S3_ERROR Error;
+	CStateRef State(this);
 	try
 	{
 		CBuffer RetData;
@@ -2810,6 +2815,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 	const list<CECSConnection::HEADER_STRUCT> *pMDList,
 	const list<CString> *pDeleteTagParam)
 {
+	CStateRef State(this);
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
 	CString sOldPathS3(pszOldPath), sNewPathS3(pszNewPath);
@@ -2909,6 +2915,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 
 CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId)
 {
+	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
@@ -4104,6 +4111,7 @@ HRESULT XmlS3ServiceInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader 
 // this is used mostly as way to know if the server is up and can be connected to
 CECSConnection::S3_ERROR CECSConnection::S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo)
 {
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
@@ -4179,6 +4187,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 {
 	const ULONGLONG MULTIPART_SIZE = GIGABYTES(1ULL);		// each part will be 1GB
 
+	CStateRef State(this);
 	S3_ERROR Error;
 	CBuffer RetData;
 	list<HEADER_REQ> Req;
@@ -4252,10 +4261,10 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 
 CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const list<HEADER_STRUCT>& MDListParam, const list<CString> *pDeleteTagParam)
 {
+	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
-		CStateRef State(this);
 		list<HEADER_STRUCT> MDList = MDListParam;
 		CBuffer RetData;
 		list<HEADER_REQ> Req;
@@ -4429,6 +4438,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadACL(
 	deque<CECSConnection::ACL_ENTRY>& Acls,
 	LPCTSTR pszVersion)
 {
+	CStateRef State(this);
 	CBuffer RetData;
 	S3_ERROR Error;
 	try
@@ -4467,6 +4477,7 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 	const deque<CECSConnection::ACL_ENTRY>& UserAcls,
 	LPCTSTR pszVersion)
 {
+	CStateRef State(this);
 	CBuffer RetData;
 	S3_ERROR Error;
 	S3_SERVICE_INFO S3Info;
@@ -4996,8 +5007,8 @@ void CECSConnection::CECSConnectionSession::ReleaseSession(void) throw()
 				(void)SessionMap.erase(itMap);
 			else
 			{
-				itMap->second.bInUse = false;
 				GetSystemTimeAsFileTime(&itMap->second.ftIdleTime);
+				itMap->second.bInUse = false;
 			}
 		}
 	}
@@ -5036,53 +5047,34 @@ void CECSConnection::KillHostSessions()
 
 void CECSConnection::GarbageCollect()
 {
+	FILETIME ftNow;
+	GetSystemTimeAsFileTime(&ftNow);
 	{
+		FILETIME ftExpire = ftNow - FT_HOURS(1);
 		CSingleLock lock(&csSessionMap, true);
-		FILETIME ftNow;
-		GetSystemTimeAsFileTime(&ftNow);
 		map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
 		for (itMap = SessionMap.begin()
 			; itMap != SessionMap.end()
 			;)
 		{
-			if (!itMap->second.bInUse)
-			{
-				if (ftNow > (itMap->second.ftIdleTime + FT_HOURS(4)))
-				{
-					itMap = SessionMap.erase(itMap);
-					continue;
-				}
-			}
-			++itMap;
+			if (!itMap->second.bInUse && (ftExpire > itMap->second.ftIdleTime))
+				itMap = SessionMap.erase(itMap);
+			else
+				++itMap;
 		}
 	}
-	// make sure this section doesn't get called frequently. GetAllThreadsForProcess() takes a relatively LONG time
-	map<DWORD, THREADENTRY32> ThreadMap;
-	if (GetAllThreadsForProcess(GetCurrentProcessId(), ThreadMap) == ERROR_SUCCESS)
 	{
-		FILETIME ftExpire;
-		GetSystemTimeAsFileTime(&ftExpire);
-		ftExpire = ftExpire - FT_MINUTES(15);						// any entries not touched for a while are removed
+		FILETIME ftExpire = ftNow - FT_MINUTES(2);						// any entries not touched for a while are removed
 		CSingleLock lockThrottle(&csThrottleMap, true);
-		for (list<CECSConnection *>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
+		for (list<CECSConnection*>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
 		{
-			CRWLockAcquire lockState(&(*itConn)->StateList.rwlStateMap, true);			// write lock
-			if ((*itConn)->StateList.StateMap.size() > 100)							// don't bother until this gets big
+			CSimpleRWLockAcquire lockState(&(*itConn)->StateList.rwlStateMap, true);			// write lock
+			for (map<DWORD, shared_ptr<CECSConnectionState>>::iterator itMap = (*itConn)->StateList.StateMap.begin(); itMap != (*itConn)->StateList.StateMap.end(); )
 			{
-				for (map<DWORD, shared_ptr<CECSConnectionState>>::iterator itMap = (*itConn)->StateList.StateMap.begin(); itMap != (*itConn)->StateList.StateMap.end(); )
-				{
-					if ((itMap->second->ulReferenceCount == 0) && !IfFTZero(itMap->second->ftLastUsed) && (itMap->second->ftLastUsed < ftExpire))
-					{
-						// if thread no longer exists, remove the entry
-						const auto itThrd = ThreadMap.find(itMap->first);
-						if (itThrd == ThreadMap.end())
-						{
-							itMap = (*itConn)->StateList.StateMap.erase(itMap);
-							continue;
-						}
-					}
+				if ((InterlockedAdd(&itMap->second->ulReferenceCount, 0) == 0) && !IfFTZero(itMap->second->ftLastUsed) && (itMap->second->ftLastUsed < ftExpire))
+					itMap = (*itConn)->StateList.StateMap.erase(itMap);
+				else
 					++itMap;
-				}
 			}
 		}
 	}
@@ -5141,6 +5133,7 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 	const S3_BUCKET_OPTIONS *pOptions,
 	const list<CECSConnection::HEADER_STRUCT> *pMDList)
 {
+	CStateRef State(this);
 	CBuffer RetData;
 	S3_ERROR Error;
 
@@ -5266,6 +5259,7 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 
 CECSConnection::S3_ERROR CECSConnection::DeleteS3Bucket(LPCTSTR pszBucketName)
 {
+	CStateRef State(this);
 	CBuffer RetData;
 	S3_ERROR Error;
 
@@ -5332,6 +5326,7 @@ HRESULT XmlMultiPartCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRe
 // S3 multipart upload support
 CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<HEADER_STRUCT> *pMDList)
 {
+	CStateRef State(this);
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -5405,6 +5400,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 	const list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>& PartList,
 	S3_MPU_COMPLETE_INFO& MPUCompleteInfo)
 {
+	CStateRef State(this);
 	CECSConnection::S3_ERROR Error;
 	CBuffer RetData;
 	try
@@ -5596,6 +5592,7 @@ HRESULT XmlS3MultiPartListCB(const CStringW& sXmlPath, void *pContext, IXmlReade
 // get a list of all multipart uploads currently active
 CECSConnection::S3_ERROR CECSConnection::S3MultiPartList(LPCTSTR pszBucketName, S3_LIST_MULTIPART_UPLOADS& MultiPartList)
 {
+	CStateRef State(this);
 	CECSConnection::S3_ERROR Error;
 	S3_MULTIPART_LIST_CONTEXT Context;
 	CBuffer RetData;
@@ -5663,6 +5660,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 	ULONGLONG ullStartRange,						// (in) if pszCopySource, this is the start of the range to copy
 	LPCTSTR pszVersionId)							// (in) if pszCopySource, nonNULL: version ID to copy
 {
+	CStateRef State(this);
 	PartEntry.sETag.Empty();
 	CECSConnection::S3_ERROR Error;
 	list<HEADER_REQ> Req;
@@ -5762,6 +5760,7 @@ HRESULT XmlS3VersioningCB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 // return bucket versioning information
 CECSConnection::S3_ERROR CECSConnection::S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning)
 {
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
@@ -5795,6 +5794,7 @@ CECSConnection::S3_ERROR CECSConnection::S3GetBucketVersioning(LPCTSTR pszBucket
 // set version state for bucket
 CECSConnection::S3_ERROR CECSConnection::S3PutBucketVersioning(LPCTSTR pszBucket, CECSConnection::E_S3_VERSIONING Versioning)
 {
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
@@ -6852,6 +6852,7 @@ HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRead
 
 CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTSTR pszBucket, LPCTSTR pszObject, bool bShowValue, LPCTSTR pszRandom, DT_QUERY_RESPONSE& Response)
 {
+	CStateRef State(this);
 	INTERNET_PORT wSavePort = Port;
 	list<HEADER_REQ> Req;
 	CBuffer RetData;
@@ -7064,6 +7065,7 @@ HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReade
 
 CECSConnection::S3_ERROR CECSConnection::S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO & Lifecycle)
 {
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
@@ -7108,6 +7110,7 @@ CECSConnection::S3_ERROR CECSConnection::S3DeleteLifecycle(LPCTSTR pszBucket)
 
 CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const S3_LIFECYCLE_INFO & Lifecycle)
 {
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
@@ -7313,6 +7316,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 	list<HEADER_STRUCT> *pMDList,		// (out, optional) metadata list
 	list<HEADER_REQ> *pReq)					// (out, optional) full header list
 {
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	try
@@ -7330,6 +7334,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 		if (Error.IfError())
 			return Error;
 		Properties.Empty();
+		FILETIME ftEMCMtime = { 0, 0 };
 		for (list<HEADER_REQ>::const_iterator it = pReq->begin(); it != pReq->end(); ++it)
 		{
 			if ((it->sHeader.CompareNoCase(_T("Last-Modified")) == 0) && !it->ContentList.empty())
@@ -7348,6 +7353,12 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 			{
 				Properties.dwRetentionSeconds = _ttoi(it->ContentList.front());
 			}
+			else if ((it->sHeader.CompareNoCase(L"x-emc-mtime") == 0) && !it->ContentList.empty())
+			{
+				LONGLONG llTime = _wtoll(it->ContentList.front());
+				if (llTime > 0)
+					ftEMCMtime = ECSmtimeToFileTime(llTime);
+			}
 			else if ((pMDList != nullptr) && (it->sHeader.Find(sAmzMetaPrefix) == 0))
 			{
 				HEADER_STRUCT Rec;
@@ -7357,6 +7368,9 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 				pMDList->push_back(Rec);
 			}
 		}
+		// if we saw x-emc-mtime, use that since its resolution is better (millisec vs sec)
+		if (!IfFTZero(ftEMCMtime))
+			Properties.ftLastMod = ftEMCMtime;
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -7545,6 +7559,7 @@ HRESULT XmlS3ReplicationInfoCB(const CStringW& sXmlPath, void *pContext, IXmlRea
 
 CECSConnection::S3_ERROR CECSConnection::S3GetReplicationInfo(LPCTSTR pszPath, S3_REPLICATION_INFO& RepInfo)
 {
+	CStateRef State(this);
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
