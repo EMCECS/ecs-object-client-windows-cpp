@@ -531,8 +531,11 @@ static void ProgressCallBack(int iProgress, void *pContext)
 
 static int DoTest(CString& sOutMessage)
 {
+//	AfxMessageBox(L"Attach Debugger");
 	(void)SetConsoleCtrlHandler(ConsoleShutdownHandler, TRUE);
 
+	WINHTTP_SECURITY_INFO SecurityInfo;
+	DWORD dwSecurityInfoError;
 	CECSConnection Conn;
 	CECSConnection::ECS_CERT_INFO CertInfo;
 	// register an "abort pointer" if bShuttingDown gets set to true, the current request will be aborted
@@ -586,7 +589,22 @@ static int DoTest(CString& sOutMessage)
 	CECSConnection::S3_SERVICE_INFO ServiceInfo;
 	if (bListBuckets || bCert || bSetCert)
 	{
+		if (bHttps)
+		{
+			Conn.SetSecurityInfo(&SecurityInfo, &dwSecurityInfoError);
+		}
 		Error = Conn.S3ServiceInformation(ServiceInfo);
+		if (bHttps && !Error.IfError())
+		{
+			if (dwSecurityInfoError != ERROR_SUCCESS)
+			{
+				_tprintf(L"Security Info: Error: %s\n", (LPCTSTR)GetNTErrorText(dwSecurityInfoError));
+			}
+			else
+			{
+				_tprintf(L"Security Info:\n%s\n", (LPCTSTR)Conn.FormatSecurityInfo(SecurityInfo));
+			}
+		}
 		if (Error.IfError())
 		{
 			_tprintf(_T("S3ServiceInformation error: %s\n"), (LPCTSTR)Error.Format());

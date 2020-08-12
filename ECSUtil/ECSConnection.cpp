@@ -20,6 +20,7 @@ using namespace std;
 #include <atlbase.h>
 #include <atlstr.h>
 #include <atlenc.h>
+#include <schannel.h>
 #include <Winhttp.h>
 #include <iostream>
 #include <sstream>
@@ -2589,6 +2590,23 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			}
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 		}
+		if (bSSL && (pSecurityInfo != nullptr))
+		{
+			if (pSecurityInfoError != nullptr)
+				*pSecurityInfoError = ERROR_SUCCESS;
+			ZeroMemory(pSecurityInfo, sizeof(WINHTTP_SECURITY_INFO));
+			// if SSL, get the security info
+			// this call is supported only for Win10 v2004. If it fails, just ignore it
+			DWORD dwBufSize = sizeof(WINHTTP_SECURITY_INFO);
+			if (!WinHttpQueryOption(State.Ref->hRequest, WINHTTP_OPTION_SECURITY_INFO, pSecurityInfo, &dwBufSize))
+			{
+				if (pSecurityInfoError != nullptr)
+					*pSecurityInfoError = GetLastError();
+			}
+			// just do this once
+			pSecurityInfoError = nullptr;
+			pSecurityInfo = nullptr;
+		}
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -2721,6 +2739,12 @@ void CECSConnection::SetRegion(LPCTSTR pszS3Region)
 void CECSConnection::SetS3KeyID(LPCTSTR pszS3KeyID)
 {
 	sS3KeyID = pszS3KeyID;
+}
+
+void CECSConnection::SetSecurityInfo(WINHTTP_SECURITY_INFO* pSecurityInfoParam, DWORD* pSecurityInfoErrorParam)
+{
+	pSecurityInfo = pSecurityInfoParam;
+	pSecurityInfoError = pSecurityInfoErrorParam;
 }
 
 CString CECSConnection::GetS3KeyID()
@@ -7587,4 +7611,122 @@ CECSConnection::S3_ERROR CECSConnection::S3GetReplicationInfo(LPCTSTR pszPath, S
 		Error.sS3Resource = sResource;
 	}
 	return Error;
+}
+
+struct SSL_PROTOCOL_DESC
+{
+	DWORD dwProtocol;
+	const wchar_t* pDescription;
+} SSL_ProtocolTable[] = {
+	{ SP_PROT_TLS1_CLIENT, L"Transport Layer Security 1.0 client-side." },
+	{ SP_PROT_TLS1_SERVER, L"Transport Layer Security 1.0 server-side."},
+	{ SP_PROT_SSL3_CLIENT, L"Secure Sockets Layer 3.0 client-side."},
+	{ SP_PROT_SSL3_SERVER, L"Secure Sockets Layer 3.0 server-side." },
+	{ SP_PROT_TLS1_1_CLIENT, L"Transport Layer Security 1.1 client-side." },
+	{ SP_PROT_TLS1_1_SERVER, L"Transport Layer Security 1.1 server-side." },
+	{ SP_PROT_TLS1_2_CLIENT, L"Transport Layer Security 1.2 client-side." },
+	{ SP_PROT_TLS1_2_SERVER, L"Transport Layer Security 1.2 server-side." },
+	{ SP_PROT_PCT1_CLIENT, L"Private Communications Technology 1.0 client-side.Obsolete." },
+	{ SP_PROT_PCT1_SERVER, L"Private Communications Technology 1.0 server-side.Obsolete." },
+	{ SP_PROT_SSL2_CLIENT, L"Secure Sockets Layer 2.0 client-side." },
+	{ SP_PROT_SSL2_SERVER, L"Secure Sockets Layer 2.0 server-side." },
+};
+
+struct SSL_CIPHER_DESC
+{
+	ALG_ID aiCipher;
+	const wchar_t* pDescription;
+} SSL_CipherTable[] = {
+	{ CALG_3DES, L"3DES block encryption algorithm"},
+	{ CALG_AES_128, L"AES 128 - bit encryption algorithm"},
+	{ CALG_AES_256, L"AES 256 - bit encryption algorithm"},
+	{ CALG_DES, L"DES encryption algorithm"},
+	{ CALG_RC2, L"RC2 block encryption algorithm"},
+	{ CALG_RC4, L"RC4 stream encryption algorithm"},
+	{ 0, L"No encryption"},
+};
+
+struct SSL_HASH_ALG_DESC
+{
+	ALG_ID aiHash;
+	const wchar_t* pDescription;
+} SSL_HashAlgTable[] = {
+	{ CALG_MD5, L"MD5 hashing algorithm."},
+	{ CALG_SHA, L"SHA hashing algorithm."},
+	{ CALG_SSL3_SHAMD5, L"CALG_SSL3_SHAMD5"},
+	{ CALG_HMAC, L"CALG_HMAC"},
+	{ CALG_TLS1PRF, L"CALG_TLS1PRF"},
+	{ CALG_HASH_REPLACE_OWF, L"CALG_HASH_REPLACE_OWF"},
+	{ CALG_SHA_256, L"CALG_SHA_256"},
+	{ CALG_SHA_384, L"CALG_SHA_384"},
+	{ CALG_SHA_512, L"CALG_SHA_512"},
+};
+
+struct SSL_KEY_ALG_DESC
+{
+	ALG_ID aiKey;
+	const wchar_t* pDescription;
+} SSL_KeyAlgTable[] = {
+	{ CALG_RSA_KEYX, L"RSA key exchange."},
+	{ CALG_DH_EPHEM, L"Diffie-Hellman key exchange."},
+	{ CALG_DH_SF, L"CALG_DH_SF"},
+	{ CALG_DH_EPHEM, L"CALG_DH_EPHEM"},
+	{ CALG_AGREEDKEY_ANY, L"CALG_AGREEDKEY_ANY"},
+	{ CALG_KEA_KEYX, L"CALG_KEA_KEYX"},
+	{ CALG_HUGHES_MD5, L"CALG_HUGHES_MD5"},
+	{ CALG_ECDH, L"CALG_ECDH"},
+	{ CALG_ECDH_EPHEM, L"CALG_ECDH_EPHEM"},
+	{ CALG_ECMQV, L"CALG_ECMQV"},
+	{ CALG_THIRDPARTY_KEY_EXCHANGE, L"CALG_THIRDPARTY_KEY_EXCHANGE"},
+};
+
+
+CString CECSConnection::FormatSecurityInfo(const WINHTTP_SECURITY_INFO& SecurityInfo)
+{
+	CString sOutput;
+
+	sOutput += L"Protocol: " + FmtNum(SecurityInfo.ConnectionInfo.dwProtocol) + L"\n";
+	for (const auto& Protocol : SSL_ProtocolTable)
+	{
+		if (TST_BIT(SecurityInfo.ConnectionInfo.dwProtocol, Protocol.dwProtocol))
+			sOutput += CString(L"Protocol: ") + Protocol.pDescription + L"\n";
+	}
+	sOutput += L"\nCipher: " + FmtNum(SecurityInfo.ConnectionInfo.aiCipher) + L"\n";
+	for (const auto& Cipher : SSL_CipherTable)
+	{
+		if (SecurityInfo.ConnectionInfo.aiCipher == Cipher.aiCipher)
+			sOutput += CString(L"Cipher: ") + Cipher.pDescription + L"\n";
+	}
+	sOutput += CString(L"Cipher Strength: ") + FmtNum(SecurityInfo.ConnectionInfo.dwCipherStrength) + L"\n";
+	sOutput += L"\nHash: " + FmtNum(SecurityInfo.ConnectionInfo.aiHash) + L"\n";
+	for (const auto& Hash : SSL_HashAlgTable)
+	{
+		if (SecurityInfo.ConnectionInfo.aiHash == Hash.aiHash)
+			sOutput += CString(L"Hash: ") + Hash.pDescription + L"\n";
+	}
+	sOutput += CString(L"Hash Strength: ") + FmtNum(SecurityInfo.ConnectionInfo.dwHashStrength) + L"\n";
+	sOutput += L"\nKey Exchange: " + FmtNum(SecurityInfo.ConnectionInfo.aiExch) + L"\n";
+	for (const auto& Key : SSL_KeyAlgTable)
+	{
+		if (SecurityInfo.ConnectionInfo.aiExch == Key.aiKey)
+			sOutput += CString(L"Key Exchange: ") + Key.pDescription + L"\n";
+	}
+	sOutput += CString(L"Key Exchange Strength: ") + FmtNum(SecurityInfo.ConnectionInfo.dwExchStrength) + L"\n";
+	sOutput += L"\n Cipher Info:\n";
+	sOutput += L"Protocol: " + FmtNum(SecurityInfo.CipherInfo.dwProtocol) + L"\n";
+	sOutput += L"CipherSuite: " + FmtNum(SecurityInfo.CipherInfo.dwCipherSuite) + L"\n";
+	sOutput += L"BaseCipherSuite: " + FmtNum(SecurityInfo.CipherInfo.dwBaseCipherSuite) + L"\n";
+	sOutput += L"CipherSuite: " + CString(SecurityInfo.CipherInfo.szCipherSuite) + L"\n";
+	sOutput += L"Cipher: " + CString(SecurityInfo.CipherInfo.szCipher) + L"\n";
+	sOutput += L"CipherLen: " + FmtNum(SecurityInfo.CipherInfo.dwCipherLen) + L"\n";
+	sOutput += L"CipherBlockLen: " + FmtNum(SecurityInfo.CipherInfo.dwCipherBlockLen) + L"\n";
+	sOutput += L"Hash: " + CString(SecurityInfo.CipherInfo.szHash) + L"\n";
+	sOutput += L"HashLen: " + FmtNum(SecurityInfo.CipherInfo.dwHashLen) + L"\n";
+	sOutput += L"Exchange: " + CString(SecurityInfo.CipherInfo.szExchange) + L"\n";
+	sOutput += L"MinExchangeLen: " + FmtNum(SecurityInfo.CipherInfo.dwMinExchangeLen) + L"\n";
+	sOutput += L"MaxExchangeLen: " + FmtNum(SecurityInfo.CipherInfo.dwMaxExchangeLen) + L"\n";
+	sOutput += L"Certificate: " + CString(SecurityInfo.CipherInfo.szCertificate) + L"\n";
+	sOutput += L"KeyType: " + FmtNum(SecurityInfo.CipherInfo.dwKeyType) + L"\n";
+
+	return sOutput;
 }

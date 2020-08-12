@@ -14,6 +14,7 @@
  */
 
 #pragma once
+#include <schannel.h>
 #include <Winhttp.h>
 #include "generic_defs.h"
 #include "S3Error.h"
@@ -1330,6 +1331,9 @@ private:
 
 	DWORD dwHttpSecurityFlags = 0;				// global default for security flags (see WinHttpSetOption, WINHTTP_OPTION_SECURITY_FLAGS)
 
+	WINHTTP_SECURITY_INFO* pSecurityInfo = nullptr;			// if non-nullptr, at the next successful SendRequest, set SecurityInfo
+	DWORD* pSecurityInfoError = nullptr;					// error returned when trying to get security info
+
 	// throttle info
 
 	// CThrottleTimerThread
@@ -1531,6 +1535,7 @@ public:
 	static void SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam = 500, DWORD dwPauseAfter500ErrorParam = 500);
 	static DWORD CECSConnection::SetRootCertificate(const ECS_CERT_INFO& CertInfo, DWORD dwCertOpenFlags = CERT_STORE_OPEN_EXISTING_FLAG | CERT_SYSTEM_STORE_LOCAL_MACHINE, LPCTSTR pszStoreName = _T("Root"));
 	static CString CECSConnection::GetSecureErrorText(DWORD dwSecureError);
+	static CString FormatSecurityInfo(const WINHTTP_SECURITY_INFO& SecurityInfo);
 
 	static void SetInitialized(void);				// global initialized flag. must be called to set regular timeouts
 	void SetSecret(LPCTSTR pszSecret);		// set shared secret string in base64
@@ -1541,6 +1546,7 @@ public:
 	void SetSSL(bool bSSLParam);
 	void SetRegion(LPCTSTR pszS3Region);
 	void SetS3KeyID(LPCTSTR pszS3KeyID);
+	void SetSecurityInfo(WINHTTP_SECURITY_INFO* pSecurityInfoParam = nullptr, DWORD* pSecurityInfoErrorParam = nullptr);		// set a buffer that is filled with the security info at the next successful SendRequest
 	CString GetS3KeyID(void);
 	static DWORD ParseISO8601Date(LPCTSTR pszDate, FILETIME& ftTime, bool bLocal = false);
 	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec = true, bool bBasicFormat = false);
