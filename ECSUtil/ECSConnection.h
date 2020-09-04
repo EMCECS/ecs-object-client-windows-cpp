@@ -928,6 +928,7 @@ public:
 		CString sS3NextMarker;				// passed to marker in next request
 		CString sS3NextKeyMarker;			// passed to key-marker in next request
 		CString sS3NextVersionIdMarker;		// passed to version-id-marker in next request
+		CString sLastFullObjName;			// may be used as a next marker if none specified
 
 		XML_DIR_LISTING_CONTEXT()
 			: bGotRootElement(false)

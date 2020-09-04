@@ -3588,7 +3588,7 @@ HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 			{
 				pInfo->bGotKey = true;
 				pInfo->Rec.bDir = false;
-				pInfo->Rec.sName = FROM_UNICODE(*psValue);
+				pInfo->Rec.sName = pInfo->sLastFullObjName = FROM_UNICODE(*psValue);
 				ASSERT(pInfo->sPrefixNoObj.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefixNoObj.GetLength())) == 0);
 				if (pInfo->sPrefixNoObj.CompareNoCase(pInfo->Rec.sName.Left(pInfo->sPrefixNoObj.GetLength())) == 0)
 					(void)pInfo->Rec.sName.Delete(0, pInfo->sPrefixNoObj.GetLength());
@@ -3825,6 +3825,13 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 					if (Context.bIsTruncated)
 					{
 						// listing was truncated
+						if (!bS3Versions && Context.sS3NextMarker.IsEmpty())
+						{
+							// special case where the next marker isn't supplied BUT it is truncated
+							// this happens when delimiter = '\0'
+							// use last entry as next marker
+							Context.sS3NextMarker = Context.sLastFullObjName;
+						}
 						sS3NextMarker = Context.sS3NextMarker;
 						sS3NextKeyMarker = Context.sS3NextKeyMarker;
 						sS3NextVersionIdMarker = Context.sS3NextVersionIdMarker;
