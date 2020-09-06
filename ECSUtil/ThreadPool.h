@@ -23,6 +23,10 @@
 #include "CSharedQueue.h"
 #include "SimpleWorkerThread.h"
 
+namespace ecs_sdk
+{
+
+
 // used for WaitForWorkFinished
 // returns true if it should abort and not wait for all work items to finish
 typedef bool (*THREADPOOL_ABORT_CB)(void *pContext);
@@ -1235,3 +1239,5 @@ DWORD CThreadPool<MsgT>::GetMaxConcurrentThreads(bool bReset)
 		dwMaxConcurrentThreads = 0;
 	return dwMax;
 }
+
+} // end namespace ecs_sdk

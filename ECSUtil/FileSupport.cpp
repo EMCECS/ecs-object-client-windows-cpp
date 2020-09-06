@@ -26,6 +26,9 @@
 #include "CngAES_GCM.h"
 #include "FileSupport.h"
 
+namespace ecs_sdk
+{
+
 CECSConnection::S3_ERROR S3Read(
 	LPCWSTR pszFile,								// path to file
 	DWORD grfMode,									// examples: for read: STGM_READ | STGM_SHARE_DENY_WRITE, for write: STGM_SHARE_EXCLUSIVE | STGM_CREATE | STGM_WRITE
@@ -986,3 +989,5 @@ bool CMPUPool::SearchEntry(const shared_ptr<CMPUPoolMsg>& Msg1, const shared_ptr
 	(void)Msg2;
 	return false;
 }
+
+} // end namespace ecs_sdk

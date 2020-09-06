@@ -19,6 +19,9 @@
 #include "stdafx.h"
 #include "ECSUtil.h"
 
+namespace ecs_sdk
+{
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -76,3 +79,5 @@ BOOL CS3UtilApp::InitInstance()
 
 	return TRUE;
 }
+
+} // end namespace ecs_sdk

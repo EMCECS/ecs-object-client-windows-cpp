@@ -38,6 +38,9 @@ using namespace std;
 #pragma comment(lib, "Winhttp.lib")
 #pragma comment(lib, "Crypt32.lib")
 
+namespace ecs_sdk
+{
+
 
 // WinHttp notifications that we register for:
 #define ECS_CONN_WINHTTP_CALLBACK_FLAGS (WINHTTP_CALLBACK_FLAG_ALL_COMPLETIONS | WINHTTP_CALLBACK_FLAG_SECURE_FAILURE | WINHTTP_CALLBACK_FLAG_HANDLES)
@@ -7737,3 +7740,6 @@ CString CECSConnection::FormatSecurityInfo(const WINHTTP_SECURITY_INFO& Security
 
 	return sOutput;
 }
+
+
+} // end namespace ecs_sdk

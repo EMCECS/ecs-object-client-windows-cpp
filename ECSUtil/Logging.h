@@ -18,13 +18,17 @@
 
 #pragma once
 
-// logging functions
+namespace ecs_sdk
+{
 
-typedef void (ECSUTIL_LOG_MESSAGE_PROTO)(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, DWORD dwError);
 
-extern ECSUTIL_EXT_API void RegisterLogMessageCallback(ECSUTIL_LOG_MESSAGE_PROTO *pLogMessageCB);
-extern ECSUTIL_EXT_API void LogMessageVa(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, va_list marker);
-extern ECSUTIL_EXT_API void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
+	// logging functions
+
+	typedef void (ECSUTIL_LOG_MESSAGE_PROTO)(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, DWORD dwError);
+
+	extern ECSUTIL_EXT_API void RegisterLogMessageCallback(ECSUTIL_LOG_MESSAGE_PROTO* pLogMessageCB);
+	extern ECSUTIL_EXT_API void LogMessageVa(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, va_list marker);
+	extern ECSUTIL_EXT_API void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
 
 #ifdef DEBUG
 #define DEBUGF DebugF
@@ -32,35 +36,37 @@ extern ECSUTIL_EXT_API void LogMessage(LPCTSTR pszFile, DWORD dwLine, LPCTSTR ps
 #define DEBUGF 1 ? (void)0 : DebugF
 #endif
 
-extern ECSUTIL_EXT_API void DebugF(LPCTSTR format, ...);
+	extern ECSUTIL_EXT_API void DebugF(LPCTSTR format, ...);
 
-// alternative logging if callback doesn't work
-// derive a class from this base class and define the logging call
-class ECSUTIL_EXT_CLASS CECSLoggingBase
-{
-private:
-	bool bTraceEnabled;			// tracing is enabled
-
-protected:
-	virtual void LogMessageCB(DWORD dwLogLevel, LPCTSTR pszMsg, DWORD dwError, LPCTSTR pszErrorText) = 0;
-	virtual void TraceMessageCB(LPCTSTR pszMsg) = 0;
-
-public:
-	CECSLoggingBase(bool bTraceEnabledParam = true)
+	// alternative logging if callback doesn't work
+	// derive a class from this base class and define the logging call
+	class ECSUTIL_EXT_CLASS CECSLoggingBase
 	{
-		bTraceEnabled = bTraceEnabledParam;
-	}
+	private:
+		bool bTraceEnabled;			// tracing is enabled
 
-	virtual ~CECSLoggingBase()
-	{
-	}
+	protected:
+		virtual void LogMessageCB(DWORD dwLogLevel, LPCTSTR pszMsg, DWORD dwError, LPCTSTR pszErrorText) = 0;
+		virtual void TraceMessageCB(LPCTSTR pszMsg) = 0;
 
-	virtual void EnableTrace(bool bTraceEnabledParam)
-	{
-		bTraceEnabled = bTraceEnabledParam;
-	}
+	public:
+		CECSLoggingBase(bool bTraceEnabledParam = true)
+		{
+			bTraceEnabled = bTraceEnabledParam;
+		}
 
-	void LogMsg(DWORD dwLogLevel, LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
-	void TraceMsg(LPCTSTR pszLogMessage, ...);
-};
+		virtual ~CECSLoggingBase()
+		{
+		}
 
+		virtual void EnableTrace(bool bTraceEnabledParam)
+		{
+			bTraceEnabled = bTraceEnabledParam;
+		}
+
+		void LogMsg(DWORD dwLogLevel, LPCTSTR pszLogMessage, NTSTATUS dwError, ...);
+		void TraceMsg(LPCTSTR pszLogMessage, ...);
+	};
+
+
+} // end namespace ecs_sdk

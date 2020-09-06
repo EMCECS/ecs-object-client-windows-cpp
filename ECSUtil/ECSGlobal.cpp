@@ -17,6 +17,9 @@
 
 #include "ECSGlobal.h"
 
+namespace ecs_sdk
+{
+
 struct CGarbageCollectThread : public CSimpleWorkerThread
 {
 	CGarbageCollectThread()
@@ -54,3 +57,5 @@ void ECSTermLib()
 	GarbageCollectThread.KillThreadWait();
 	CECSConnection::TerminateThrottle();
 }
+
+} // end namespace ecs_sdk

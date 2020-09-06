@@ -24,118 +24,139 @@
 #include "stdafx.h"
 #include "exportdef.h"
 
-
-class ECSUTIL_EXT_CLASS CProcessEvent : public CSyncObject
+namespace ecs_sdk
 {
-private:
-	DECLARE_DYNAMIC(CProcessEvent)
 
-// Constructor
-public:
-	CProcessEvent()
-	: CSyncObject(nullptr)
-	{
-	}
 
-	DWORD Create(DWORD dwProcessId)
+	class ECSUTIL_EXT_CLASS CProcessEvent : public CSyncObject
 	{
-		if (m_hObject != nullptr)
+	private:
+		DECLARE_DYNAMIC(CProcessEvent)
+
+		// Constructor
+	public:
+		CProcessEvent()
+			: CSyncObject(nullptr)
 		{
-			(void)::CloseHandle(m_hObject);
-			m_hObject = nullptr;
 		}
-		m_hObject = OpenProcess(SYNCHRONIZE, FALSE, dwProcessId);
-		if (m_hObject == nullptr)
-			return GetLastError();
-		return ERROR_SUCCESS;
-	}
 
-	void CloseProcess(void)
-	{
-		if (m_hObject != nullptr)
+		DWORD Create(DWORD dwProcessId)
 		{
-			(void)::CloseHandle(m_hObject);
-			m_hObject = nullptr;
+			if (m_hObject != nullptr)
+			{
+				(void)::CloseHandle(m_hObject);
+				m_hObject = nullptr;
+			}
+			m_hObject = OpenProcess(SYNCHRONIZE, FALSE, dwProcessId);
+			if (m_hObject == nullptr)
+				return GetLastError();
+			return ERROR_SUCCESS;
 		}
-	}
 
-// Operations
-public:
-	BOOL SetEvent()
-		{ ASSERT(m_hObject != nullptr); return ::SetEvent(m_hObject); }
-	BOOL PulseEvent()
-		{ ASSERT(m_hObject != nullptr); return ::PulseEvent(m_hObject); }
-	BOOL ResetEvent()
-		{ ASSERT(m_hObject != nullptr); return ::ResetEvent(m_hObject); }
-	BOOL Unlock()
-		{ return TRUE; }
-
-// Implementation
-public:
-	virtual ~CProcessEvent()
-	{
-		if (m_hObject != nullptr)
+		void CloseProcess(void)
 		{
-			::CloseHandle(m_hObject);
-			m_hObject = nullptr;
+			if (m_hObject != nullptr)
+			{
+				(void)::CloseHandle(m_hObject);
+				m_hObject = nullptr;
+			}
 		}
-	}
-};
 
-class ECSUTIL_EXT_CLASS CThreadEvent : public CSyncObject
-{
-private:
-	DECLARE_DYNAMIC(CThreadEvent)
-
-// Constructor
-public:
-	CThreadEvent()
-	: CSyncObject(nullptr)
-	{
-	}
-
-	DWORD Create(DWORD dwThreadId)
-	{
-		if (m_hObject != nullptr)
+		// Operations
+	public:
+		BOOL SetEvent()
 		{
-			(void)::CloseHandle(m_hObject);
-			m_hObject = nullptr;
+			ASSERT(m_hObject != nullptr); return ::SetEvent(m_hObject);
 		}
-		m_hObject = OpenThread(SYNCHRONIZE, FALSE, dwThreadId);
-		if (m_hObject == nullptr)
-			return GetLastError();
-		return ERROR_SUCCESS;
-	}
-
-	void CloseThread(void)
-	{
-		if (m_hObject != nullptr)
+		BOOL PulseEvent()
 		{
-			(void)::CloseHandle(m_hObject);
-			m_hObject = nullptr;
+			ASSERT(m_hObject != nullptr); return ::PulseEvent(m_hObject);
 		}
-	}
-
-// Operations
-public:
-	BOOL SetEvent()
-		{ ASSERT(m_hObject != nullptr); return ::SetEvent(m_hObject); }
-	BOOL PulseEvent()
-		{ ASSERT(m_hObject != nullptr); return ::PulseEvent(m_hObject); }
-	BOOL ResetEvent()
-		{ ASSERT(m_hObject != nullptr); return ::ResetEvent(m_hObject); }
-	BOOL Unlock()
-		{ return TRUE; }
-
-// Implementation
-public:
-	virtual ~CThreadEvent()
-	{
-		if (m_hObject != nullptr)
+		BOOL ResetEvent()
 		{
-			::CloseHandle(m_hObject);
-			m_hObject = nullptr;
+			ASSERT(m_hObject != nullptr); return ::ResetEvent(m_hObject);
 		}
-	}
-};
+		BOOL Unlock()
+		{
+			return TRUE;
+		}
 
+		// Implementation
+	public:
+		virtual ~CProcessEvent()
+		{
+			if (m_hObject != nullptr)
+			{
+				::CloseHandle(m_hObject);
+				m_hObject = nullptr;
+			}
+		}
+	};
+
+	class ECSUTIL_EXT_CLASS CThreadEvent : public CSyncObject
+	{
+	private:
+		DECLARE_DYNAMIC(CThreadEvent)
+
+		// Constructor
+	public:
+		CThreadEvent()
+			: CSyncObject(nullptr)
+		{
+		}
+
+		DWORD Create(DWORD dwThreadId)
+		{
+			if (m_hObject != nullptr)
+			{
+				(void)::CloseHandle(m_hObject);
+				m_hObject = nullptr;
+			}
+			m_hObject = OpenThread(SYNCHRONIZE, FALSE, dwThreadId);
+			if (m_hObject == nullptr)
+				return GetLastError();
+			return ERROR_SUCCESS;
+		}
+
+		void CloseThread(void)
+		{
+			if (m_hObject != nullptr)
+			{
+				(void)::CloseHandle(m_hObject);
+				m_hObject = nullptr;
+			}
+		}
+
+		// Operations
+	public:
+		BOOL SetEvent()
+		{
+			ASSERT(m_hObject != nullptr); return ::SetEvent(m_hObject);
+		}
+		BOOL PulseEvent()
+		{
+			ASSERT(m_hObject != nullptr); return ::PulseEvent(m_hObject);
+		}
+		BOOL ResetEvent()
+		{
+			ASSERT(m_hObject != nullptr); return ::ResetEvent(m_hObject);
+		}
+		BOOL Unlock()
+		{
+			return TRUE;
+		}
+
+		// Implementation
+	public:
+		virtual ~CThreadEvent()
+		{
+			if (m_hObject != nullptr)
+			{
+				::CloseHandle(m_hObject);
+				m_hObject = nullptr;
+			}
+		}
+	};
+
+
+} // end namespace ecs_sdk

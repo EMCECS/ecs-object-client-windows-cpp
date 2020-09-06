@@ -19,6 +19,8 @@ using namespace std;
 
 #include "GetAllThreads.h"
 
+namespace ecs_sdk
+{
 
 DWORD GetAllThreadsForProcess(DWORD dwPID, map<DWORD, THREADENTRY32>& ThreadMap)
 {
@@ -46,3 +48,5 @@ DWORD GetAllThreadsForProcess(DWORD dwPID, map<DWORD, THREADENTRY32>& ThreadMap)
     } while (Thread32Next(hThreadSnap, &te32));
     return ERROR_SUCCESS;
 }
+
+} // end namespace ecs_sdk

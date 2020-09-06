@@ -16,14 +16,20 @@
 #pragma once
 #include "exportdef.h"
 
-enum class E_URI_ENCODE : BYTE
+namespace ecs_sdk
 {
-	StdSAFE,				// used for paths/object keys
-	AllSAFE,				// encode almost everything except a-z, 0-9
-	V4Auth,					// encode according to v4auth rules
-	V4AuthSlash				// encode according to v4auth rules plus encode slash "/"
-};
 
-ECSUTIL_EXT_API extern CString UriEncode(LPCTSTR pszInput, E_URI_ENCODE Type = E_URI_ENCODE::StdSAFE);
-ECSUTIL_EXT_API extern CString UriDecode(LPCTSTR pszInput);
-ECSUTIL_EXT_API extern CString EncodeSpecialChars(const CString& sSource);
+
+	enum class E_URI_ENCODE : BYTE
+	{
+		StdSAFE,				// used for paths/object keys
+		AllSAFE,				// encode almost everything except a-z, 0-9
+		V4Auth,					// encode according to v4auth rules
+		V4AuthSlash				// encode according to v4auth rules plus encode slash "/"
+	};
+
+	ECSUTIL_EXT_API extern CString UriEncode(LPCTSTR pszInput, E_URI_ENCODE Type = E_URI_ENCODE::StdSAFE);
+	ECSUTIL_EXT_API extern CString UriDecode(LPCTSTR pszInput);
+	ECSUTIL_EXT_API extern CString EncodeSpecialChars(const CString& sSource);
+
+} // end namespace ecs_sdk

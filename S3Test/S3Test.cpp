@@ -27,6 +27,7 @@
 #define new DEBUG_NEW
 #endif
 
+using namespace ecs_sdk;
 
 // The one and only application object
 

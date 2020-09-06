@@ -26,6 +26,10 @@
 
 using namespace std;
 
+namespace ecs_sdk
+{
+
+
 const UINT GDReadWriteChunkMax = 0x100000;			// maxiumum read/write request size
 const UINT MaxRetryCount = 5;
 const UINT MaxWriteRequest = 0;
@@ -1697,3 +1701,4 @@ public:
 	}
 };
 
+} // end namespace ecs_sdk

@@ -17,13 +17,19 @@
 
 #include "exportdef.h"
 
-struct ERROR_MESSAGE_INFO_ENTRY
+namespace ecs_sdk
 {
-	CString sDLLPath;
-	CString sMsg;
-};
 
-ECSUTIL_EXT_API extern CString GetNTErrorText(DWORD ec);
-ECSUTIL_EXT_API extern CString GetNTLastErrorText(void);
 
-ECSUTIL_EXT_API extern CString GetUnixErrorText(errno_t err);
+	struct ERROR_MESSAGE_INFO_ENTRY
+	{
+		CString sDLLPath;
+		CString sMsg;
+	};
+
+	ECSUTIL_EXT_API extern CString GetNTErrorText(DWORD ec);
+	ECSUTIL_EXT_API extern CString GetNTLastErrorText(void);
+
+	ECSUTIL_EXT_API extern CString GetUnixErrorText(errno_t err);
+
+} // end namespace ecs_sdk

@@ -22,6 +22,8 @@ using namespace std;
 #include "CRWLock.h"
 #include <set>
 
+namespace ecs_sdk
+{
 
 struct S3_ERROR_TRANS_INIT
 {
@@ -194,3 +196,5 @@ bool S3ErrorInfo(E_S3_ERROR_TYPE Code, CString *psErrorID, CString *psErrorText)
 	}
 	return false;
 }
+
+} // end namespace ecs_sdk

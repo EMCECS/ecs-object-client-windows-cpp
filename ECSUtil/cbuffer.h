@@ -28,170 +28,186 @@
 
 #include "exportdef.h"
 
-
-struct CBufferData
+namespace ecs_sdk
 {
-	DWORD m_nSize;			// # of elements (upperBound - 1)
-	DWORD m_nAllocSize;	// number of bytes allocated
-	long m_nRefs;			// number of current references to this buffer
-	DWORD m_dummy;			// for 64bit alignment
 
-	CBufferData()			// this constructor is more for illustration, it will never have a chance to run
+	struct CBufferData
 	{
-		m_nSize = m_nAllocSize = 0;
-		m_nRefs = 1;
-		m_dummy = 0;
-	}
-};
+		DWORD m_nSize;			// # of elements (upperBound - 1)
+		DWORD m_nAllocSize;	// number of bytes allocated
+		long m_nRefs;			// number of current references to this buffer
+		DWORD m_dummy;			// for 64bit alignment
 
-class ECSUTIL_EXT_CLASS CBuffer
-{
-// Implementation
-private:
-	enum {ALLOC_INCR_DEFAULT = 100};
+		CBufferData()			// this constructor is more for illustration, it will never have a chance to run
+		{
+			m_nSize = m_nAllocSize = 0;
+			m_nRefs = 1;
+			m_dummy = 0;
+		}
+	};
 
-	BYTE* m_pData;			// the actual array of data
-public:
-	static HANDLE hBufferHeap;
-
-private:
-	//
-	// GetInternalData
-	// get the CBufferData struct associated with the buffer
-	// returns nullptr if none was allocated
-	//
-	CBufferData* GetInternalData() const
+	class ECSUTIL_EXT_CLASS CBuffer
 	{
-		if (m_pData == nullptr)
-			return nullptr;
-		return ((CBufferData*)m_pData)-1;
-	}
+		// Implementation
+	private:
+		enum { ALLOC_INCR_DEFAULT = 100 };
 
-	//
-	// CreateBuffer
-	// allocate and initialize a buffer
-	//
-	BYTE *CreateBuffer(
-		DWORD nNewSize);			// new size
+		BYTE* m_pData;			// the actual array of data
+	public:
+		static HANDLE hBufferHeap;
 
-	//
-	// Grow
-	// make sure the allocated array has AT LEAST nNewSize bytes
-	// if bForce is true, then it will allocate EXACTLY the specified amount
-	// if bForce is true, nNewSize must not be less than m_nSize
-	//
-	void Grow(
-		DWORD nNewSize,				// new size
-		bool bForce = false,		// allocate EXACTLY the specified amount
-		bool bEmpty = false);		// if true, deallocate everything
+	private:
+		//
+		// GetInternalData
+		// get the CBufferData struct associated with the buffer
+		// returns nullptr if none was allocated
+		//
+		CBufferData* GetInternalData() const
+		{
+			if (m_pData == nullptr)
+				return nullptr;
+			return ((CBufferData*)m_pData) - 1;
+		}
 
-public:
+		//
+		// CreateBuffer
+		// allocate and initialize a buffer
+		//
+		BYTE* CreateBuffer(
+			DWORD nNewSize);			// new size
 
-// Construction
-	CBuffer()
-	{
-		m_pData = nullptr;
-	}
-	CBuffer(
-		const void *pSrc,			// pointer to data to copy into the buffer
-		DWORD nLen)					// number of bytes to copy
-	{
-		m_pData = nullptr;
-		Load(pSrc, nLen);
-	}
+		//
+		// Grow
+		// make sure the allocated array has AT LEAST nNewSize bytes
+		// if bForce is true, then it will allocate EXACTLY the specified amount
+		// if bForce is true, nNewSize must not be less than m_nSize
+		//
+		void Grow(
+			DWORD nNewSize,				// new size
+			bool bForce = false,		// allocate EXACTLY the specified amount
+			bool bEmpty = false);		// if true, deallocate everything
 
-	virtual ~CBuffer()
-	{
-		Empty();
-	}				//lint !e1740 // m_pData not directly freed
+	public:
 
-	// Lock
-	// make sure that the buffer is never shared with any other variable
-	// assignments will always create a new copy
-	// cannot lock an empty buffer
-	void Lock(void);
-	void Unlock(void);
-// Attributes
-	DWORD GetBufSize() const
-	{
-		CBufferData *pInfo = GetInternalData();
-		if (pInfo == nullptr)
-			return 0;
-		return(pInfo->m_nSize);
-	}
-	DWORD GetAllocSize() const;
+		// Construction
+		CBuffer()
+		{
+			m_pData = nullptr;
+		}
+		CBuffer(
+			const void* pSrc,			// pointer to data to copy into the buffer
+			DWORD nLen)					// number of bytes to copy
+		{
+			m_pData = nullptr;
+			Load(pSrc, nLen);
+		}
 
-	bool IsEmpty() const
-	{
-		CBufferData *pInfo = GetInternalData();
-		if (pInfo == nullptr)
-			return true;
-		return pInfo->m_nSize == 0;
-	}
-	void SetBufSize(DWORD nNewSize);
-	void Empty();
+		virtual ~CBuffer()
+		{
+			Empty();
+		}				//lint !e1740 // m_pData not directly freed
 
-	// Accessing elements
-	BYTE GetAt(DWORD nIndex) const
-	{
-		ASSERT(nIndex < GetBufSize());
-		ASSERT(m_pData != nullptr);
-		return(m_pData[nIndex]);
-	}
-	void SetAt(DWORD nIndex, BYTE newElement);
+		// Lock
+		// make sure that the buffer is never shared with any other variable
+		// assignments will always create a new copy
+		// cannot lock an empty buffer
+		void Lock(void);
+		void Unlock(void);
+		// Attributes
+		DWORD GetBufSize() const
+		{
+			CBufferData* pInfo = GetInternalData();
+			if (pInfo == nullptr)
+				return 0;
+			return(pInfo->m_nSize);
+		}
+		DWORD GetAllocSize() const;
 
-	// Direct Access to the element data (may return nullptr)
-	const BYTE* GetData() const
-	{
-		return (const BYTE*)m_pData;
-	}
+		bool IsEmpty() const
+		{
+			CBufferData* pInfo = GetInternalData();
+			if (pInfo == nullptr)
+				return true;
+			return pInfo->m_nSize == 0;
+		}
+		void SetBufSize(DWORD nNewSize);
+		void Empty();
 
-	BYTE* GetData()
-	{
-		if (m_pData == nullptr)
-			return nullptr;
-		Grow(GetInternalData()->m_nSize);
-		return m_pData;
-	}
+		// Accessing elements
+		BYTE GetAt(DWORD nIndex) const
+		{
+			ASSERT(nIndex < GetBufSize());
+			ASSERT(m_pData != nullptr);
+			return(m_pData[nIndex]);
+		}
+		void SetAt(DWORD nIndex, BYTE newElement);
 
-	// overloaded operator helpers
-	BYTE operator[](int nIndex) const
-	{
-		return(GetAt(nIndex));
-	}
-	CBuffer &operator =(
-		const CBuffer &b);            // duplicate a CBuffer object
-	CBuffer &operator +=(
-		const CBuffer &b);            // duplicate a CBuffer object
-	CBuffer(
-		const CBuffer &b);            // duplicate a CBuffer object
-	void FreeExtra(void);
-	void Load(
-		const void *pSrc,				// pointer to data to copy into the buffer
-		DWORD nLen);					// number of bytes to copy
-	void Append(
-		const void *pSrc,				// pointer to data to copy into the buffer
-		DWORD nLen);					// number of bytes to copy
-	int Compare(const CBuffer& Buf) const;
+		// Direct Access to the element data (may return nullptr)
+		const BYTE* GetData() const
+		{
+			return (const BYTE*)m_pData;
+		}
 
-	bool inline operator==(const CBuffer& Buf) const
-		{return Compare(Buf) == 0; }
+		BYTE* GetData()
+		{
+			if (m_pData == nullptr)
+				return nullptr;
+			Grow(GetInternalData()->m_nSize);
+			return m_pData;
+		}
 
-	bool inline operator!=(const CBuffer& Buf) const
-		{return Compare(Buf) != 0; }
+		// overloaded operator helpers
+		BYTE operator[](int nIndex) const
+		{
+			return(GetAt(nIndex));
+		}
+		CBuffer& operator =(
+			const CBuffer& b);            // duplicate a CBuffer object
+		CBuffer& operator +=(
+			const CBuffer& b);            // duplicate a CBuffer object
+		CBuffer(
+			const CBuffer& b);            // duplicate a CBuffer object
+		void FreeExtra(void);
+		void Load(
+			const void* pSrc,				// pointer to data to copy into the buffer
+			DWORD nLen);					// number of bytes to copy
+		void Append(
+			const void* pSrc,				// pointer to data to copy into the buffer
+			DWORD nLen);					// number of bytes to copy
+		int Compare(const CBuffer& Buf) const;
 
-	bool inline operator<(const CBuffer& Buf) const
-		{return Compare(Buf) < 0; }
+		bool inline operator==(const CBuffer& Buf) const
+		{
+			return Compare(Buf) == 0;
+		}
 
-	bool inline operator>(const CBuffer& Buf) const
-		{return Compare(Buf) > 0; }
+		bool inline operator!=(const CBuffer& Buf) const
+		{
+			return Compare(Buf) != 0;
+		}
 
-	bool inline operator<=(const CBuffer& Buf) const
-		{return Compare(Buf) <= 0; }
+		bool inline operator<(const CBuffer& Buf) const
+		{
+			return Compare(Buf) < 0;
+		}
 
-	bool inline operator>=(const CBuffer& Buf) const
-		{return Compare(Buf) >= 0; }
-	static void DumpBuffers(CString *pDumpMsg = nullptr);
-	void LoadBase64(LPCTSTR pszBase64Input);
-	CString EncodeBase64(void) const;
-};
+		bool inline operator>(const CBuffer& Buf) const
+		{
+			return Compare(Buf) > 0;
+		}
+
+		bool inline operator<=(const CBuffer& Buf) const
+		{
+			return Compare(Buf) <= 0;
+		}
+
+		bool inline operator>=(const CBuffer& Buf) const
+		{
+			return Compare(Buf) >= 0;
+		}
+		static void DumpBuffers(CString* pDumpMsg = nullptr);
+		void LoadBase64(LPCTSTR pszBase64Input);
+		CString EncodeBase64(void) const;
+	};
+
+} // end namespace ecs_sdk

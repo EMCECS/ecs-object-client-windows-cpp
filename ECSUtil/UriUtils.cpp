@@ -22,6 +22,9 @@
 #include "widestring.h"
 #include "UriUtils.h"
 
+namespace ecs_sdk
+{
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
@@ -200,3 +203,6 @@ static void InitUriEncode()
 	InitUriEncodeArray(SAFEv4Auth, pSAFEv4AuthInit);
 	InitUriEncodeArray(SAFEv4AuthSlash, pSAFEv4AuthSlashInit);
 }
+
+} // end namespace ecs_sdk
+

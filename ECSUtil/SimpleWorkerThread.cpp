@@ -26,6 +26,9 @@ using namespace std;
 #include "NTERRTXT.H"
 #include "dyndll.h"
 
+namespace ecs_sdk
+{
+
 CCriticalSection *CSimpleWorkerThread::pcsGlobalThreadSet;
 set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSetActive;
 set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSet;
@@ -465,3 +468,5 @@ bool CSimpleWorkerThread::GetThreadInitialized(void) const
 {
 	return bThreadInitialized;
 }
+
+} // end namespace ecs_sdk

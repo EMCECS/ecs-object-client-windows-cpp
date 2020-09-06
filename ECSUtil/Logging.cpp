@@ -21,6 +21,9 @@
 #include "NTERRTXT.H"
 #include "fmtnum.h"
 
+namespace ecs_sdk
+{
+
 static ECSUTIL_LOG_MESSAGE_PROTO *pLogMessageCB = nullptr;
 
 // RegisterLogMessageCallback
@@ -100,3 +103,5 @@ void CECSLoggingBase::TraceMsg(
 		DEBUGF(_T("%s"), (LPCTSTR)sMsg);
 	}
 }
+
+} // end namespace ecs_sdk

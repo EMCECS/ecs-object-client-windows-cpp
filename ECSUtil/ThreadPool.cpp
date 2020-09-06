@@ -18,6 +18,9 @@
 
 #include "ThreadPool.h"
 
+namespace ecs_sdk
+{
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #undef THIS_FILE
@@ -94,3 +97,5 @@ void CThreadPoolBase::AllTerminate()
 		pGlobalCThreadPool = nullptr;
 	}
 }
+
+} // end namespace ecs_sdk

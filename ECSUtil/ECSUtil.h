@@ -24,19 +24,24 @@
 
 #include "resource.h"		// main symbols
 
-
-// CS3UtilApp
-// See S3Util.cpp for the implementation of this class
-//
-
-class CS3UtilApp : public CWinApp
+namespace ecs_sdk
 {
-public:
-	CS3UtilApp();
 
-// Overrides
-public:
-	virtual BOOL InitInstance();
 
-	DECLARE_MESSAGE_MAP()
-};
+	// CS3UtilApp
+	// See S3Util.cpp for the implementation of this class
+	//
+
+	class CS3UtilApp : public CWinApp
+	{
+	public:
+		CS3UtilApp();
+
+		// Overrides
+	public:
+		virtual BOOL InitInstance();
+
+		DECLARE_MESSAGE_MAP()
+	};
+
+} // end namespace ecs_sdk

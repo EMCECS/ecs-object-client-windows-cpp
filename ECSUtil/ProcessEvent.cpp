@@ -24,7 +24,11 @@
 
 #include "processevent.h"
 
+namespace ecs_sdk
+{
+
 
 IMPLEMENT_DYNAMIC(CProcessEvent, CSyncObject);
 IMPLEMENT_DYNAMIC(CThreadEvent, CSyncObject);
 
+} // end namespace ecs_sdk

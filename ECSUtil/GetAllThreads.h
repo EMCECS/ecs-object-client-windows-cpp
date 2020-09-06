@@ -19,5 +19,11 @@
 #include <map>
 #include <TlHelp32.h>
 
+namespace ecs_sdk
+{
 
-ECSUTIL_EXT_API extern DWORD GetAllThreadsForProcess(DWORD dwPID, map<DWORD, THREADENTRY32>& ThreadMap);
+
+
+	ECSUTIL_EXT_API extern DWORD GetAllThreadsForProcess(DWORD dwPID, map<DWORD, THREADENTRY32>& ThreadMap);
+
+} // end namespace ecs_sdk

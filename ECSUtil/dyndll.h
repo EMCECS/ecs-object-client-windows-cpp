@@ -25,33 +25,38 @@
 #include "dllfunc.h"
 #include <MAPI.h>
 
-
-
-class CThreadDescription : public CAttachDll
+namespace ecs_sdk
 {
-public:
-	CThreadDescription() noexcept
-		: CAttachDll(TEXT("Kernel32.dll"))	// can't specify because it exists in win10 but NOT in Server 2016!
-	{
-		InitFunction(0, "SetThreadDescription");
-		InitFunction(1, "GetThreadDescription");
-		DoneInitFunction();
-	}
-
-	HRESULT WINAPI SetThreadDescription(
-		_In_ HANDLE hThread,
-		_In_ PCWSTR lpThreadDescription
-	)
-	{
-		return ((HRESULT(WINAPI *)(HANDLE, PCWSTR))Proc(0))(hThread, lpThreadDescription);
-	}
 
 
-	HRESULT WINAPI GetThreadDescription(
-		_In_ HANDLE hThread,
-		_Outptr_result_z_ PWSTR * ppszThreadDescription
-	)
+
+	class CThreadDescription : public CAttachDll
 	{
-		return ((HRESULT(WINAPI *)(HANDLE, PWSTR *))Proc(1))(hThread, ppszThreadDescription);
-	}
-};
+	public:
+		CThreadDescription() noexcept
+			: CAttachDll(TEXT("Kernel32.dll"))	// can't specify because it exists in win10 but NOT in Server 2016!
+		{
+			InitFunction(0, "SetThreadDescription");
+			InitFunction(1, "GetThreadDescription");
+			DoneInitFunction();
+		}
+
+		HRESULT WINAPI SetThreadDescription(
+			_In_ HANDLE hThread,
+			_In_ PCWSTR lpThreadDescription
+		)
+		{
+			return ((HRESULT(WINAPI*)(HANDLE, PCWSTR))Proc(0))(hThread, lpThreadDescription);
+		}
+
+
+		HRESULT WINAPI GetThreadDescription(
+			_In_ HANDLE hThread,
+			_Outptr_result_z_ PWSTR* ppszThreadDescription
+		)
+		{
+			return ((HRESULT(WINAPI*)(HANDLE, PWSTR*))Proc(1))(hThread, ppszThreadDescription);
+		}
+	};
+
+} // end namespace ecs_sdk

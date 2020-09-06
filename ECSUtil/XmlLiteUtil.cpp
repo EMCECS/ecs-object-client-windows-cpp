@@ -23,6 +23,9 @@
 
 #include "XmlLiteUtil.h"
 
+namespace ecs_sdk
+{
+
 #pragma comment(lib, "XmlLite.lib")
 
 #ifdef DEBUG_DUMP_QUEUES
@@ -207,3 +210,5 @@ HRESULT ScanXmlStream(
 	}
 	return 0;
 }
+
+} // end namespace ecs_sdk

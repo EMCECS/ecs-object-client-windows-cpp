@@ -21,6 +21,11 @@
 #include "FileSupport.h"
 #include "SimpleWorkerThread.h"
 
+namespace ecs_sdk
+{
 
-void ECSUTIL_EXT_API ECSInitLib(DWORD dwGarbageCollectInterval = MINUTES(1));
-void ECSUTIL_EXT_API ECSTermLib(void);
+
+	void ECSUTIL_EXT_API ECSInitLib(DWORD dwGarbageCollectInterval = MINUTES(1));
+	void ECSUTIL_EXT_API ECSTermLib(void);
+
+} // end namespace ecs_sdk

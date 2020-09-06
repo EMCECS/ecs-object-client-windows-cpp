@@ -25,6 +25,9 @@
 #include "nterrtxt.h"
 #include "libhandle.h"
 
+namespace ecs_sdk
+{
+
 
 LPCTSTR MsgDllListInit[] = {
 	_T("NTDLL.DLL"),
@@ -94,3 +97,5 @@ CString GetUnixErrorText(errno_t err)
 	(void)_tcserror_s(ErrorText, err);
 	return ErrorText;
 }
+
+} // end namespace ecs_sdk

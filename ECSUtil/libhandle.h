@@ -17,84 +17,88 @@
 
 #include <afxwin.h>
 
-
-
-// CLibraryHandle
-// holder for library instance
-// it will automatically be closed by the destructor
-class CLibraryHandle
+namespace ecs_sdk
 {
-private:
-	HMODULE hModule;
-	bool bAfx;
 
-public:
-	CLibraryHandle(bool bAfxFlag = false)
-	{
-		hModule = nullptr;
-		bAfx = bAfxFlag;
-	}
 
-	~CLibraryHandle()
-	{
-		Close();
-		hModule = nullptr;
-	}
 
-	operator HMODULE() const
+	// CLibraryHandle
+	// holder for library instance
+	// it will automatically be closed by the destructor
+	class CLibraryHandle
 	{
-		return(hModule);
-	}
+	private:
+		HMODULE hModule;
+		bool bAfx;
 
-	CLibraryHandle &operator =(HMODULE hParam)
-	{
-		hModule = hParam;
-		return *this;
-	}
-
-	bool IfOpen() const
-	{
-		return hModule != nullptr;
-	}
-
-	void Close()
-	{
-		if (hModule != nullptr)
+	public:
+		CLibraryHandle(bool bAfxFlag = false)
 		{
-			if (!bAfx)
+			hModule = nullptr;
+			bAfx = bAfxFlag;
+		}
+
+		~CLibraryHandle()
+		{
+			Close();
+			hModule = nullptr;
+		}
+
+		operator HMODULE() const
+		{
+			return(hModule);
+		}
+
+		CLibraryHandle& operator =(HMODULE hParam)
+		{
+			hModule = hParam;
+			return *this;
+		}
+
+		bool IfOpen() const
+		{
+			return hModule != nullptr;
+		}
+
+		void Close()
+		{
+			if (hModule != nullptr)
 			{
-				VERIFY(FreeLibrary(hModule));
+				if (!bAfx)
+				{
+					VERIFY(FreeLibrary(hModule));
+				}
+				else
+				{
+#ifdef _AFXDLL
+					VERIFY(AfxFreeLibrary(hModule));
+#else
+					VERIFY(FreeLibrary(hModule));
+#endif
+				}
+			}
+			hModule = nullptr;
+		}
+
+		void SetAfx(bool bAfxFlag = true)
+		{
+			bAfx = bAfxFlag;
+		}
+
+		void LoadLibrary(LPCTSTR lpLibFileName, bool bDataOnlyDll = false)
+		{
+			if (!bDataOnlyDll)
+			{
+#ifndef _AFXDLL
+				hModule = ::LoadLibrary(lpLibFileName);
+#else
+				SetAfx();
+				hModule = AfxLoadLibrary(lpLibFileName);
+#endif
 			}
 			else
-			{
-#ifdef _AFXDLL
-				VERIFY(AfxFreeLibrary(hModule));
-#else
-				VERIFY(FreeLibrary(hModule));
-#endif
-			}
+				hModule = ::LoadLibraryEx(lpLibFileName, nullptr, DONT_RESOLVE_DLL_REFERENCES);
 		}
-		hModule = nullptr;
-	}
+	};
 
-	void SetAfx(bool bAfxFlag = true)
-	{
-		bAfx = bAfxFlag;
-	}
-
-	void LoadLibrary(LPCTSTR lpLibFileName, bool bDataOnlyDll = false)
-	{
-		if (!bDataOnlyDll)
-		{
-#ifndef _AFXDLL
-			hModule = ::LoadLibrary(lpLibFileName);
-#else
-			SetAfx();
-			hModule = AfxLoadLibrary(lpLibFileName);
-#endif
-		}
-		else
-			hModule = ::LoadLibraryEx(lpLibFileName, nullptr, DONT_RESOLVE_DLL_REFERENCES);
-	}
-};
-
+} // end namespace ecs_sdk
