@@ -1529,6 +1529,7 @@ private:
 	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
 	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG ullObjSize, const list<HEADER_STRUCT> *pMDList);
 	void WaitForCallbackDone(CECSConnectionState& State);
+	void RecordSecurityInfo(const CStateRef& State);
 
 public:
 	CECSConnection();

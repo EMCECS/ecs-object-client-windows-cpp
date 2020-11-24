@@ -2578,6 +2578,8 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 		RetData.SetBufSize(dwRetDataLen + 1);
 		RetData.SetAt(dwRetDataLen, 0);
 		RetData.SetBufSize(dwRetDataLen);			// this won't reallocate the buffer, so it will now always be NUL terminated
+		if (bSSL && (pSecurityInfo != nullptr))
+			RecordSecurityInfo(State);
 		// if error, get error detail from XML response
 		if ((Error.dwHttpError >= 400) && !RetData.IsEmpty())
 		{
@@ -2593,23 +2595,6 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			}
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 		}
-		if (bSSL && (pSecurityInfo != nullptr))
-		{
-			if (pSecurityInfoError != nullptr)
-				*pSecurityInfoError = ERROR_SUCCESS;
-			ZeroMemory(pSecurityInfo, sizeof(WINHTTP_SECURITY_INFO));
-			// if SSL, get the security info
-			// this call is supported only for Win10 v2004. If it fails, just ignore it
-			DWORD dwBufSize = sizeof(WINHTTP_SECURITY_INFO);
-			if (!WinHttpQueryOption(State.Ref->hRequest, WINHTTP_OPTION_SECURITY_INFO, pSecurityInfo, &dwBufSize))
-			{
-				if (pSecurityInfoError != nullptr)
-					*pSecurityInfoError = GetLastError();
-			}
-			// just do this once
-			pSecurityInfoError = nullptr;
-			pSecurityInfo = nullptr;
-		}
 	}
 	catch (const CS3ErrorInfo& E)
 	{
@@ -2619,6 +2604,8 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			pConstStreamSend->UpdateProgressCB(-pConstStreamSend->iAccProgress, pConstStreamSend->pContext);
 			pStreamSend->iAccProgress = 0;
 		}
+		if (bSSL && (pSecurityInfo != nullptr))
+			RecordSecurityInfo(State);
 		Error = E.Error;
 		Error.sHostAddr = sHostHeader;
 		State.Ref->CloseRequest(Error.dwError == ERROR_WINHTTP_SECURE_FAILURE);
@@ -7739,6 +7726,25 @@ CString CECSConnection::FormatSecurityInfo(const WINHTTP_SECURITY_INFO& Security
 	sOutput += L"KeyType: " + FmtNum(SecurityInfo.CipherInfo.dwKeyType) + L"\n";
 
 	return sOutput;
+}
+
+// if SSL, try to get detailed SSL info (cipher, protocol, etc)
+// this is supported only with kernel version 2004 or later
+void CECSConnection::RecordSecurityInfo(const CStateRef& State)
+{
+	DWORD dwSecurityInfoError = ERROR_SUCCESS;
+	ZeroMemory(pSecurityInfo, sizeof(WINHTTP_SECURITY_INFO));
+	// if SSL, get the security info
+	// this call is supported only for Win10 v2004. If it fails, just ignore it
+	DWORD dwBufSize = sizeof(WINHTTP_SECURITY_INFO);
+	if (!WinHttpQueryOption(State.Ref->hRequest, WINHTTP_OPTION_SECURITY_INFO, pSecurityInfo, &dwBufSize))
+		dwSecurityInfoError = GetLastError();
+	if (pSecurityInfoError != nullptr)
+		*pSecurityInfoError = dwSecurityInfoError;
+
+	// just do this once
+	pSecurityInfoError = nullptr;
+	pSecurityInfo = nullptr;
 }
 
 
