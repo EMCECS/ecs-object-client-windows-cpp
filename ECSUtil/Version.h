@@ -15,6 +15,6 @@
 
 #pragma once
 
-#define ECSUTIL_COPYRIGHT _T("Copyright © 2020 Dell Inc. or its subsidiaries.")
+#define ECSUTIL_COPYRIGHT _T("Copyright © 2021 Dell Inc. or its subsidiaries.")
 
-#define ECSUTIL_VERSION "v1.0.7.15"
+#define ECSUTIL_VERSION "v1.0.7.16"

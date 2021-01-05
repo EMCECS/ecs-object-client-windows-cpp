@@ -7064,6 +7064,7 @@ HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReade
 		if (sXmlPath.CompareNoCase(XML_S3_LIFECYCLE_INFO_RULE) == 0)
 		{
 			pInfo->LastRule.Empty();
+			pInfo->LastRule.bExpiredDeleteMarkers = false;
 		}
 		break;
 	case XmlNodeType_EndElement:
@@ -7074,6 +7075,7 @@ HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReade
 			{
 				pInfo->pLifecycleInfo->LifecycleRules.push_back(pInfo->LastRule);
 				pInfo->LastRule.Empty();
+				pInfo->LastRule.bExpiredDeleteMarkers = false;
 			}
 		}
 		break;
@@ -7098,6 +7100,7 @@ CECSConnection::S3_ERROR CECSConnection::S3GetLifecycle(LPCTSTR pszBucket, S3_LI
 	if (!RetData.IsEmpty())
 	{
 		XML_S3_LIFECYCLE_INFO_CONTEXT Context;
+		Context.LastRule.bExpiredDeleteMarkers = false;
 		Context.pLifecycleInfo = &Lifecycle;
 		HRESULT hr = ScanXml(&RetData, &Context, XmlS3LifecycleInfoCB);
 		if (FAILED(hr))
