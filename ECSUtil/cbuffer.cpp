@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2020, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -323,7 +323,7 @@ namespace ecs_sdk
 	//
 	int CBuffer::Compare(const CBuffer& Buf) const
 	{
-		register DWORD nSize = GetBufSize();
+		DWORD nSize = GetBufSize();
 		int iDiff = nSize - Buf.GetBufSize();
 		if ((iDiff == 0) && (nSize != 0))
 		{

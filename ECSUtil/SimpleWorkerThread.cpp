@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2020, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -131,7 +131,7 @@ bool CSimpleWorkerThread::CreateThread(
 			(void)pThread->ResumeThread();
 			// wait for it to die.
 			(void)WaitForSingleObject(pThread->m_hThread, SECONDS(1));
-			return nullptr;
+			return false;
 		}
 		// if win10 or later, set thread description
 		if (bGotThreadDescription)

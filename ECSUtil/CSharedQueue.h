@@ -181,25 +181,25 @@ namespace ecs_sdk
 			return list<T>::empty();
 		};
 
-		list<T>::reference front()
+		typename list<T>::reference front()
 		{	// return first element of mutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), true);			// write lock
 			return list<T>::front();
 		}
 
-		list<T>::const_reference front() const
+		typename list<T>::const_reference front() const
 		{	// return first element of nonmutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), false);			// read lock
 			return list<T>::front();
 		}
 
-		list<T>::reference back()
+		typename list<T>::reference back()
 		{	// return last element of mutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), true);			// write lock
 			return list<T>::back();
 		}
 
-		list<T>::const_reference back() const
+		typename list<T>::const_reference back() const
 		{	// return last element of nonmutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), false);			// read lock
 			return list<T>::back();

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2017 - 2020, Dell Technologies, Inc. All Rights Reserved.
+* Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
 *
 * Licensed under the Apache License, Version 2.0 (the "License").
 * You may not use this file except in compliance with the License.
@@ -17,4 +17,4 @@
 
 #define ECSUTIL_COPYRIGHT _T("Copyright © 2021 Dell Inc. or its subsidiaries.")
 
-#define ECSUTIL_VERSION "v1.0.7.16"
+#define ECSUTIL_VERSION "v1.0.7.17"

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2020, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -1042,7 +1042,7 @@ private:
 		bool bComplete = false;						// set if the command has completed
 		bool bHandleCreated = false;				// WINHTTP_CALLBACK_STATUS_HANDLE_CREATED
 		bool bHandleClosing = false;				// WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING
-		bool *pbCallbackRegistered = false;			// pointer to flag indicating the callback has been registered
+		bool *pbCallbackRegistered = nullptr;		// pointer to flag indicating the callback has been registered
 		bool bDisableSecureLog = false;				// if set, don't log security errors in the callback
 		BYTE *pReadData = nullptr;					// WINHTTP_CALLBACK_STATUS_READ_COMPLETE
 		CECSConnection *pHost = nullptr;			// allow access to the host record
@@ -1539,8 +1539,8 @@ public:
 	static void SetGlobalHttpsProtocol(DWORD dwGlobalHttpsProtocolParam);
 	static void SetS3BucketListingMax(DWORD dwS3BucketListingMaxParam);
 	static void SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetweenRetriesParam = 500, DWORD dwPauseAfter500ErrorParam = 500);
-	static DWORD CECSConnection::SetRootCertificate(const ECS_CERT_INFO& CertInfo, DWORD dwCertOpenFlags = CERT_STORE_OPEN_EXISTING_FLAG | CERT_SYSTEM_STORE_LOCAL_MACHINE, LPCTSTR pszStoreName = _T("Root"));
-	static CString CECSConnection::GetSecureErrorText(DWORD dwSecureError);
+	static DWORD SetRootCertificate(const ECS_CERT_INFO& CertInfo, DWORD dwCertOpenFlags = CERT_STORE_OPEN_EXISTING_FLAG | CERT_SYSTEM_STORE_LOCAL_MACHINE, LPCTSTR pszStoreName = _T("Root"));
+	static CString GetSecureErrorText(DWORD dwSecureError);
 	static CString FormatSecurityInfo(const WINHTTP_SECURITY_INFO& SecurityInfo);
 
 	static void SetInitialized(void);				// global initialized flag. must be called to set regular timeouts

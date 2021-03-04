@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2020, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ DWORD CECSConnection::dwMaxRetryCount(MaxRetryCount);				// max retries for HTTP
 DWORD CECSConnection::dwPauseBetweenRetries(500);					// pause between retries (millisec)
 DWORD CECSConnection::dwPauseAfter500Error(500);					// pause between retries after HTTP 500 error (millisec)
 
-static TCHAR *SystemMDInit[] =
+static LPCWSTR SystemMDInit[] =
 {
 	_T("ObjectName"),
 	_T("Owner"),

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2020, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -293,7 +293,7 @@ void CThreadWork<MsgT>::SetInUse(void)
 		CRWLockAcquire lockMsg(&pThreadPool->MsgQueue.GetLock(), true);	// write lock
 		bInUse = true;
 		DWORD dwWorkCount = 0;
-		for (CSharedQueue<CThreadWork<MsgT>>::iterator itPool = pThreadPool->Pool.begin(); itPool != pThreadPool->Pool.end(); ++itPool)
+		for (typename CSharedQueue<CThreadWork<MsgT>>::iterator itPool = pThreadPool->Pool.begin(); itPool != pThreadPool->Pool.end(); ++itPool)
 			if (itPool->bInUse)
 				dwWorkCount++;
 		if (pThreadPool->pdwPerfWorkItems != nullptr)
@@ -524,7 +524,7 @@ CThreadPool<MsgT>::~CThreadPool()
 template <class MsgT>
 bool CThreadPool<MsgT>::IfInGroup(UINT uGrouping) const
 {
-	for (CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
+	for (typename CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
 	{
 		if (itPool->bInUse)
 		{
@@ -654,7 +654,7 @@ DWORD CThreadPool<MsgT>::GetNumThreadsInternal(
 	CRWLockAcquire lock(&Pool.GetLock(), bExclusive);	// read lock or write lock if bExclusive is set
 	DWORD dwCount = MsgQueue.GetCount();			// get current length of queue
 	DWORD dwThreads = 0;
-	for (CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
+	for (typename CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
 	{
 		if ((dwIgnoreCurrentThreadID == 0) || (itPool->GetCurrentThreadID() != dwIgnoreCurrentThreadID))
 		{
@@ -676,7 +676,7 @@ template <class MsgT>
 void CThreadPool<MsgT>::GetCurrentWorkItems(list<MsgT>& RetList) const
 {
 	CRWLockAcquire lock(&Pool.GetLock(), false);	// read lock
-	for (CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
+	for (typename CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
 		if (itPool->IfActive() && itPool->bInUse)
 		{
 			RetList.push_back(*itPool->Msg);
@@ -742,7 +742,7 @@ void CThreadPool<MsgT>::SendMessageToPool(
 	DWORD dwThreadID = GetCurrentThreadId();
 	{
 		CRWLockAcquire lockPool(&Pool.GetLock(), false);		// always lock pool first, then msg if you need both locked
-		for (CSharedQueue<CThreadWork<MsgT>>::iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
+		for (typename CSharedQueue<CThreadWork<MsgT>>::iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)
 		{
 			if (itPool->GetCurrentThreadID() == dwThreadID)
 				dwMaxQueueSize = 0;
@@ -856,7 +856,7 @@ DWORD CThreadPool<MsgT>::SearchMessageBackModify(const MsgT& MsgFind, UINT uSear
 				bRewind = false;							// a callback can request that we rewind to the start to do it all over
 				bDone = false;
 
-				for (CSharedQueue<CMsgEntry>::reverse_iterator itMsg = MsgQueue.rbegin(); !bDone && (itMsg != MsgQueue.rend()); )
+				for (typename CSharedQueue<CMsgEntry>::reverse_iterator itMsg = MsgQueue.rbegin(); !bDone && (itMsg != MsgQueue.rend()); )
 				{
 					bool bDelete = false;
 					if (!itMsg->Control.bProcessing)									// if it is at the head of the list and being processed, don't deal with it
@@ -901,7 +901,7 @@ bool CThreadPool<MsgT>::SearchMessage(const MsgT& MsgFind, MsgT *pPayloadRet, UI
 	CRWLockAcquire lockPool(&Pool.GetLock(), false);		// always lock pool first, then msg if you need both locked
 	{
 		CRWLockAcquire lockMsg(&MsgQueue.GetLock(), false);
-		for (CSharedQueue<CMsgEntry>::const_iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); ++itMsg)
+		for (typename CSharedQueue<CMsgEntry>::const_iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); ++itMsg)
 		{
 			if (bInProcess || !itMsg->Control.bProcessing)
 			{
@@ -928,7 +928,7 @@ bool CThreadPool<MsgT>::SearchMessageKill(const MsgT& MsgFind, UINT uSearchType)
 		do
 		{
 			bRetry = false;
-			for (CSharedQueue<CMsgEntry>::iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); ++itMsg)
+			for (typename CSharedQueue<CMsgEntry>::iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); ++itMsg)
 			{
 				if (!itMsg->Control.bProcessing)									// if it is at the head of the list and being processed, don't deal with it
 				{
@@ -1031,7 +1031,7 @@ void CThreadPool<MsgT>::UpdatePerf(UINT uLine, std::shared_ptr<MsgT> *pMsg, CThr
 					Rec.Control.ftDueTime = ftNow + ((ULONGLONG)dwDelay * (FT_SECONDS(1) / SECONDS(1)));
 				}
 				bool bInserted = false;
-				for (CSharedQueue<CMsgEntry>::reverse_iterator itMsg = MsgQueue.rbegin(); itMsg != MsgQueue.rend(); itMsg++)
+				for (typename CSharedQueue<CMsgEntry>::reverse_iterator itMsg = MsgQueue.rbegin(); itMsg != MsgQueue.rend(); itMsg++)
 				{
 					if (itMsg->Control.uPriority >= uPriority)
 					{
@@ -1070,14 +1070,14 @@ void CThreadPool<MsgT>::DumpQueue(void *pContext) const
 		{
 			CRWLockAcquire lockMsg(&MsgQueue.GetLock(), false);	// read lock
 
-			for (CSharedQueue<CMsgEntry>::const_iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); itMsg++)
+			for (typename CSharedQueue<CMsgEntry>::const_iterator itMsg = MsgQueue.begin(); itMsg != MsgQueue.end(); itMsg++)
 			{
 				if (!DumpEntry(false, *itMsg->Payload, pContext))
 					return;
 			}
 		}
 		// now do the entries currently in process
-		for (CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); itPool++)
+		for (typename CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); itPool++)
 		{
 			if (itPool->IfActive() && itPool->bInUse)
 			{
@@ -1118,7 +1118,7 @@ void CThreadPool<MsgT>::DeleteOldThreadEntries(void)
 	FILETIME ftNow;
 	GetSystemTimeAsFileTime(&ftNow);
 	CRWLockAcquire lockPool(&Pool.GetLock(), true);		// write lock
-	for (CSharedQueue<CThreadWork<MsgT>>::iterator itPool = Pool.begin(); itPool != Pool.end(); )
+	for (typename CSharedQueue<CThreadWork<MsgT>>::iterator itPool = Pool.begin(); itPool != Pool.end(); )
 	{
 		if (!itPool->IfActive() && ((itPool->ftIdleTime + FT_SECONDS(30)) < ftNow))
 			itPool = Pool.erase(itPool);
@@ -1204,7 +1204,7 @@ void CThreadPool<MsgT>::TransferFutureQueue(bool bFlush)		// if bFlush == true, 
 		{
 			CRWLockAcquire lock(&MsgQueue.GetLock(), false);		// read lock
 			bFoundDueMsg = false;
-			for (CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
+			for (typename CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
 			{
 				if (bFlush || (ftNow >= itFuture->Control.ftDueTime))
 				{
@@ -1219,7 +1219,7 @@ void CThreadPool<MsgT>::TransferFutureQueue(bool bFlush)		// if bFlush == true, 
 		// now remove it from the FutureMsgQueue
 		{
 			CRWLockAcquire lock(&MsgQueue.GetLock(), true);		// write lock
-			for (CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
+			for (typename CSharedQueue<typename CThreadPool<MsgT>::CMsgEntry>::iterator itFuture = FutureMsgQueue.begin(); itFuture != FutureMsgQueue.end(); ++itFuture)
 			{
 				if (DueMsg.Control.ullUniqueID == itFuture->Control.ullUniqueID)
 				{

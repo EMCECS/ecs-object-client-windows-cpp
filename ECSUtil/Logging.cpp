@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2020, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ void LogMessageVa(LPCTSTR pszFile, DWORD dwLine, LPCTSTR pszLogMessage, NTSTATUS
 	sMsg.FormatMessageV(pszLogMessage, &marker);
 	if (pLogMessageCB == nullptr)
 	{
-		OutputDebugString(sMsg + ((dwError == ERROR_SUCCESS) ? _T("") : _T(" - ") + GetNTErrorText(dwError)));
+		OutputDebugString(sMsg + ((dwError == ERROR_SUCCESS) ? _T("") : (LPCTSTR)(_T(" - ") + GetNTErrorText(dwError))));
 	}
 	else
 	{
