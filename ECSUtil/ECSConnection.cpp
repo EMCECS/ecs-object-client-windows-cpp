@@ -1830,7 +1830,6 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	S3_ERROR Error;
 	// use const version of pStreamSend to use "read" locks instead of "write" locks when only reading is being done
 	const STREAM_CONTEXT *pConstStreamSend = (const STREAM_CONTEXT *)pStreamSend;
-	CString sHostHeader(CString(GetCurrentServerIP()) + _T(":") + FmtNum(Port));
 	bool bS3AuthV4 = false;
 	UINT uS3AuthV4ChunkSize(DefaultS3AuthV4ChunkSize);
 	ULONGLONG ullTotalPayloadLen(ullTotalLen);
@@ -1843,7 +1842,14 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	FILETIME ftRequestTime;
 	bool bGotRequestTime = false;
 	DWORD dwMaxStreamQueueSizeRecv = 1000;	// give it something. get a better number if pStreamReceive used
+	CString sHostHeader(GetCurrentServerIP());
 
+	if ((bSSL && (Port != INTERNET_DEFAULT_HTTPS_PORT))
+		|| (!bSSL && (Port != INTERNET_DEFAULT_HTTP_PORT)))
+	{
+		// port is non-standard. add it to the Host header line
+		sHostHeader += L":" + FmtNum(Port);
+	}
 	try
 	{
 		// determine the max size of the receive queue
