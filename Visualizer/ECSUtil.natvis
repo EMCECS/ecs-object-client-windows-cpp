@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
-  <Type Name="CBuffer">
+  <Type Name="ecs_sdk::CBuffer">
     <DisplayString Condition="m_pData == 0">empty</DisplayString>
     <DisplayString Condition="m_pData != 0">{{ size={(((CBufferData*)m_pData)-1)->m_nSize} }}</DisplayString>
     <Expand>
@@ -12,7 +12,7 @@
     </Expand>
   </Type>
 
-  <Type Name="CWideString">
+  <Type Name="ecs_sdk::CWideString">
     <DisplayString Condition="m_pData == 0">empty</DisplayString>
     <DisplayString Condition="m_pData != 0">{{ {(wchar_t *)m_pData,su} }}</DisplayString>
     <Expand>
@@ -23,7 +23,7 @@
     </Expand>
   </Type>
 
-  <Type Name="CECSConnection::S3_ERROR">
+  <Type Name="ecs_sdk::CECSConnection::S3_ERROR">
     <DisplayString>{{ dwError={dwError}, dwHttpError={dwHttpError}, S3Error={S3Error}, sS3Code={sS3Code} }}</DisplayString>
     <Expand>
       <Item Name="[dwError]">dwError</Item>

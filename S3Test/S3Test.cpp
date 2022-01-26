@@ -502,6 +502,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 				return 1;
 			}
 			nRetCode = DoTest(sOutMessage);
+			if (!sOutMessage.IsEmpty())
+				_tprintf(_T("%s\n"), (LPCTSTR)sOutMessage);
 			ECSTermLib();
 		}
     }

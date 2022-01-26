@@ -6999,6 +6999,85 @@ CECSConnection::S3_ERROR CECSConnection::DataNodeEndpointS3(S3_ENDPOINT_INFO& En
 	return Error;
 }
 
+const WCHAR* const XML_S3_OBJ_LOCK_CONFIG_ENABLED = L"//ObjectLockConfiguration/ObjectLockEnabled";
+const WCHAR* const XML_S3_OBJ_LOCK_CONFIG_DAYS = L"//ObjectLockConfiguration/Rule/DefaultRetention/Days";
+const WCHAR* const XML_S3_OBJ_LOCK_CONFIG_MODE = L"//ObjectLockConfiguration/Rule/DefaultRetention/Mode";
+const WCHAR* const XML_S3_OBJ_LOCK_CONFIG_YEARS = L"//ObjectLockConfiguration/Rule/DefaultRetention/Years";
+
+HRESULT XmlS3ObjLockConfigCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
+{
+	(void)pReader;
+	(void)pAttrList;
+	CECSConnection::S3_OBJ_LOCK_CONFIG* pInfo = (CECSConnection::S3_OBJ_LOCK_CONFIG*)pContext;
+	if (pInfo == nullptr)
+		return ERROR_INVALID_DATA;
+
+	switch (NodeType)
+	{
+	case XmlNodeType_Text:
+		if (sXmlPath.CompareNoCase(XML_S3_OBJ_LOCK_CONFIG_ENABLED) == 0)
+		{
+			if ((psValue != nullptr) && !psValue->IsEmpty())
+				pInfo->bObjLockEnabled = psValue->CompareNoCase(L"Enabled") == 0;
+		}
+		else if (sXmlPath.CompareNoCase(XML_S3_OBJ_LOCK_CONFIG_MODE) == 0)
+		{
+			if ((psValue != nullptr) && !psValue->IsEmpty())
+			{
+				if (psValue->CompareNoCase(L"GOVERNANCE") == 0)
+					pInfo->Mode = CECSConnection::E_OBJECT_LOCK_MODE::Governance;
+				else if (psValue->CompareNoCase(L"COMPLIANCE") == 0)
+					pInfo->Mode = CECSConnection::E_OBJECT_LOCK_MODE::Compliance;
+				else pInfo->Mode = CECSConnection::E_OBJECT_LOCK_MODE::Unknown;
+			}
+		}
+		else if (sXmlPath.CompareNoCase(XML_S3_OBJ_LOCK_CONFIG_DAYS) == 0)
+		{
+			if ((psValue != nullptr) && !psValue->IsEmpty())
+				pInfo->dwObjLockDays = _ttoi(FROM_UNICODE(*psValue));
+		}
+		else if (sXmlPath.CompareNoCase(XML_S3_OBJ_LOCK_CONFIG_YEARS) == 0)
+		{
+			if ((psValue != nullptr) && !psValue->IsEmpty())
+				pInfo->dwObjLockYears = _ttoi(FROM_UNICODE(*psValue));
+		}
+		break;
+
+	default:
+		break;
+	}
+	return 0;
+}
+
+CECSConnection::S3_ERROR CECSConnection::GetObjectLockConfiguration(LPCTSTR pszBucket, S3_OBJ_LOCK_CONFIG& LockInfo)
+{
+	CStateRef State(this);
+	list<HEADER_REQ> Req;
+	S3_ERROR Error;
+	CBuffer RetData;
+	InitHeader();
+	Error = SendRequest(_T("GET"), CString(_T("/")) + pszBucket + _T("?object-lock"), nullptr, 0, RetData, &Req);
+	if (Error.IfError())
+		return Error;
+	if (!RetData.IsEmpty())
+	{
+		HRESULT hr = ScanXml(&RetData, &LockInfo, XmlS3ObjLockConfigCB);
+		if (FAILED(hr))
+			return hr;
+	}
+	else
+	{
+		// XML doesn't look valid. maybe we are connected to the wrong server?
+		// maybe there is a man-in-middle attack?
+		Error.dwHttpError = HTTP_STATUS_SERVER_ERROR;
+		Error.S3Error = S3_ERROR_MalformedXML;
+		Error.sS3Code = _T("MalformedXML");
+		Error.sS3RequestID = _T("GET");
+		Error.sS3Resource = _T("/");
+	}
+	return Error;
+}
+
 struct XML_S3_LIFECYCLE_INFO_CONTEXT
 {
 	CECSConnection::S3_LIFECYCLE_INFO *pLifecycleInfo;

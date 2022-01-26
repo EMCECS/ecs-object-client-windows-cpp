@@ -314,6 +314,21 @@ public:
 		CString sVersion;
 	};
 
+	enum class E_OBJECT_LOCK_MODE : unsigned char
+	{
+		Unknown,
+		Governance,
+		Compliance,
+	};
+
+	struct ECSUTIL_EXT_CLASS S3_OBJ_LOCK_CONFIG
+	{
+		bool bObjLockEnabled = false;
+		E_OBJECT_LOCK_MODE Mode = E_OBJECT_LOCK_MODE::Unknown;
+		DWORD dwObjLockDays = 0;
+		DWORD dwObjLockYears = 0;
+	};
+
 	struct ECSUTIL_EXT_CLASS S3_LIFECYCLE_RULE
 	{
 		CString sRuleID;									// user assigned rule ID
@@ -1622,6 +1637,7 @@ public:
 	S3_ERROR S3PutBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING Versioning);
 	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const list<CECSConnection::HEADER_STRUCT> *pMDList, const list<CString> *pDeleteTagParam = nullptr);
 	S3_ERROR DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint);
+	S3_ERROR GetObjectLockConfiguration(LPCTSTR pszBucket, S3_OBJ_LOCK_CONFIG& LockInfo);
 	S3_ERROR S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO& Lifecycle);
 	S3_ERROR S3PutLifecycle(LPCTSTR pszBucket, const S3_LIFECYCLE_INFO& Lifecycle);
 	S3_ERROR S3DeleteLifecycle(LPCTSTR pszBucket);
