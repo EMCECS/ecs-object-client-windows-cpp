@@ -770,10 +770,6 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 			if ((iter->first.Find(_T("x-amz")) == 0) || (iter->first.Find(_T("x-emc")) == 0))
 			{
 				sToken = iter->second.sContents;
-				// now get rid of multiple spaces
-				int iBlank;
-				while ((iBlank = sToken.Find(_T("  "))) >= 0)
-					(void)sToken.Delete(iBlank);
 				(void)sToken.TrimRight();
 				(void)sToken.TrimLeft();
 				sCanonical += iter->first + _T(':') + sToken + _T("\n");
@@ -1017,11 +1013,22 @@ CString CECSConnection::signRequestS3v4(
 		CString sSignedHeaders;
 		for (map<CString, HEADER_STRUCT>::const_iterator itMap = headers.begin(); itMap != headers.end(); ++itMap)
 		{
+			CString sLabel(itMap->first), sValue(itMap->second.sContents);
+			sLabel.Trim();
+			sValue.Trim();
+			// now get rid of multiple spaces
+			int iBlank;
+			while ((iBlank = sValue.Find(_T("  "))) >= 0)
+				(void)sValue.Delete(iBlank);
+			// the 'range' header seems to be very odd when using V4 auth
+			// on AWS it seems put just "range:" in the canoical list, instead of putting the byte range
+			// on ECS it just seems to always fail if it is included (range:bytes 0-43) for reading the IV in an encrypted object
+			if (sLabel == _T("range"))
+				continue;
 			if (!sSignedHeaders.IsEmpty())
 				sSignedHeaders += _T(";");
-			sSignedHeaders += itMap->first;
-			CString sLabel(itMap->first), sValue(itMap->second.sContents);
-			sCanonical += sLabel.Trim() + _T(":") + sValue.Trim() + _T("\n");
+			sSignedHeaders += sLabel;
+			sCanonical += sLabel + _T(":") + sValue + _T("\n");
 		}
 		sCanonical += _T("\n") + sSignedHeaders + _T("\n");
 		//		<HashedPayload>
