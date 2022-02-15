@@ -279,7 +279,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <ModuleDefinitionFile>.\ECSUtil.def</ModuleDefinitionFile>
-      <AdditionalOptions>/NATVIS:"$(SolutionDir)Visualizer\ECSUtil.natvis" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/NATVIS:"$(SolutionDir)ECSUtil\ECSUtil.natvis" %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -371,7 +371,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <ModuleDefinitionFile>.\ECSUtil.def</ModuleDefinitionFile>
-      <AdditionalOptions>/NATVIS:"$(SolutionDir)Visualizer\ECSUtil.natvis" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/NATVIS:"$(SolutionDir)ECSUtil\ECSUtil.natvis" %(AdditionalOptions)</AdditionalOptions>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -731,7 +731,7 @@
     <ResourceCompile Include="ECSUtil.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="ECSUtil.natvis" />
+    <Natvis Include="..\ECSUtil\ECSUtil.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
