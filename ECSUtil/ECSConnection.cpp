@@ -1295,11 +1295,18 @@ void CECSConnection::CECSConnectionState::CloseRequest(bool bSaveCert) throw()
 	}
 }
 
-void CECSConnection::CloseAll() throw()
+void CECSConnection::CloseAll()
 {
-	CStateRef State(this);
-	// Close any open handles.
-	State.Ref->CloseRequest();
+	try
+	{
+		CStateRef State(this);
+		// Close any open handles.
+		State.Ref->CloseRequest();
+	}
+	catch (const std::bad_array_new_length& e) {
+		// shouldn't happen, but can't do anything about it here.
+		std::ignore = e;
+	}
 }
 
 // InitHeader
@@ -7219,8 +7226,6 @@ CECSConnection::S3_ERROR CECSConnection::S3DeleteLifecycle(LPCTSTR pszBucket)
 	InitHeader();
 	CString sResource(CString(_T("/")) + pszBucket + _T("?lifecycle"));
 	Error = SendRequest(_T("DELETE"), sResource, nullptr, 0, RetData, &Req);
-	if (Error.IfError())
-		return Error;
 	return Error;
 }
 

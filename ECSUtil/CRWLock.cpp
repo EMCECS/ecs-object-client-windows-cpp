@@ -47,8 +47,6 @@ namespace ecs_sdk
 
 	CRWLock& CRWLock::operator = (const CRWLock& Src)
 	{
-		if (&Src == this)
-			return *this;
 		return *this;
 	}
 
@@ -224,8 +222,6 @@ namespace ecs_sdk
 
 	CSimpleRWLock& CSimpleRWLock::operator = (const CSimpleRWLock& Src)
 	{
-		if (&Src == this)
-			return *this;
 		return *this;
 	}
 

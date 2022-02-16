@@ -1301,8 +1301,6 @@ private:
 
 		const CECSConnectionStateCS& operator =(const CECSConnectionStateCS& src)
 		{
-			if (&src == this)
-				return *this;
 			return *this;
 		};		//lint !e1539	// members not assigned by assignment operator
 	};
@@ -1520,7 +1518,7 @@ private:
 
 	static void CALLBACK HttpStatusCallback(__in  HINTERNET hInternet,__in  DWORD_PTR dwContext,__in  DWORD dwInternetStatus,__in  LPVOID lpvStatusInformation,__in  DWORD dwStatusInformationLength);
 	DWORD InitSession();
-	void CloseAll() throw();
+	void CloseAll();
 	void InitHeader(void);
 	void AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride = true);
 	void SetTimeouts(const CInternetHandle& hRequest);
@@ -1707,14 +1705,21 @@ public:
 	}
 	virtual ~CECSConnectionAbortBase()
 	{
-		if (pHost != nullptr)
+		try
 		{
-			if (pbAbort != nullptr)
-				pHost->UnregisterAbortPtr(pbAbort);
-			pHost->UnregisterShutdownCB(&CECSConnectionAbortBase::IfShutdownCommon, this);
+			if (pHost != nullptr)
+			{
+				if (pbAbort != nullptr)
+					pHost->UnregisterAbortPtr(pbAbort);
+				pHost->UnregisterShutdownCB(&CECSConnectionAbortBase::IfShutdownCommon, this);
+			}
+			pbAbort = nullptr;
+			pHost = nullptr;
 		}
-		pbAbort = nullptr;
-		pHost = nullptr;
+		catch (const std::bad_array_new_length& E)
+		{
+			std::ignore = E;
+		}
 	}
 };
 

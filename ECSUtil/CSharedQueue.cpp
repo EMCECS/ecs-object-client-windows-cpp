@@ -104,7 +104,7 @@ namespace ecs_sdk
 	// Link
 	// Add this event to the EventList of the supplied queue, and add the
 	// queue to this event's QueueList.
-	void CSharedQueueEvent::Link(CSharedQueueEventBase* pQueue) throw()
+	void CSharedQueueEvent::Link(CSharedQueueEventBase* pQueue)
 	{
 		ASSERT(pQueue != nullptr);
 		if (pQueue == nullptr)				//lint !e774	// (Info -- Boolean within 'if' always evaluates to False
@@ -126,7 +126,7 @@ namespace ecs_sdk
 	// this event is linked, remove it from the queue's EventList, then remove 
 	// the queues from this event's QueueList.
 	// If a queue is supplied, unlink only from that queue.
-	void CSharedQueueEvent::Unlink(CSharedQueueEventBase* pQueue) throw()
+	void CSharedQueueEvent::Unlink(CSharedQueueEventBase* pQueue)
 	{
 		if (pQueue == nullptr)
 		{

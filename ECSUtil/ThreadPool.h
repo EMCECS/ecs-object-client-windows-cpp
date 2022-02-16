@@ -239,7 +239,7 @@ public:
 	void SendMessageToPool(UINT uLine, std::shared_ptr<MsgT>& Msg, DWORD dwMaxQueueSize, UINT uPriority, const CSimpleWorkerThread *pThread, UINT uGrouping = THREAD_POOL_MSG_GROUPING_DONT_CARE, bool *pbNoBlock = nullptr, DWORD dwDelay = 0);
 	void SendMessageToPoolDelayed(UINT uLine, DWORD dwDueTime, std::shared_ptr<MsgT>& Msg, UINT uPriority, UINT uGrouping = THREAD_POOL_MSG_GROUPING_DONT_CARE);
 	virtual bool DoProcess(const CSimpleWorkerThread *pThread, const MsgT& Msg) = 0;
-	void Terminate(void) throw();
+	void Terminate(void);
 	void SetPerfCounter(CSimpleRWLock *prwlPerfParam, DWORD *pdwPerfNumThreadsParam, DWORD *pdwPerfQueueSizeParam, DWORD *pdwPerfQueueMaxParam, DWORD *pdwPerfQueueRateInParam, DWORD *pdwPerfQueueRateOutParam, DWORD *pdwPerfWorkItemsParam, DWORD *pdwPerfOverflowParam);
 	DWORD SearchMessageBackModify(const MsgT& MsgFind, UINT uSearchType, SEARCH_BACK_MODIFY_CB FoundProc, void *pContext);
 	bool SearchMessage(const MsgT& MsgFind, MsgT *pPayloadRet, UINT uSearchType, bool bInProcess = true) const;
@@ -952,11 +952,19 @@ bool CThreadPool<MsgT>::SearchMessageKill(const MsgT& MsgFind, UINT uSearchType)
 }
 
 template <class MsgT>
-void CThreadPool<MsgT>::Terminate() throw()
+void CThreadPool<MsgT>::Terminate()
 {
 	bDisable = true;
-	KillThreadQueueSRW(Pool, Pool.GetLock());
-	TransferFutureQueue(true);						// save any entries that are on the Future queue
+	try
+	{
+		KillThreadQueueSRW(Pool, Pool.GetLock());
+		TransferFutureQueue(true);						// save any entries that are on the Future queue
+	}
+	catch (const std::bad_array_new_length& e) {
+		// shouldn't happen, but can't do anything about it here.
+		std::ignore = e;
+	}
+
 	{
 		CSimpleRWLockAcquire lockSharedMem(prwlPerf);
 		if (pdwPerfNumThreads != nullptr)
@@ -1162,7 +1170,7 @@ void CThreadPool<MsgT>::WaitForWorkFinished(THREADPOOL_ABORT_CB AbortProc, void 
 		switch (dwRet)
 		{
 		case WAIT_FAILED:
-			dwRet = GetLastError();
+			//dwRet = GetLastError();
 			ASSERT(false);
 			Sleep(dwWaitMillisec);
 			break;

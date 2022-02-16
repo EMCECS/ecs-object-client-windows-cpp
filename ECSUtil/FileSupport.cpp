@@ -531,8 +531,6 @@ struct CMPUPoolMsgEvents
 
 	const CMPUPoolMsgEvents& operator =(const CMPUPoolMsgEvents& src)
 	{
-		if (&src == this)
-			return *this;
 		return *this;
 	};
 };

@@ -21,3 +21,5 @@ Release Lib
 /objRelease Lib Static
 /*.gz
 /*.zip
+/ECSUtil/..v-int
+/ECSUtil/msbuild.log

@@ -113,8 +113,8 @@ namespace ecs_sdk
 		void EnableTriggerEvents(INT flags);
 		void DisableTriggerEvents(INT flags);
 		bool IsTriggerEventEnabled(INT flag);
-		void Link(CSharedQueueEventBase* pQueue) throw();
-		void Unlink(CSharedQueueEventBase* pQueue = nullptr) throw();
+		void Link(CSharedQueueEventBase* pQueue);
+		void Unlink(CSharedQueueEventBase* pQueue = nullptr);
 	};
 
 
