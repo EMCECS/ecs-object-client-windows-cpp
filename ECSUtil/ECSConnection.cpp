@@ -2881,7 +2881,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 			CString sHeadPath(UriEncode(sOldPathS3));
 			if (pszVersionId != nullptr)
 				sHeadPath += CString(_T("?versionId=")) + pszVersionId;
-			Error = SendRequest(_T("HEAD"), UriEncode(sHeadPath), nullptr, 0, RetData, &Req);
+			Error = SendRequest(_T("HEAD"), sHeadPath, nullptr, 0, RetData, &Req);
 			if (Error.IfError())
 				return Error;
 			for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)

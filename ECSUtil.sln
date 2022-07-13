@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.27130.2027
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.32602.291
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ECSUtil", "ECSUtil\ECSUtil.vcxproj", "{09799C91-2FFC-4D10-90D9-20D275484986}"
 EndProject
@@ -13,6 +13,11 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution items", "Solution items", "{D39AD95C-C4F0-46B8-A4B2-DD6C5AA340BF}"
 	ProjectSection(SolutionItems) = preProject
 		Visualizer\ECSUtil.natvis = Visualizer\ECSUtil.natvis
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MigrateLC", "MigrateLC\MigrateLC.vcxproj", "{9F377A56-9856-4ADA-98F1-A0F930C0429C}"
+	ProjectSection(ProjectDependencies) = postProject
+		{09799C91-2FFC-4D10-90D9-20D275484986} = {09799C91-2FFC-4D10-90D9-20D275484986}
 	EndProjectSection
 EndProject
 Global
@@ -83,6 +88,30 @@ Global
 		{7FDE4881-B6D9-44A9-A8A9-8CDBE80C2E0C}.Release|x64.Build.0 = Release|x64
 		{7FDE4881-B6D9-44A9-A8A9-8CDBE80C2E0C}.Release|x86.ActiveCfg = Release|Win32
 		{7FDE4881-B6D9-44A9-A8A9-8CDBE80C2E0C}.Release|x86.Build.0 = Release|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib Static|x64.ActiveCfg = Debug Lib Static|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib Static|x64.Build.0 = Debug Lib Static|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib Static|x86.ActiveCfg = Debug Lib Static|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib Static|x86.Build.0 = Debug Lib Static|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib|x64.ActiveCfg = Debug Lib|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib|x64.Build.0 = Debug Lib|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib|x86.ActiveCfg = Debug Lib|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug Lib|x86.Build.0 = Debug Lib|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug|x64.ActiveCfg = Debug|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug|x64.Build.0 = Debug|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug|x86.ActiveCfg = Debug|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Debug|x86.Build.0 = Debug|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib Static|x64.ActiveCfg = Release Lib Static|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib Static|x64.Build.0 = Release Lib Static|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib Static|x86.ActiveCfg = Release Lib Static|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib Static|x86.Build.0 = Release Lib Static|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib|x64.ActiveCfg = Release Lib|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib|x64.Build.0 = Release Lib|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib|x86.ActiveCfg = Release Lib|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release Lib|x86.Build.0 = Release Lib|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release|x64.ActiveCfg = Release|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release|x64.Build.0 = Release|x64
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release|x86.ActiveCfg = Release|Win32
+		{9F377A56-9856-4ADA-98F1-A0F930C0429C}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

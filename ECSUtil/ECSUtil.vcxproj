@@ -675,6 +675,7 @@
     <ClCompile Include="S3Error.cpp" />
     <ClCompile Include="ECSUtil.cpp" />
     <ClCompile Include="SimpleWorkerThread.cpp" />
+    <ClCompile Include="splitpath.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug Lib|Win32'">Create</PrecompiledHeader>
@@ -715,6 +716,7 @@
     <ClInclude Include="S3Error.h" />
     <ClInclude Include="ECSUtil.h" />
     <ClInclude Include="SimpleWorkerThread.h" />
+    <ClInclude Include="splitpath.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="ThreadPool.h" />

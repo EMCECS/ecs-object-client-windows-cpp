@@ -72,6 +72,9 @@
     <ClCompile Include="GetAllThreads.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="splitpath.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ECSUtil.h">
@@ -158,6 +161,9 @@
     <ClInclude Include="GetAllThreads.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="splitpath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="ECSUtil.def">
@@ -171,5 +177,8 @@
     <ResourceCompile Include="ECSUtil.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="..\ECSUtil\ECSUtil.natvis" />
   </ItemGroup>
 </Project>
