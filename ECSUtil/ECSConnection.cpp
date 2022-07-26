@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2022, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -5918,8 +5918,6 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogin(LPCTSTR pszUser, LPCTSTR 
 	CStateRef State(this);
 	State.Ref->sHTTPUser = pszUser;
 	State.Ref->sHTTPPassword = pszPassword;
-	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.Ref->dwSecurityFlagsSub = 0;
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
@@ -5949,8 +5947,6 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogout()
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
 	CStateRef State(this);
-	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.Ref->dwSecurityFlagsSub = 0;
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
@@ -6021,8 +6017,6 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetUserList(list<S3_ADMIN_USER_
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
 	CStateRef State(this);
-	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.Ref->dwSecurityFlagsSub = 0;
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
@@ -6096,8 +6090,6 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
 	CStateRef State(this);
-	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.Ref->dwSecurityFlagsSub = 0;
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
@@ -6244,8 +6236,6 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetKeysForUser(LPCTSTR pszUser,
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
 	CStateRef State(this);
-	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.Ref->dwSecurityFlagsSub = 0;
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
@@ -6289,8 +6279,6 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
 	CStateRef State(this);
-	State.Ref->dwSecurityFlagsAdd = SECURITY_FLAG_IGNORE_CERT_CN_INVALID;
-	State.Ref->dwSecurityFlagsSub = 0;
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
 	list<HEADER_REQ> Req;
 	S3_ERROR Error;
@@ -6365,6 +6353,184 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 			if (hr != ERROR_SUCCESS)
 				return hr;
 			User = Context.User;
+		}
+	}
+	catch (const CS3ErrorInfo& E)
+	{
+		Error = E.Error;
+	}
+	return Error;
+}
+
+struct XML_ECS_BILLING_BUCKET_CONTEXT
+{
+	CECSConnection::ECS_BILLING_BUCKET Info;
+	CString sTotalSizeDeleted;
+	CString sTotalSize;
+	CString sTotalMPUSize;
+	CString sSizeUnit;
+	CECSConnection::ECS_BILLING_BUCKET_TAG Tag;
+};
+
+constexpr WCHAR XML_ECS_BILLING_BUCKET_total_size_deleted[] = L"//bucket_billing_info/total_size_deleted";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_total_objects_deleted[] = L"//bucket_billing_info/total_objects_deleted";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_name[] = L"//bucket_billing_info/name";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_uptodate_till[] = L"//bucket_billing_info/uptodate_till";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_namespace[] = L"//bucket_billing_info/namespace";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_sample_time[] = L"//bucket_billing_info/sample_time";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_tagset_tag[] = L"//bucket_billing_info/TagSet/Tag";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_tagset_key[] = L"//bucket_billing_info/TagSet/Tag/Key";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_tagset_value[] = L"//bucket_billing_info/TagSet/Tag/Value";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_total_mpu_parts[] = L"//bucket_billing_info/total_mpu_parts";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_total_mpu_size[] = L"//bucket_billing_info/total_mpu_size";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_total_objects[] = L"//bucket_billing_info/total_objects";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_total_size[] = L"//bucket_billing_info/total_size";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_total_size_unit[] = L"//bucket_billing_info/total_size_unit";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_vpool_id[] = L"//bucket_billing_info/vpool_id";
+constexpr WCHAR XML_ECS_BILLING_BUCKET_bucket_billing_info[] = L"//bucket_billing_info";
+
+HRESULT XmlECSBillingBucketCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
+{
+	(void)pReader;
+	(void)pAttrList;
+	XML_ECS_BILLING_BUCKET_CONTEXT* pInfo = (XML_ECS_BILLING_BUCKET_CONTEXT*)pContext;
+	switch (NodeType)
+	{
+	case XmlNodeType_Text:
+		if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_total_size_deleted) == 0)
+		{
+			pInfo->sTotalSizeDeleted = FROM_UNICODE(*psValue);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_total_objects_deleted) == 0)
+		{
+			pInfo->Info.ullTotalObjectsDeleted = _wtoi64(FROM_UNICODE(*psValue));
+		}
+		if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_total_size) == 0)
+		{
+			pInfo->sTotalSize = FROM_UNICODE(*psValue);
+		}
+		if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_total_size_unit) == 0)
+		{
+			pInfo->sSizeUnit = FROM_UNICODE(*psValue);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_total_objects) == 0)
+		{
+			pInfo->Info.ullTotalObjects = _wtoi64(FROM_UNICODE(*psValue));
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_uptodate_till) == 0)
+		{
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Info.ftUpToDateTill);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_sample_time) == 0)
+		{
+			(void)CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), pInfo->Info.ftSampleTime);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_name) == 0)
+		{
+			pInfo->Info.sBucket = FROM_UNICODE(*psValue);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_namespace) == 0)
+		{
+			pInfo->Info.sNamespace = FROM_UNICODE(*psValue);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_tagset_key) == 0)
+		{
+			pInfo->Tag.sTagKey = FROM_UNICODE(*psValue);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_tagset_value) == 0)
+		{
+			pInfo->Tag.sTagValue = FROM_UNICODE(*psValue);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_total_mpu_size) == 0)
+		{
+			pInfo->sTotalMPUSize = FROM_UNICODE(*psValue);
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_total_mpu_parts) == 0)
+		{
+			pInfo->Info.ulTotalMPUParts = _wtol(FROM_UNICODE(*psValue));
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_vpool_id) == 0)
+		{
+			pInfo->Info.sVpoolID = FROM_UNICODE(*psValue);
+		}
+		break;
+	case XmlNodeType_Element:
+		if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_tagset_tag) == 0)
+		{
+			pInfo->Tag.sTagKey.Empty();
+			pInfo->Tag.sTagValue.Empty();
+		}
+		break;
+	case XmlNodeType_EndElement:
+		if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_tagset_tag) == 0)
+		{
+			if (!pInfo->Tag.sTagValue.IsEmpty())
+			{
+				pInfo->Info.TagList.push_back(pInfo->Tag);
+			}
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_BILLING_BUCKET_bucket_billing_info) == 0)
+		{
+			ULONGLONG ullSize = 1;
+			// fixup totals using the unit type (KB,MB,GB)
+			if (pInfo->sSizeUnit == L"KB")
+			{
+				ullSize = KILOBYTES(1);
+			}
+			else if (pInfo->sSizeUnit == L"MB")
+			{
+				ullSize = MEGABYTES(1);
+			}
+			else if (pInfo->sSizeUnit == L"GB")
+			{
+				ullSize = GIGABYTES(1);
+			}
+			pInfo->Info.dTotalMPUSize = wcstod(pInfo->sTotalMPUSize, nullptr) * ullSize;
+			pInfo->Info.dTotalSize = wcstod(pInfo->sTotalSize, nullptr) * ullSize;
+			pInfo->Info.dTotalSizeDeleted = wcstod(pInfo->sTotalSizeDeleted, nullptr) * ullSize;
+		}
+
+	default:
+		break;
+	}
+	return 0;
+}
+
+// ECSAdminCreateKeyForUser
+// given the user, create a secret key
+// User.sUser and sNamespace must be filled in
+CECSConnection::S3_ERROR CECSConnection::ECSAdminBillingBucket(
+	const CString& sNamespace,
+	const CString& sBucket,
+	ECS_BILLING_BUCKET& BucketInfo)
+{
+	INTERNET_PORT wSavePort = Port;
+	SetPort(4443);
+	CStateRef State(this);
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
+	list<HEADER_REQ> Req;
+	S3_ERROR Error;
+	CBuffer RetData;
+	State.Ref->Headers.clear();
+	AddHeader(_T("accept"), _T("*/*"));
+	CString sDate(GetCanonicalTime());
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("Content-Type"), _T("application/xml"));
+	try
+	{
+		CString sResource;
+		sResource.Format(L"/object/billing/buckets/%s/%s/info", (LPCTSTR)sNamespace, (LPCTSTR)sBucket);
+		Error = SendRequest(_T("GET"), UriEncode(sResource, E_URI_ENCODE::AllSAFE) + L"?sizeunit=KB", nullptr, 0, RetData, &Req);
+		SetPort(wSavePort);
+		if (!Error.IfError())
+		{
+			XML_ECS_BILLING_BUCKET_CONTEXT Context;
+			HRESULT hr = ScanXml(&RetData, &Context, XmlECSBillingBucketCB);
+			if (hr != ERROR_SUCCESS)
+				return hr;
+			BucketInfo = Context.Info;
 		}
 	}
 	catch (const CS3ErrorInfo& E)

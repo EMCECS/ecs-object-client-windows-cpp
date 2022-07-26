@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2022, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -120,6 +120,29 @@ public:
 class ECSUTIL_EXT_CLASS CECSConnection
 {
 public:
+	// Billing info for Namespace/bucket - ECSAdminBillingBucket()
+	struct ECS_BILLING_BUCKET_TAG
+	{
+		CString sTagKey;
+		CString sTagValue;
+	};
+
+	struct ECS_BILLING_BUCKET
+	{
+		CString sBucket;							// bucket name
+		CString sNamespace;							// namespace name
+		CString sVpoolID;							// Replication group
+		double dTotalSize = 0;						// total size in bytes
+		ULONGLONG ullTotalObjects = 0ULL;			// total number of objects
+		double dTotalSizeDeleted = 0;				// total size in bytes
+		ULONGLONG ullTotalObjectsDeleted = 0ULL;	// total number of objects
+		FILETIME ftSampleTime = { 0,0 };			// Time at which these data collected
+		FILETIME ftUpToDateTill = { 0,0 };			// Time till which the data is consistent.This has an unexpected value during data reconstruction.
+		std::list<ECS_BILLING_BUCKET_TAG> TagList;	// list of tags set for the Bucket
+		double dTotalMPUSize = 0;					// Total MPU size
+		ULONG ulTotalMPUParts = 0;					// Total MPU parts
+	};
+
 	// used for DirListing context if calling it each time for the 
 	class LISTING_NEXT_MARKER_CONTEXT
 	{
@@ -1211,7 +1234,7 @@ private:
 		DWORD dwSecurityFlagsAdd;				// flags to add to security options from default
 		DWORD dwSecurityFlagsSub;				// flags to subtract from security options from default
 		CString sHTTPUser;						// for HTTP authentication
-		CString sHTTPPassword;					// for HTTP authentication
+		CStringPassword sHTTPPassword;					// for HTTP authentication
 		CString sX_SDS_AUTH_TOKEN;				// for HTTP authentication: after login this contains the auth token used on subsequent calls
 		list<ABORT_ENTRY> AbortList;			// list of abort entries
 		mutable CRWLock rwlAbortList;			// lock used for AbortList
@@ -1318,7 +1341,7 @@ private:
 	CString sProxy;							// optional proxy server
 	DWORD dwProxyPort = 0;						// if sProxy not emtpy, contains the port for the proxy
 	CString sProxyUser;						// proxy server authentication
-	CString sProxyPassword;					// proxy server password
+	CStringPassword sProxyPassword;					// proxy server password
 	DWORD dwHttpsProtocol = 0;					// bit field of acceptable protocols
 	bool bCheckShutdown = true;					// if set, then abort request if during service shutdown (default)
 	ECS_DISCONNECT_CB DisconnectCB = nullptr;			// disconnect callback
@@ -1655,6 +1678,7 @@ public:
 	S3_ERROR ECSAdminCreateUser(S3_ADMIN_USER_INFO& User);
 	S3_ERROR ECSAdminGetKeysForUser(LPCTSTR pszUser, LPCTSTR pszNamespace, S3_ADMIN_USER_KEY_INFO& Keys);
 	S3_ERROR ECSAdminCreateKeyForUser(S3_ADMIN_USER_INFO& User);
+	S3_ERROR ECSAdminBillingBucket(const CString& sNamespace, const CString& sBucket, ECS_BILLING_BUCKET& BucketInfo);
 
 	// ECS metadata search functions
 	S3_ERROR S3GetMDSearchFields(S3_METADATA_SEARCH_FIELDS& MDFields);

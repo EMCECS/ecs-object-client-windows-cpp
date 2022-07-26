@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 - 2021, Dell Technologies, Inc. All Rights Reserved.
+ * Copyright (c) 2017 - 2022, Dell Technologies, Inc. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 #include "exportdef.h"
 #include <WinNT.h>
 #include <bcrypt.h>
+
+#include "StringPassword.h"
 
 #pragma once
 
