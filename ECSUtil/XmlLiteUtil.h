@@ -22,7 +22,6 @@
 #include "cbuffer.h"
 #include "widestring.h"
 
-using namespace std;
 
 namespace ecs_sdk
 {
@@ -34,7 +33,7 @@ namespace ecs_sdk
 		CStringW sValue;
 	};
 
-	typedef HRESULT(*XMLLITE_READER_CB)(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue);
+	typedef HRESULT(*XMLLITE_READER_CB)(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue);
 
 	class ECSUTIL_EXT_CLASS CBufferStream : public IStream
 	{

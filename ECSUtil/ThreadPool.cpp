@@ -29,7 +29,7 @@ static char THIS_FILE[] = __FILE__;
 
 bool CThreadPoolBase::bPoolInitialized = false;
 CCriticalSection *CThreadPoolBase::pcsGlobalCThreadPool;
-set<CThreadPoolBase *> *CThreadPoolBase::pGlobalCThreadPool;
+std::set<CThreadPoolBase *> *CThreadPoolBase::pGlobalCThreadPool;
 CSimpleRWLock CThreadPoolBase::rwlPerfDummy;	// dummy critical section if no CS is specified
 
 void CThreadPoolBase::RegisterCThreadPool()
@@ -43,7 +43,7 @@ void CThreadPoolBase::RegisterCThreadPool()
 	ASSERT(pcsGlobalCThreadPool != nullptr);
 	CSingleLock lockGlobalList(pcsGlobalCThreadPool, true);
 	if (pGlobalCThreadPool == nullptr)
-		pGlobalCThreadPool = new set<CThreadPoolBase *>;
+		pGlobalCThreadPool = new std::set<CThreadPoolBase *>;
 	(void)pGlobalCThreadPool->insert(this);
 }
 
@@ -61,7 +61,7 @@ void CThreadPoolBase::GlobalGarbageCollect()
 	if ((pcsGlobalCThreadPool != nullptr) && (pGlobalCThreadPool != nullptr))
 	{
 		CSingleLock lockGlobalList(pcsGlobalCThreadPool, true);
-		for (set<CThreadPoolBase *>::iterator itSet = pGlobalCThreadPool->begin(); itSet != pGlobalCThreadPool->end(); ++itSet)
+		for (std::set<CThreadPoolBase *>::iterator itSet = pGlobalCThreadPool->begin(); itSet != pGlobalCThreadPool->end(); ++itSet)
 			(*itSet)->GarbageCollect();
 	}
 }
@@ -72,7 +72,7 @@ void CThreadPoolBase::DumpPools(CString *pDumpMsg)
 		return;
 	CSingleLock lockGlobalQueueList(pcsGlobalCThreadPool, true);
 
-	set<CThreadPoolBase *>::iterator itSet;
+	std::set<CThreadPoolBase *>::iterator itSet;
 	for (itSet = pGlobalCThreadPool->begin(); itSet != pGlobalCThreadPool->end(); ++itSet)
 		*pDumpMsg += (*itSet)->FormatEntry() + _T("\r\n");
 }
@@ -85,7 +85,7 @@ void CThreadPoolBase::AllTerminate()
 	{
 		{
 			CSingleLock lock(CThreadPoolBase::pcsGlobalCThreadPool, true);
-			for (set<CThreadPoolBase *>::const_iterator it = CThreadPoolBase::pGlobalCThreadPool->begin();
+			for (std::set<CThreadPoolBase *>::const_iterator it = CThreadPoolBase::pGlobalCThreadPool->begin();
 				it != CThreadPoolBase::pGlobalCThreadPool->end(); ++it)
 			{
 				(*it)->Terminate();

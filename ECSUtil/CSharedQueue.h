@@ -56,7 +56,7 @@ namespace ecs_sdk
 		friend CSharedQueueEvent;
 	protected:
 		CRWLock rwlQueue;
-		set<CSharedQueueEvent*> EventList;	// Used by a CMTQueue to list the events it triggers.
+		std::set<CSharedQueueEvent*> EventList;	// Used by a CMTQueue to list the events it triggers.
 
 	public:
 		virtual ~CSharedQueueEventBase();
@@ -96,7 +96,7 @@ namespace ecs_sdk
 		bool bAllEvents;
 		bool bEnable;
 		DWORD EnableTriggerEventFlags;	// enable/disable TriggerEvent for Push, Delete, etc.
-		set<CSharedQueueEventBase*> QueueList;			// list of queues to which this event is linked for triggering.
+		std::set<CSharedQueueEventBase*> QueueList;			// list of queues to which this event is linked for triggering.
 
 		// Disconnect
 		// called by destructor of CSharedQueueEventBase
@@ -122,7 +122,7 @@ namespace ecs_sdk
 	// Multithread Queue
 
 	// Thread-safe queue class for type T
-	template<class T> class CSharedQueue : public list<T>, public CSharedQueueEventBase
+	template<class T> class CSharedQueue : public std::list<T>, public CSharedQueueEventBase
 	{
 	public:
 		typedef bool(*TEST_ABORT_CB)(void* pContext);
@@ -178,50 +178,50 @@ namespace ecs_sdk
 		bool empty() const
 		{
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), false);			// read lock
-			return list<T>::empty();
+			return std::list<T>::empty();
 		};
 
-		typename list<T>::reference front()
+		typename std::list<T>::reference front()
 		{	// return first element of mutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), true);			// write lock
-			return list<T>::front();
+			return std::list<T>::front();
 		}
 
-		typename list<T>::const_reference front() const
+		typename std::list<T>::const_reference front() const
 		{	// return first element of nonmutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), false);			// read lock
-			return list<T>::front();
+			return std::list<T>::front();
 		}
 
-		typename list<T>::reference back()
+		typename std::list<T>::reference back()
 		{	// return last element of mutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), true);			// write lock
-			return list<T>::back();
+			return std::list<T>::back();
 		}
 
-		typename list<T>::const_reference back() const
+		typename std::list<T>::const_reference back() const
 		{	// return last element of nonmutable sequence
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), false);			// read lock
-			return list<T>::back();
+			return std::list<T>::back();
 		}
 
 		void clear()
 		{
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			list<T>::clear();
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_EMPTY);
+			std::list<T>::clear();
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_EMPTY);
 		}
 
 		size_t size() const
 		{
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), false);			// read lock
-			return list<T>::size();
+			return std::list<T>::size();
 		};
 
 		DWORD GetCount() const
 		{
 			CRWLockAcquire lockQueue(const_cast<CRWLock*>(&rwlQueue), false);			// read lock
-			return (DWORD)list<T>::size();
+			return (DWORD)std::list<T>::size();
 		};
 
 		void push_back(const T& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void* pContext = nullptr)
@@ -229,8 +229,8 @@ namespace ecs_sdk
 			if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 				WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_PUSH);
-			list<T>::push_back(rec);
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_PUSH);
+			std::list<T>::push_back(rec);
 		}
 
 		void push_back(T&& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void* pContext = nullptr)
@@ -238,8 +238,8 @@ namespace ecs_sdk
 			if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 				WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_PUSH);
-			list<T>::push_back(rec);
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_PUSH);
+			std::list<T>::push_back(rec);
 		}
 
 		void emplace_back(T&& _Val, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void* pContext = nullptr)
@@ -247,8 +247,8 @@ namespace ecs_sdk
 			if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 				WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_PUSH);
-			list<T>::emplace_back(_Val);
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_PUSH);
+			std::list<T>::emplace_back(_Val);
 		}
 
 		void push_front(const T& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void* pContext = nullptr)
@@ -256,8 +256,8 @@ namespace ecs_sdk
 			if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 				WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_PUSH);
-			list<T>::push_front(rec);
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_PUSH);
+			std::list<T>::push_front(rec);
 		}
 
 		void push_front(T&& rec, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void* pContext = nullptr)
@@ -265,8 +265,8 @@ namespace ecs_sdk
 			if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 				WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_PUSH);
-			list<T>::push_front(rec);
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_PUSH);
+			std::list<T>::push_front(rec);
 		}
 
 		void emplace_front(T&& _Val, unsigned int dwMaxQueueSize = 0, TEST_ABORT_CB pTestAbort = nullptr, void* pContext = nullptr)
@@ -274,22 +274,22 @@ namespace ecs_sdk
 			if ((dwMaxQueueSize > 0) && (GetCount() > dwMaxQueueSize))
 				WaitForQueue(dwMaxQueueSize, pTestAbort, pContext);
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_PUSH);
-			list<T>::emplace_front(_Val);
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_PUSH);
+			std::list<T>::emplace_front(_Val);
 		}
 
 		void pop_front(void)
 		{
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_POP);
-			list<T>::pop_front();
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_POP);
+			std::list<T>::pop_front();
 		}
 
 		void pop_back(void)
 		{
 			CRWLockAcquire lockQueue(&rwlQueue, true);			// write lock
-			TriggerEvent((DWORD)list<T>::size(), TRIGGEREVENTS_POP);
-			list<T>::pop_back();
+			TriggerEvent((DWORD)std::list<T>::size(), TRIGGEREVENTS_POP);
+			std::list<T>::pop_back();
 		}
 	};
 

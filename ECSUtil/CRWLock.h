@@ -17,7 +17,6 @@
 
 #include "exportdef.h"
 
-using namespace std;
 
 namespace ecs_sdk
 {
@@ -69,7 +68,7 @@ namespace ecs_sdk
 	{
 		friend class CRWLockAcquire;
 	private:
-		vector<CRWLockAcquire*> Instances;		// list of CRWLockAcquire instances
+		std::vector<CRWLockAcquire*> Instances;		// list of CRWLockAcquire instances
 		mutable CSimpleRWLock rwlListLock;			// lock used for accessing the map
 		SRWLOCK RWLock;								// lock used by the caller
 

@@ -51,7 +51,7 @@ namespace ecs_sdk
 		HINSTANCE hMod;
 		bool bDontFreeLibrary;
 		DWORD dwLastError;
-		vector<FARPROC> DllList;
+		std::vector<FARPROC> DllList;
 		bool bDoneInitFunction;
 
 	protected:

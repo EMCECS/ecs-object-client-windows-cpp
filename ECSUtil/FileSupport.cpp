@@ -39,7 +39,7 @@ CECSConnection::S3_ERROR S3Read(
 	ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
 	ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
 													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
-	list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
+	std::list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext,											// context for UpdateProgressCB
 	ULONGLONG *pullReturnedLength)					// optional output returned size
@@ -60,7 +60,7 @@ CECSConnection::S3_ERROR S3Write(
 	const DWORD dwBufSize,							// size of buffer to use
 	bool bChecksum,									// if set, include content-MD5 header
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
-	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
+	const std::list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext)											// context for UpdateProgressCB
 {
@@ -81,7 +81,7 @@ bool DoS3MultiPartUpload(
 	const DWORD dwPartSize,							// part size (in MB)
 	const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
 	bool bChecksum,									// if set, include content-MD5 header
-	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
+	const std::list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
 	DWORD dwMaxRetries,									// how many times to retry a part before giving up
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
@@ -147,7 +147,7 @@ struct CS3ReadThread : public CSimpleWorkerThread
 	ULONGLONG lwLen;								// if lwOffset == 0 and dwLen == 0, read entire file
 	ULONGLONG lwOffset;								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
 													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
-	list<CECSConnection::HEADER_REQ> *pRcvHeaders;	// optional return all headers
+	std::list<CECSConnection::HEADER_REQ> *pRcvHeaders;	// optional return all headers
 	ULONGLONG ullReturnedLength;		// returned length from Read
 	bool bWorkerDone;					// set so it only runs once
 
@@ -180,7 +180,7 @@ CECSConnection::S3_ERROR S3Read(
 	ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
 	ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
 													// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
-	list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
+	std::list<CECSConnection::HEADER_REQ> *pRcvHeaders,			// optional return all headers
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext,											// context for UpdateProgressCB
 	ULONGLONG *pullReturnedLength)					// optional output returned size
@@ -302,7 +302,7 @@ struct CS3WriteThread : public CSimpleWorkerThread
 	CCngAES_GCM Hash;					// optional MD5 hash
 	bool bGotHash;						// set if MD5 hash is complete
 	bool bWorkerDone;					// set so it only runs once
-	const list<CECSConnection::HEADER_STRUCT> *pMDList;	// optional metadata to send to object
+	const std::list<CECSConnection::HEADER_STRUCT> *pMDList;	// optional metadata to send to object
 	CEvent evWriteComplete;				// set when worker thread is finished writing to S3
 
 	CS3WriteThread()
@@ -399,7 +399,7 @@ CECSConnection::S3_ERROR S3Write(
 	const DWORD dwBufSize,							// size of buffer to use
 	bool bChecksum,									// if set, include content-MD5 header
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
-	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
+	const std::list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 	void *pContext)											// context for UpdateProgressCB
 {
@@ -510,7 +510,7 @@ void CS3WriteThread::DoWork()
 struct CMPUPoolMsg;
 struct CMPUPoolMsgEvents
 {
-	list<shared_ptr<CMPUPoolMsg>> *pMsgList;
+	std::list<std::shared_ptr<CMPUPoolMsg>> *pMsgList;
 	CEvent *pevMsg;						// event is set whenever an entry is complete
 	bool bComplete;						// set when operation is complete
 
@@ -546,8 +546,8 @@ struct CMPUPoolMsg
 	ULONGLONG ullTotalLen;				// total length of the file, used if bStreamSend/StreamSendQueue are being used
 	DWORD dwThreadId;					// used for debugging
 										// S3 multipart upload
-	shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY> pUploadPartEntry;		// if non-empty, multipart upload
-	shared_ptr<CECSConnection::S3_UPLOAD_PART_INFO> MultiPartInfo;			// if non-empty, multipart upload
+	std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY> pUploadPartEntry;		// if non-empty, multipart upload
+	std::shared_ptr<CECSConnection::S3_UPLOAD_PART_INFO> MultiPartInfo;			// if non-empty, multipart upload
 
 	CMPUPoolMsg()
 		: lwWriteComplete(0ULL)
@@ -560,7 +560,7 @@ struct CMPUPoolMsg
 
 	CMPUPoolMsg(
 		const CECSConnection& ConnParam,
-		list<shared_ptr<CMPUPoolMsg>> *pMsgListParam,
+		std::list<std::shared_ptr<CMPUPoolMsg>> *pMsgListParam,
 		CEvent *pevMsgParam,
 		CECSConnection::STREAM_CONTEXT *pStreamQueueParam,
 		ULONGLONG ullTotalLenParam
@@ -580,7 +580,7 @@ struct CMPUPoolMsg
 class CMPUPoolList
 {
 public:
-	list<shared_ptr<CMPUPoolMsg>> PendingList;
+	std::list<std::shared_ptr<CMPUPoolMsg>> PendingList;
 	CEvent evPendingList;
 	CCriticalSection csPendingList;
 	CCngAES_GCM MsgHash;
@@ -591,7 +591,7 @@ public:
 	virtual ~CMPUPoolList()
 	{
 		CSingleLock lock(&csPendingList, true);
-		list<shared_ptr<CMPUPoolMsg>>::iterator itPendingList;
+		std::list<std::shared_ptr<CMPUPoolMsg>>::iterator itPendingList;
 		for (itPendingList = PendingList.begin(); itPendingList != PendingList.end(); ++itPendingList)
 		{
 			(*itPendingList)->Events.pevMsg = nullptr;
@@ -600,17 +600,17 @@ public:
 	}
 };
 
-class CMPUPool : public CThreadPool<shared_ptr<CMPUPoolMsg>>
+class CMPUPool : public CThreadPool<std::shared_ptr<CMPUPoolMsg>>
 {
 public:
 	CMPUPoolList Pending;
-	bool DoProcess(const CSimpleWorkerThread *pThread, const shared_ptr<CMPUPoolMsg>& Msg);
-	bool SearchEntry(const shared_ptr<CMPUPoolMsg>& Msg1, const shared_ptr<CMPUPoolMsg>& Msg2) const;
+	bool DoProcess(const CSimpleWorkerThread *pThread, const std::shared_ptr<CMPUPoolMsg>& Msg);
+	bool SearchEntry(const std::shared_ptr<CMPUPoolMsg>& Msg1, const std::shared_ptr<CMPUPoolMsg>& Msg2) const;
 	CMPUPool()
 	{}
 	~CMPUPool()
 	{
-		CThreadPool<shared_ptr<CMPUPoolMsg>>::Terminate();
+		CThreadPool<std::shared_ptr<CMPUPoolMsg>>::Terminate();
 	}
 };
 
@@ -636,7 +636,7 @@ bool DoS3MultiPartUpload(
 	const DWORD dwPartSize,							// part size (in MB)
 	const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
 	bool bChecksum,									// if set, include content-MD5 header
-	const list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
+	const std::list<CECSConnection::HEADER_STRUCT> *pMDList,	// optional metadata to send to object
 	DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
 	DWORD dwMaxRetries,									// how many times to retry a part before giving up
 	CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
@@ -648,9 +648,9 @@ bool DoS3MultiPartUpload(
 	CSyncObject *EventArray[MAXIMUM_WAIT_OBJECTS];
 	DWORD nEventList;
 	CBuffer Buf;
-	shared_ptr<CECSConnection::S3_UPLOAD_PART_INFO> MultiPartInfo;
+	std::shared_ptr<CECSConnection::S3_UPLOAD_PART_INFO> MultiPartInfo;
 	bool bStartedMultipartUpload = false;
-	list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>> S3PartList;
+	std::list<std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>> S3PartList;
 	CMPUPool MPUPool;
 	STATSTG FileStat;
 	DWORD dwError;
@@ -685,7 +685,7 @@ bool DoS3MultiPartUpload(
 		{
 			if (FileStat.cbSize.QuadPart <= ullOffset)
 				break;
-			shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY> Rec = make_shared<CECSConnection::S3_UPLOAD_PART_ENTRY>();
+			std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY> Rec = std::make_shared<CECSConnection::S3_UPLOAD_PART_ENTRY>();
 			Rec->ullBaseOffset = ullOffset;
 			Rec->uPartNum = ++uPartNum;
 			Rec->ullPartSize = ((FileStat.cbSize.QuadPart - ullOffset) < ullPartLength) ? (FileStat.cbSize.QuadPart - ullOffset) : ullPartLength;
@@ -708,7 +708,7 @@ bool DoS3MultiPartUpload(
 		if (Error.IfError())
 			throw CECSConnection::CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 		bStartedMultipartUpload = true;
-		for (list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::iterator itList = S3PartList.begin(); itList != S3PartList.end(); ++itList)
+		for (std::list<std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::iterator itList = S3PartList.begin(); itList != S3PartList.end(); ++itList)
 		{
 			CECSConnection::S3_UPLOAD_PART_ENTRY *pEntry = itList->get();
 			pEntry->bInProcess = false;
@@ -724,7 +724,7 @@ bool DoS3MultiPartUpload(
 		for (;;)
 		{
 			bool bS3PartListEmpty = true;
-			for (list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::iterator itList = S3PartList.begin(); itList != S3PartList.end(); ++itList)
+			for (std::list<std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::iterator itList = S3PartList.begin(); itList != S3PartList.end(); ++itList)
 			{
 				if ((*itList)->bComplete)
 					continue;							// skip over complete entries
@@ -735,7 +735,7 @@ bool DoS3MultiPartUpload(
 					break;													// we have enough for now
 				if (Conn.TestAbort())
 					throw CErrorInfo(_T(__FILE__), __LINE__, ERROR_OPERATION_ABORTED);
-				shared_ptr<CMPUPoolMsg> Msg = make_shared<CMPUPoolMsg>(Conn, &MPUPool.Pending.PendingList, &MPUPool.Pending.evPendingList, &(*itList)->StreamQueue, (*itList)->ullPartSize);
+				std::shared_ptr<CMPUPoolMsg> Msg = std::make_shared<CMPUPoolMsg>(Conn, &MPUPool.Pending.PendingList, &MPUPool.Pending.evPendingList, &(*itList)->StreamQueue, (*itList)->ullPartSize);
 				{
 					CSingleLock lock(&MPUPool.Pending.csPendingList, true);
 					Msg->Events.bComplete = false;
@@ -794,8 +794,8 @@ bool DoS3MultiPartUpload(
 					}
 				}
 				{
-					shared_ptr<shared_ptr<CMPUPoolMsg>> AutoMsg;
-					AutoMsg.reset(new shared_ptr<CMPUPoolMsg>(Msg));
+					std::shared_ptr<std::shared_ptr<CMPUPoolMsg>> AutoMsg;
+					AutoMsg.reset(new std::shared_ptr<CMPUPoolMsg>(Msg));
 					MPUPool.SendMessageToPool(__LINE__, AutoMsg, 0, 0, nullptr);
 				}
 			}
@@ -808,7 +808,7 @@ bool DoS3MultiPartUpload(
 			// first get all events for filling the stream queues
 			{
 				CSingleLock lock(&MPUPool.Pending.csPendingList, true);
-				for (list<shared_ptr<CMPUPoolMsg>>::const_iterator itPending = MPUPool.Pending.PendingList.begin();
+				for (std::list<std::shared_ptr<CMPUPoolMsg>>::const_iterator itPending = MPUPool.Pending.PendingList.begin();
 					itPending != MPUPool.Pending.PendingList.end();
 					++itPending)
 				{
@@ -842,7 +842,7 @@ bool DoS3MultiPartUpload(
 				// first check completion codes and get rid of any entries that are complete
 				{
 					CSingleLock lock(&MPUPool.Pending.csPendingList, true);
-					for (list<shared_ptr<CMPUPoolMsg>>::const_iterator itPending = MPUPool.Pending.PendingList.begin();
+					for (std::list<std::shared_ptr<CMPUPoolMsg>>::const_iterator itPending = MPUPool.Pending.PendingList.begin();
 						itPending != MPUPool.Pending.PendingList.end();
 						)
 					{
@@ -868,7 +868,7 @@ bool DoS3MultiPartUpload(
 							else
 							{
 								// success - now mark the PartEntry as complete
-								for (list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::iterator itList = S3PartList.begin(); itList != S3PartList.end(); ++itList)
+								for (std::list<std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::iterator itList = S3PartList.begin(); itList != S3PartList.end(); ++itList)
 								{
 									if (itList->get() == (*itPending)->pUploadPartEntry.get())
 									{
@@ -951,7 +951,7 @@ bool DoS3MultiPartUpload(
 	return true;
 }
 
-bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<CMPUPoolMsg>& Msg)
+bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const std::shared_ptr<CMPUPoolMsg>& Msg)
 {
 	CECSConnection::CStateReserve StateReserve(&Msg->Conn);
 	{
@@ -981,7 +981,7 @@ bool CMPUPool::DoProcess(const CSimpleWorkerThread * pThread, const shared_ptr<C
 	return true;
 }
 
-bool CMPUPool::SearchEntry(const shared_ptr<CMPUPoolMsg>& Msg1, const shared_ptr<CMPUPoolMsg>& Msg2) const
+bool CMPUPool::SearchEntry(const std::shared_ptr<CMPUPoolMsg>& Msg1, const std::shared_ptr<CMPUPoolMsg>& Msg2) const
 {
 	(void)Msg1;
 	(void)Msg2;

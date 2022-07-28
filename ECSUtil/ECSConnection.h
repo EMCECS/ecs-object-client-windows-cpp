@@ -24,7 +24,6 @@
 #include "Logging.h"
 #include "fmtnum.h"
 
-using namespace std;
 
 namespace ecs_sdk
 {
@@ -177,7 +176,7 @@ public:
 		ULONGLONG ullTotalDataSize;
 		ULONGLONG ullShippedDataSize;
 		UINT uShippedDataPercentage;
-		list<CString> DataRangeShippingDetails;
+		std::list<CString> DataRangeShippingDetails;
 
 		DT_QUERY_RESPONSE()
 			: bStatus(false)
@@ -243,14 +242,14 @@ public:
 
 	struct S3_METADATA_SEARCH_FIELDS
 	{
-		list<S3_METADATA_SEARCH_ENTRY> KeyList;
-		list<S3_METADATA_SEARCH_ENTRY> AttributeList;
+		std::list<S3_METADATA_SEARCH_ENTRY> KeyList;
+		std::list<S3_METADATA_SEARCH_ENTRY> AttributeList;
 	};
 
 	struct S3_METADATA_SEARCH_FIELDS_BUCKET
 	{
 		bool bSearchEnabled;
-		list<S3_METADATA_SEARCH_ENTRY> KeyList;
+		std::list<S3_METADATA_SEARCH_ENTRY> KeyList;
 		S3_METADATA_SEARCH_FIELDS_BUCKET()
 			: bSearchEnabled(false)
 		{}
@@ -281,7 +280,7 @@ public:
 	struct S3_METADATA_SEARCH_RESULT_QUERY_MD
 	{
 		E_MD_SEARCH_FIELD FieldType;
-		list<S3_METADATA_SEARCH_RESULT_MD_MAP> MDMapList;
+		std::list<S3_METADATA_SEARCH_RESULT_MD_MAP> MDMapList;
 		S3_METADATA_SEARCH_RESULT_QUERY_MD()
 			: FieldType(E_MD_SEARCH_FIELD::Unknown)
 		{}
@@ -292,13 +291,13 @@ public:
 		CString sObjectName;
 		CString sObjectId;
 		CString sVersionId;
-		list<S3_METADATA_SEARCH_RESULT_QUERY_MD> QueryMDList;
+		std::list<S3_METADATA_SEARCH_RESULT_QUERY_MD> QueryMDList;
 	};
 
 	struct S3_METADATA_SEARCH_RESULT
 	{
 		CString sBucket;
-		deque<S3_METADATA_SEARCH_RESULT_OBJECT_MATCH> ObjectMatchList;
+		std::deque<S3_METADATA_SEARCH_RESULT_OBJECT_MATCH> ObjectMatchList;
 	};
 
 	struct S3_BUCKET_INDEX_ENTRY
@@ -315,7 +314,7 @@ public:
 		bool bEnableFS;										// file system enabled bucket
 		bool bTempSiteOutage;								// allow access during TSO
 		DWORD dwRetention;									// retention time in seconds
-		list<S3_BUCKET_INDEX_ENTRY> IndexFieldList;			// fields to index to enable metadata search
+		std::list<S3_BUCKET_INDEX_ENTRY> IndexFieldList;			// fields to index to enable metadata search
 		S3_BUCKET_OPTIONS()
 			: bEnableFS(false)
 			, bTempSiteOutage(true)
@@ -333,7 +332,7 @@ public:
 
 	struct ECSUTIL_EXT_CLASS S3_ENDPOINT_INFO
 	{
-		list<CString> EndpointList;
+		std::list<CString> EndpointList;
 		CString sVersion;
 	};
 
@@ -395,7 +394,7 @@ public:
 
 	struct ECSUTIL_EXT_CLASS S3_LIFECYCLE_INFO
 	{
-		list<S3_LIFECYCLE_RULE> LifecycleRules;			// list of lifecycle rules
+		std::list<S3_LIFECYCLE_RULE> LifecycleRules;			// list of lifecycle rules
 
 		S3_LIFECYCLE_INFO()
 		{}
@@ -565,7 +564,7 @@ public:
 	{
 		CString sOwnerID;
 		CString sOwnerDisplayName;
-		list<S3_BUCKET_INFO> BucketList;
+		std::list<S3_BUCKET_INFO> BucketList;
 	};
 
 	struct ECSUTIL_EXT_CLASS S3_UPLOAD_PART_ENTRY_EVENT
@@ -655,7 +654,7 @@ public:
 	{
 		CString sBucket;
 		UINT uMaxUploads;
-		list<S3_LIST_MULTIPART_UPLOADS_ENTRY> ObjectList;
+		std::list<S3_LIST_MULTIPART_UPLOADS_ENTRY> ObjectList;
 
 		S3_LIST_MULTIPART_UPLOADS()
 			: uMaxUploads(0)
@@ -737,7 +736,7 @@ public:
 		return _T("");
 	}
 
-	typedef list<ACL_ENTRY> UIDList_t;
+	typedef std::list<ACL_ENTRY> UIDList_t;
 
 	struct ECSUTIL_EXT_CLASS ECS_CERT_INFO
 	{
@@ -933,7 +932,7 @@ public:
 			return iComp < 0;
 		};
 	};
-	typedef list<DIR_ENTRY> DirEntryList_t;
+	typedef std::list<DIR_ENTRY> DirEntryList_t;
 
 	// function to check if the current request needs to be aborted (thread exit or application termination)
 	// returns true if current request needs to be canceled immediately
@@ -994,7 +993,7 @@ public:
 	struct HEADER_REQ
 	{
 		CString sHeader;
-		list<CString> ContentList;
+		std::list<CString> ContentList;
 
 		HEADER_REQ(LPCTSTR pszHeader = nullptr)
 		{
@@ -1069,7 +1068,7 @@ private:
 		CCriticalSection csContext;
 		HTTP_CALLBACK_EVENT Event;					// event is fired when async callback is received
 		WINHTTP_ASYNC_RESULT Result;				// if error, this contains the error code
-		list<CMD_RECEIVED> CallbacksReceived;		// the last callbacks received
+		std::list<CMD_RECEIVED> CallbacksReceived;		// the last callbacks received
 		DWORD dwReadLength = 0;						// WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE, WINHTTP_CALLBACK_STATUS_READ_COMPLETE
 		DWORD dwBytesWritten = 0;					// WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE
 		DWORD dwSecureError = 0;					// explanation for SSL errors (WINHTTP_CALLBACK_STATUS_FLAG_...)
@@ -1204,7 +1203,7 @@ private:
 		CString Format(void) const;
 	};
 	static CCriticalSection csSessionMap;
-	static map<SESSION_MAP_KEY, SESSION_MAP_VALUE> SessionMap;			// protected by csSessionMap
+	static std::map<SESSION_MAP_KEY, SESSION_MAP_VALUE> SessionMap;			// protected by csSessionMap
 	static long lSessionKeyValue;											// used to make session key unique
 
 	// all state fields. These are not copied during assignment or copy constructor
@@ -1218,9 +1217,9 @@ private:
 		bool bCallbackRegistered;
 		bool bS3Admin;							// admin API
 		bool bSaveCertInfo;						// save the certificate info whether there is an error or not
-		map<CString,HEADER_STRUCT> Headers;
+		std::map<CString,HEADER_STRUCT> Headers;
 		UINT iIPList;							// index into IPList showing currently used
-		deque<CString> IPListLocal;				// local copy of IPListHost to be used only for this request
+		std::deque<CString> IPListLocal;				// local copy of IPListHost to be used only for this request
 		CEvent evThrottle;						// triggered if throttling and throttle interval was refreshed
 		HTTP_CALLBACK_CONTEXT CallbackContext;
 		DWORD dwCurrentThread;
@@ -1229,14 +1228,14 @@ private:
 		DWORD dwSecureError;					// explanation for SSL errors (WINHTTP_CALLBACK_STATUS_FLAG_...)
 		bool bDisableSecureLog;					// if set, don't log security errors in the callback
 		ECS_CERT_INFO CertInfo;				// holds certificate info if it is from an unknown CA
-		list<S3_DELETE_ENTRY> S3DeletePathList;	// accumulated list of objects to delete. used during DeleteS3
+		std::list<S3_DELETE_ENTRY> S3DeletePathList;	// accumulated list of objects to delete. used during DeleteS3
 		ULONGLONG ullReadBytes;					// keep track of number of received bytes in a stream receive
 		DWORD dwSecurityFlagsAdd;				// flags to add to security options from default
 		DWORD dwSecurityFlagsSub;				// flags to subtract from security options from default
 		CString sHTTPUser;						// for HTTP authentication
 		CStringPassword sHTTPPassword;					// for HTTP authentication
 		CString sX_SDS_AUTH_TOKEN;				// for HTTP authentication: after login this contains the auth token used on subsequent calls
-		list<ABORT_ENTRY> AbortList;			// list of abort entries
+		std::list<ABORT_ENTRY> AbortList;			// list of abort entries
 		mutable CRWLock rwlAbortList;			// lock used for AbortList
 
 		// v4 auth chunk info
@@ -1310,7 +1309,7 @@ private:
 	struct CECSConnectionStateCS
 	{
 		mutable CSimpleRWLock rwlStateMap;		// lock for StateMap
-		mutable map<DWORD, shared_ptr<CECSConnectionState>> StateMap;
+		mutable std::map<DWORD, std::shared_ptr<CECSConnectionState>> StateMap;
 
 		CECSConnectionStateCS()
 		{
@@ -1332,7 +1331,7 @@ private:
 	CString sUser;
 	CString sHost;
 	CString sUserAgent;
-	deque<CString> IPListHost;				// list of IP addresses/DNS host names to access this server. protected by rwlIPListHost
+	std::deque<CString> IPListHost;				// list of IP addresses/DNS host names to access this server. protected by rwlIPListHost
 	mutable CSimpleRWLock rwlIPListHost;	// lock for IPListHost
 	INTERNET_PORT Port = INTERNET_DEFAULT_HTTP_PORT;
 	bool bSSL = false;								// use HTTPS if set
@@ -1408,10 +1407,10 @@ private:
 	};
 	static bool bInitialized;							// starts out false. If false, timeouts are very short. must call SetInitialized to get regular timeouts
 	static CThrottleTimerThread TimerThread;			// throttle timer thread
-	static map<CString,THROTTLE_REC> ThrottleMap;		// global map used by all CECSConnection objects, key is host name
+	static std::map<CString,THROTTLE_REC> ThrottleMap;		// global map used by all CECSConnection objects, key is host name
 	static CCriticalSection csThrottleMap;				// critical section protecting ThrottleMap
-	static list<CECSConnection *> ECSConnectionList;	// list of all CECSConnection objects (protected by csThrottleMap)
-	static list<XML_DIR_LISTING_CONTEXT *> DirListList;	// listing of current dir listing operations
+	static std::list<CECSConnection *> ECSConnectionList;	// list of all CECSConnection objects (protected by csThrottleMap)
+	static std::list<XML_DIR_LISTING_CONTEXT *> DirListList;	// listing of current dir listing operations
 	static CCriticalSection csDirListList;				// critical section protecting DirListList
 	static DWORD dwGlobalHttpsProtocol;					// bit field of acceptable protocols
 	static DWORD dwS3BucketListingMax;					// maxiumum number of items to return on a bucket listing (S3). Default = 1000 (cannot be larger than 1000)
@@ -1421,7 +1420,7 @@ private:
 	static DWORD dwPauseAfter500Error;					// pause between retries after HTTP 500 error (millisec)
 
 public:
-	static set<CString> SystemMDSet;					// set of system metadata fields that can be indexed
+	static std::set<CString> SystemMDSet;					// set of system metadata fields that can be indexed
 	static CString sAmzMetaPrefix;						// just a place to hold "x-amz-meta-"
 
 private:
@@ -1501,18 +1500,18 @@ private:
 	struct CStateRef
 	{
 		CECSConnection *pConn;
-		shared_ptr<CECSConnectionState> Ref;
+		std::shared_ptr<CECSConnectionState> Ref;
 		CStateRef(CECSConnection *pConnParam = nullptr);
 		~CStateRef();
 	};
 
 	static CCriticalSection csBadIPMap;
-	static map<BAD_IP_KEY,BAD_IP_ENTRY> BadIPMap;
-	static map<CString,UINT> LoadBalMap;					// global IP selector for all entries
+	static std::map<BAD_IP_KEY,BAD_IP_ENTRY> BadIPMap;
+	static std::map<CString,UINT> LoadBalMap;					// global IP selector for all entries
 
 	// global performance counters
 	static CSimpleRWLock rwlGlobalPerf;
-	static list<GLOBAL_PERF_POINTERS> GlobalPerfList;
+	static std::list<GLOBAL_PERF_POINTERS> GlobalPerfList;
 	// per-instance performance counters
 	volatile ULONGLONG *pullPerfBytesSent = nullptr;
 	volatile ULONGLONG *pullPerfBytesRcv = nullptr;
@@ -1520,13 +1519,13 @@ private:
 	volatile ULONG *pulMaxStateMapSize = nullptr;
 	void SetPerfStateSize(long lDiff);
 
-	shared_ptr<CECSConnectionState> GetStateBuf();
+	std::shared_ptr<CECSConnectionState> GetStateBuf();
 	BOOL WinHttpQueryHeadersBuffer(__in HINTERNET hRequest, __in DWORD dwInfoLevel, __in_opt LPCTSTR pwszName, __inout CBuffer& RetBuf, __inout LPDWORD lpdwIndex);
 	static CString GetCanonicalTime(const SYSTEMTIME *pstTime = nullptr);
 	static FILETIME ParseCanonicalTime(LPCTSTR pszCanonTime);
 	void sign(const CString& secretStr, const CString& hashStr, CString& encodedStr);
-	CString signRequestS3v2(const CString& secretStr, const CString& method, const CString& resource, const map<CString, HEADER_STRUCT>& headers, LPCTSTR pszExpires = nullptr);
-	CString signRequestS3v4(const CString& secretStr, const CString& method, const CString& resource, const map<CString, HEADER_STRUCT>& headers, const void *pData,
+	CString signRequestS3v2(const CString& secretStr, const CString& method, const CString& resource, const std::map<CString, HEADER_STRUCT>& headers, LPCTSTR pszExpires = nullptr);
+	CString signRequestS3v4(const CString& secretStr, const CString& method, const CString& resource, const std::map<CString, HEADER_STRUCT>& headers, const void *pData,
 		DWORD dwDataLen, E_S3_V4_PAYLOAD PayloadType, ULONGLONG ullTotalLen, ULONGLONG ullTotalPayloadLen, CBuffer& S3SigningKey, CString& sPreviousSignature,
 		const SYSTEMTIME& stRequestTime);
 	void CreateS3SigningKey(const CString& secretStr, const SYSTEMTIME& stRequestTime, CBuffer& SigningKey);
@@ -1545,11 +1544,11 @@ private:
 	void InitHeader(void);
 	void AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bool bOverride = true);
 	void SetTimeouts(const CInternetHandle& hRequest);
-	S3_ERROR SendRequestInternal(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq, DWORD dwReceivedDataHint, DWORD dwBufOffset, bool *pbGotServerResponse, STREAM_CONTEXT *pStreamSend, STREAM_CONTEXT *pStreamReceive, ULONGLONG ullTotalLen);
+	S3_ERROR SendRequestInternal(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, std::list<HEADER_REQ> *pHeaderReq, DWORD dwReceivedDataHint, DWORD dwBufOffset, bool *pbGotServerResponse, STREAM_CONTEXT *pStreamSend, STREAM_CONTEXT *pStreamReceive, ULONGLONG ullTotalLen);
 	LPCTSTR GetCurrentServerIP(void);
 	void TestAllIPBad(void);
-	bool GetNextECSIP(map<CString, BAD_IP_ENTRY>& IPUsed);
-	void LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed);
+	bool GetNextECSIP(std::map<CString, BAD_IP_ENTRY>& IPUsed);
+	void LogBadIPAddr(const std::map<CString,BAD_IP_ENTRY>& IPUsed);
 	bool IfMarkIPBad(DWORD dwError);
 	void PrepareCmd(void);
 	void CleanupCmd(void);
@@ -1562,8 +1561,8 @@ private:
 	CString signS3ShareableURL(CString& sResource, const CString& sExpire, const CString& sHostPort);
 	void KillHostSessions(void);
 	void DeleteS3Send(void);
-	void DeleteS3Internal(const list<S3_DELETE_ENTRY>& PathList);
-	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG ullObjSize, const list<HEADER_STRUCT> *pMDList);
+	void DeleteS3Internal(const std::list<S3_DELETE_ENTRY>& PathList);
+	S3_ERROR CopyS3(LPCTSTR pszSrcPath, LPCTSTR pszTargetPath, LPCTSTR pszVersionId, bool bCopyMD, ULONGLONG ullObjSize, const std::list<HEADER_STRUCT> *pMDList);
 	void WaitForCallbackDone(CECSConnectionState& State);
 	void RecordSecurityInfo(const CStateRef& State);
 
@@ -1583,8 +1582,8 @@ public:
 	void SetSecret(LPCTSTR pszSecret);		// set shared secret string in base64
 	void SetUser(LPCTSTR pszUser);			// set user ID
 	void SetHost(LPCTSTR pszHost);			// set Host
-	void SetIPList(const deque<CString>& IPListParam);
-	void GetIPList(deque<CString>& IPListParam);
+	void SetIPList(const std::deque<CString>& IPListParam);
+	void GetIPList(std::deque<CString>& IPListParam);
 	void SetSSL(bool bSSLParam);
 	void SetRegion(LPCTSTR pszS3Region);
 	void SetS3KeyID(LPCTSTR pszS3KeyID);
@@ -1594,7 +1593,7 @@ public:
 	static CString FormatISO8601Date(const FILETIME& ftDate, bool bLocal, bool bMilliSec = true, bool bBasicFormat = false);
 	static CString FormatISO8601Date(const SYSTEMTIME& stDateUTC, bool bLocal, bool bMilliSec = true, bool bBasicFormat = false);
 
-	static void SetGlobalPerformanceCounters(const list<GLOBAL_PERF_POINTERS>& PerfListParam);
+	static void SetGlobalPerformanceCounters(const std::list<GLOBAL_PERF_POINTERS>& PerfListParam);
 	void SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, ULONGLONG *pullPerfBytesRcvParam, ULONG *pulStateMapSizeParam, ULONG *pulMaxStateMapSizeParam);
 	void SetHostAuth(bool bAuthV4 = true, UINT uS3AuthV4ChunkSize = DefaultS3AuthV4ChunkSize);
 	bool IfS3v4(UINT *puChunkSize = nullptr) const;
@@ -1627,7 +1626,7 @@ public:
 	void GetCertInfo(ECS_CERT_INFO& Rec);
 	void SetSaveCertInfo(bool bSave);
 	DWORD GetSecureError(void);
-	static void RemoveACLDups(deque<CECSConnection::ACL_ENTRY>& UserAcls);
+	static void RemoveACLDups(std::deque<CECSConnection::ACL_ENTRY>& UserAcls);
 	bool IfValidMetadataTag(LPCTSTR pszMDString);
 	static void GarbageCollect(void);
 	bool TestAbort(void);
@@ -1636,27 +1635,27 @@ public:
 	DWORD RetrieveServerCertificate(ECS_CERT_INFO& CertInfo);
 	static CString DumpBadIPMap(void);
 
-	S3_ERROR SendRequest(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, list<HEADER_REQ> *pHeaderReq = nullptr, DWORD dwReceivedDataHint = 0, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamSend = nullptr, STREAM_CONTEXT *pStreamReceive = nullptr, ULONGLONG ullTotalLen = 0ULL);
+	S3_ERROR SendRequest(LPCTSTR pszMethod, LPCTSTR pszResource, const void *pData, DWORD dwDataLen, CBuffer& RetData, std::list<HEADER_REQ> *pHeaderReq = nullptr, DWORD dwReceivedDataHint = 0, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamSend = nullptr, STREAM_CONTEXT *pStreamReceive = nullptr, ULONGLONG ullTotalLen = 0ULL);
 
-	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const list<HEADER_STRUCT> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, list <HEADER_REQ> *pReq = nullptr);
+	S3_ERROR Create(LPCTSTR pszPath, const void *pData = nullptr, DWORD dwLen = 0, const std::list<HEADER_STRUCT> *pMDList = nullptr, const CBuffer *pChecksum = nullptr, STREAM_CONTEXT *pStreamSend = nullptr, ULONGLONG ullTotalLen = 0ULL, LPCTSTR pIfNoneMatch = nullptr, std::list<HEADER_REQ> *pReq = nullptr);
 	S3_ERROR DeleteS3(LPCTSTR pszPath, LPCTSTR pszVersionId = nullptr);
-	S3_ERROR DeleteS3(const list<S3_DELETE_ENTRY>& PathList);
-	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
+	S3_ERROR DeleteS3(const std::list<S3_DELETE_ENTRY>& PathList);
+	S3_ERROR Read(LPCTSTR pszPath, ULONGLONG lwLen, ULONGLONG lwOffset, CBuffer& RetData, DWORD dwBufOffset = 0, STREAM_CONTEXT *pStreamReceive = nullptr, std::list<HEADER_REQ> *pRcvHeaders = nullptr, ULONGLONG *pullReturnedLength = nullptr);
 	S3_ERROR DirListing(LPCTSTR pszPath, DirEntryList_t& DirList, bool bSingle = false, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr, TCHAR cDelimiter = _T('/'));
 	S3_ERROR DirListingS3Versions(LPCTSTR pszPath, DirEntryList_t& DirList, LPCTSTR pszObjName = nullptr, LISTING_NEXT_MARKER_CONTEXT *pNextRequestMarker = nullptr, TCHAR cDelimiter = _T('/'));
 	S3_ERROR S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo);
-	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data);
-	void WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr);
-	S3_ERROR UpdateMetadata(LPCTSTR pszPath, const list<HEADER_STRUCT>& MDList, const list<CString> *pDeleteTagParam = nullptr);
-	S3_ERROR ReadProperties(LPCTSTR pszPath, S3_SYSTEM_METADATA& Properties, LPCTSTR pszVersionId = nullptr, list<HEADER_STRUCT> *pMDList = nullptr, list<HEADER_REQ> *pReq = nullptr);
-	S3_ERROR ReadACL(LPCTSTR pszPath, deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
-	S3_ERROR WriteACL(LPCTSTR pszPath, const deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
+	void WriteMetadataEntry(std::list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data);
+	void WriteMetadataEntry(std::list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr);
+	S3_ERROR UpdateMetadata(LPCTSTR pszPath, const std::list<HEADER_STRUCT>& MDList, const std::list<CString> *pDeleteTagParam = nullptr);
+	S3_ERROR ReadProperties(LPCTSTR pszPath, S3_SYSTEM_METADATA& Properties, LPCTSTR pszVersionId = nullptr, std::list<HEADER_STRUCT> *pMDList = nullptr, std::list<HEADER_REQ> *pReq = nullptr);
+	S3_ERROR ReadACL(LPCTSTR pszPath, std::deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
+	S3_ERROR WriteACL(LPCTSTR pszPath, const std::deque<ACL_ENTRY>& Acls, LPCTSTR pszVersion = nullptr);
 	CString GenerateShareableURL(LPCTSTR pszPath, SYSTEMTIME *pstExpire);
-	S3_ERROR CreateS3Bucket(LPCTSTR pszBucketName, const S3_BUCKET_OPTIONS *pOptions = nullptr, const list<CECSConnection::HEADER_STRUCT> *pMDList = nullptr);
+	S3_ERROR CreateS3Bucket(LPCTSTR pszBucketName, const S3_BUCKET_OPTIONS *pOptions = nullptr, const std::list<CECSConnection::HEADER_STRUCT> *pMDList = nullptr);
 	S3_ERROR DeleteS3Bucket(LPCTSTR pszBucketName);
 	S3_ERROR S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning);
 	S3_ERROR S3PutBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING Versioning);
-	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const list<CECSConnection::HEADER_STRUCT> *pMDList, const list<CString> *pDeleteTagParam = nullptr);
+	S3_ERROR RenameS3(LPCTSTR pszOldPath, LPCTSTR pszNewPath, LPCTSTR pszVersionId, bool bCopy, const std::list<CECSConnection::HEADER_STRUCT> *pMDList, const std::list<CString> *pDeleteTagParam = nullptr);
 	S3_ERROR DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint);
 	S3_ERROR GetObjectLockConfiguration(LPCTSTR pszBucket, S3_OBJ_LOCK_CONFIG& LockInfo);
 	S3_ERROR S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO& Lifecycle);
@@ -1665,16 +1664,16 @@ public:
 	S3_ERROR S3GetReplicationInfo(LPCTSTR pszPath, S3_REPLICATION_INFO& RepInfo);
 
 	// S3 multipart upload support
-	S3_ERROR S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<HEADER_STRUCT> *pMDList);
+	S3_ERROR S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const std::list<HEADER_STRUCT> *pMDList);
 	S3_ERROR S3MultiPartUpload(const S3_UPLOAD_PART_INFO& MultiPartInfo, S3_UPLOAD_PART_ENTRY& PartEntry, STREAM_CONTEXT *pStreamSend, ULONGLONG ullTotalLen, LPCTSTR pszCopySource, ULONGLONG ullStartRange, LPCTSTR pszVersionId);
-	S3_ERROR S3MultiPartComplete(const S3_UPLOAD_PART_INFO& MultiPartInfo, const list<shared_ptr<S3_UPLOAD_PART_ENTRY>>& PartList, S3_MPU_COMPLETE_INFO& MPUCompleteInfo);
+	S3_ERROR S3MultiPartComplete(const S3_UPLOAD_PART_INFO& MultiPartInfo, const std::list<std::shared_ptr<S3_UPLOAD_PART_ENTRY>>& PartList, S3_MPU_COMPLETE_INFO& MPUCompleteInfo);
 	S3_ERROR S3MultiPartAbort(const S3_UPLOAD_PART_INFO& MultiPartInfo);
 	S3_ERROR S3MultiPartList(LPCTSTR pszBucketName, S3_LIST_MULTIPART_UPLOADS& MultiPartList);
 
 	// ECS Admin functions
 	S3_ERROR ECSAdminLogin(LPCTSTR pszUser, LPCTSTR pszPassword);
 	S3_ERROR ECSAdminLogout(void);
-	S3_ERROR ECSAdminGetUserList(list<S3_ADMIN_USER_INFO>& UserList);
+	S3_ERROR ECSAdminGetUserList(std::list<S3_ADMIN_USER_INFO>& UserList);
 	S3_ERROR ECSAdminCreateUser(S3_ADMIN_USER_INFO& User);
 	S3_ERROR ECSAdminGetKeysForUser(LPCTSTR pszUser, LPCTSTR pszNamespace, S3_ADMIN_USER_KEY_INFO& Keys);
 	S3_ERROR ECSAdminCreateKeyForUser(S3_ADMIN_USER_INFO& User);

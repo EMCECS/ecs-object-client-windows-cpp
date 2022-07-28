@@ -15,7 +15,6 @@
 
 #include "stdafx.h"
 
-using namespace std;
 
 #include "generic_defs.h"
 #include "S3Error.h"
@@ -134,8 +133,8 @@ static S3_ERROR_TRANS_INIT S3ErrorTransTable[] = {
 
 CSimpleRWLock rwlS3Translate;
 static bool bMapsInitialized = false;
-static map<CStringSortNoCase, shared_ptr<S3_ERROR_TRANS>> IDMap;		// indexed by error ID
-static map<E_S3_ERROR_TYPE, shared_ptr<S3_ERROR_TRANS>> CodeMap;		// indexed by error code
+static std::map<CStringSortNoCase, std::shared_ptr<S3_ERROR_TRANS>> IDMap;		// indexed by error ID
+static std::map<E_S3_ERROR_TYPE, std::shared_ptr<S3_ERROR_TRANS>> CodeMap;		// indexed by error code
 
 // PopulateMaps
 // the first time this is run, this routine will take the initial data and populate the maps for fast access
@@ -145,14 +144,14 @@ static void PopulateMaps()
 
 	if (bMapsInitialized)										// oops - it must have just gotten initialized by another thread
 		return;
-	shared_ptr<S3_ERROR_TRANS> Rec;
+	std::shared_ptr<S3_ERROR_TRANS> Rec;
 	for (UINT i = 0; i < _countof(S3ErrorTransTable); i++)
 	{
 		Rec.reset(new S3_ERROR_TRANS(S3ErrorTransTable[i]));
 
-		pair<map<CStringSortNoCase, shared_ptr<S3_ERROR_TRANS>>::iterator, bool> ret1 = IDMap.insert(make_pair(CStringSortNoCase(S3ErrorTransTable[i].pszErrorID), Rec));
+		std::pair<std::map<CStringSortNoCase, std::shared_ptr<S3_ERROR_TRANS>>::iterator, bool> ret1 = IDMap.insert(std::make_pair(CStringSortNoCase(S3ErrorTransTable[i].pszErrorID), Rec));
 		ASSERT(ret1.second);
-		pair<map<E_S3_ERROR_TYPE, shared_ptr<S3_ERROR_TRANS>>::iterator, bool> ret2 = CodeMap.insert(make_pair(S3ErrorTransTable[i].S3Error, Rec));
+		std::pair<std::map<E_S3_ERROR_TYPE, std::shared_ptr<S3_ERROR_TRANS>>::iterator, bool> ret2 = CodeMap.insert(std::make_pair(S3ErrorTransTable[i].S3Error, Rec));
 		ASSERT(ret2.second);
 	}
 	bMapsInitialized = true;
@@ -167,7 +166,7 @@ E_S3_ERROR_TYPE S3TranslateError(LPCTSTR pszErrorID)
 	{
 		CSimpleRWLockAcquire lock(&rwlS3Translate, false);			// read lock
 		ASSERT(bMapsInitialized);
-		map<CStringSortNoCase, shared_ptr<S3_ERROR_TRANS>>::iterator itMap = IDMap.find(CStringSortNoCase(pszErrorID));
+		std::map<CStringSortNoCase, std::shared_ptr<S3_ERROR_TRANS>>::iterator itMap = IDMap.find(CStringSortNoCase(pszErrorID));
 		if (itMap != IDMap.end())
 			return itMap->second->S3Error;
 	}
@@ -184,7 +183,7 @@ bool S3ErrorInfo(E_S3_ERROR_TYPE Code, CString *psErrorID, CString *psErrorText)
 	{
 		CSimpleRWLockAcquire lock(&rwlS3Translate, false);			// read lock
 		ASSERT(bMapsInitialized);
-		map<E_S3_ERROR_TYPE, shared_ptr<S3_ERROR_TRANS>>::iterator itMap = CodeMap.find(Code);
+		std::map<E_S3_ERROR_TYPE, std::shared_ptr<S3_ERROR_TRANS>>::iterator itMap = CodeMap.find(Code);
 		if (itMap != CodeMap.end())
 		{
 			if (psErrorID != nullptr)

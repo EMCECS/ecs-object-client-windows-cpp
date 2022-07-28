@@ -222,7 +222,7 @@ namespace ecs_sdk
 
 	// these routines allow arrays of strings to be loaded and stored
 	// string arrays have a single NUL between each item and two NUL's at the end
-	// LIST must be a STL container class of CString (list<CString>, deque, vector, etc.)
+	// LIST must be a STL container class of CString (std::list<CString>, deque, vector, etc.)
 	template<class LIST>
 	inline void LoadNullTermStringArray(LPCTSTR pNullStringArray, LIST& List)
 	{

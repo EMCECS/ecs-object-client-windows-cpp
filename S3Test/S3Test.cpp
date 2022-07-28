@@ -128,7 +128,6 @@ DWORD dwRetention = 0;					// retention in seconds
 
 bool bShuttingDown = false;
 
-using namespace std;
 
 static int DoTest(CString& sOutMessage);
 
@@ -167,13 +166,13 @@ struct PROGRESS
 		iProgress = 0;
 	}
 };
-list<PROGRESS> ProgressList;
+std::list<PROGRESS> ProgressList;
 
 void ProgressCallback(int iProgress, void *pContext)
 {
 	static CCriticalSection csProgress;
 	static LONGLONG llOffset = 0LL;
-	list<PROGRESS> *pList = (list<PROGRESS> *)pContext;
+	std::list<PROGRESS> *pList = (std::list<PROGRESS> *)pContext;
 	PROGRESS Rec;
 	CSingleLock lock(&csProgress, true);
 	GetSystemTimeAsFileTime(&Rec.ftTime);
@@ -183,9 +182,9 @@ void ProgressCallback(int iProgress, void *pContext)
 	_tprintf(_T("MPU Offset: %-20I64d\r"), llOffset);
 }
 
-static bool ParseArguments(const list<CString>& CmdArgs, CString& sOutMessage)
+static bool ParseArguments(const std::list<CString>& CmdArgs, CString& sOutMessage)
 {
-	list<CString>::const_iterator itParam = CmdArgs.begin();
+	std::list<CString>::const_iterator itParam = CmdArgs.begin();
 	++itParam;
 	for (; itParam != CmdArgs.end(); ++itParam)
 	{
@@ -492,7 +491,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			ECSInitLib();
 
 			CString sOutMessage;
-			list<CString> CmdArgs;
+			std::list<CString> CmdArgs;
 			for (int i = 0; i<argc; i++)
 				CmdArgs.push_back(CString(argv[i]));
 
@@ -559,7 +558,7 @@ static int DoTest(CString& sOutMessage)
 		sOutMessage = _T("Secret not defined");
 		return 1;
 	}
-	deque<CString> IPList;
+	std::deque<CString> IPList;
 	IPList.push_back(sEndPoint);
 	if (!sEndPoint2.IsEmpty())
 		IPList.push_back(sEndPoint2);
@@ -666,7 +665,7 @@ static int DoTest(CString& sOutMessage)
 		{
 			// dump service info
 			_tprintf(_T("OwnerID: %s, Name: %s\n"), (LPCTSTR)ServiceInfo.sOwnerID, (LPCTSTR)ServiceInfo.sOwnerDisplayName);
-			for (list<CECSConnection::S3_BUCKET_INFO>::const_iterator itList = ServiceInfo.BucketList.begin();
+			for (std::list<CECSConnection::S3_BUCKET_INFO>::const_iterator itList = ServiceInfo.BucketList.begin();
 				itList != ServiceInfo.BucketList.end(); ++itList)
 			{
 				_tprintf(_T("  Bucket: %s: %s\n"), (LPCTSTR)itList->sName, (LPCTSTR)DateTimeStr(&itList->ftCreationDate, true, true, true, false, true));
@@ -681,7 +680,7 @@ static int DoTest(CString& sOutMessage)
 			}
 			// dump endpoint info
 			_tprintf(_T("Version: %s\n"), (LPCTSTR)Endpoint.sVersion);
-			for (list<CString>::const_iterator itList = Endpoint.EndpointList.begin();
+			for (std::list<CString>::const_iterator itList = Endpoint.EndpointList.begin();
 				itList != Endpoint.EndpointList.end(); ++itList)
 			{
 				_tprintf(_T("  Endpoint: %s\n"), (LPCTSTR)*itList);
@@ -748,7 +747,7 @@ static int DoTest(CString& sOutMessage)
 	{
 		PROGRESS_CONTEXT Context;
 		Context.sTitle = L"Write";
-		list<CECSConnection::HEADER_STRUCT> MDList;
+		std::list<CECSConnection::HEADER_STRUCT> MDList;
 		CECSConnection::HEADER_STRUCT MD_Rec;
 		if (!bMPU)
 		{
@@ -825,7 +824,7 @@ static int DoTest(CString& sOutMessage)
 	}
 	if (!sReadMetaECSPath.IsEmpty())
 	{
-		list<CECSConnection::HEADER_STRUCT> MDList;
+		std::list<CECSConnection::HEADER_STRUCT> MDList;
 		CECSConnection::S3_SYSTEM_METADATA Properties;
 		CECSConnection::S3_ERROR Error = Conn.ReadProperties(sReadMetaECSPath, Properties, nullptr, &MDList);
 		if (!Error.IfError())
@@ -835,7 +834,7 @@ static int DoTest(CString& sOutMessage)
 				(LPCTSTR)DateTimeStr(&Properties.ftLastMod, true, true, true, false, true, true),
 				Properties.llSize, (int)Properties.bIsLatest, (int)Properties.bDeleted, (LPCTSTR)Properties.sVersionId,
 				(LPCTSTR)Properties.sETag, (LPCTSTR)Properties.sOwnerDisplayName, (LPCTSTR)Properties.sOwnerID);
-			for (list<CECSConnection::HEADER_STRUCT>::const_iterator it = MDList.begin(); it != MDList.end(); ++it)
+			for (std::list<CECSConnection::HEADER_STRUCT>::const_iterator it = MDList.begin(); it != MDList.end(); ++it)
 				_tprintf(_T("    %s : %s\n"), (LPCTSTR)it->sHeader, (LPCTSTR)it->sContents);
 		}
 		else

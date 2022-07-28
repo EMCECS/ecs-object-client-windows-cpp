@@ -30,7 +30,7 @@ namespace ecs_sdk
 		ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
 		ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
 														// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
-		list<CECSConnection::HEADER_REQ>* pRcvHeaders,			// optional return all headers
+		std::list<CECSConnection::HEADER_REQ>* pRcvHeaders,			// optional return all headers
 		CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 		void* pContext,											// context for UpdateProgressCB
 		ULONGLONG* pullReturnedLength);					// optional output returned size
@@ -42,7 +42,7 @@ namespace ecs_sdk
 		const DWORD dwBufSize,							// size of buffer to use
 		bool bChecksum,									// if set, include content-MD5 header
 		DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
-		const list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
+		const std::list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
 		CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 		void* pContext);											// context for UpdateProgressCB
 
@@ -54,7 +54,7 @@ namespace ecs_sdk
 		const DWORD dwPartSize,							// part size (in MB)
 		const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
 		bool bChecksum,									// if set, include content-MD5 header
-		const list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
+		const std::list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
 		DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
 		DWORD dwMaxRetries,									// how many times to retry a part before giving up
 		CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
@@ -71,7 +71,7 @@ namespace ecs_sdk
 		ULONGLONG lwLen,								// if lwOffset == 0 and dwLen == 0, read entire file
 		ULONGLONG lwOffset,								// if dwLen != 0, read 'dwLen' bytes starting from lwOffset
 														// if lwOffset != 0 and dwLen == 0, read from lwOffset to the end of the file
-		list<CECSConnection::HEADER_REQ>* pRcvHeaders,			// optional return all headers
+		std::list<CECSConnection::HEADER_REQ>* pRcvHeaders,			// optional return all headers
 		CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 		void* pContext,											// context for UpdateProgressCB
 		ULONGLONG* pullReturnedLength);					// optional output returned size
@@ -85,7 +85,7 @@ namespace ecs_sdk
 		const DWORD dwBufSize,							// size of buffer to use
 		bool bChecksum,									// if set, include content-MD5 header
 		DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
-		const list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
+		const std::list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
 		CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback
 		void* pContext);										// context for UpdateProgressCB
 
@@ -99,7 +99,7 @@ namespace ecs_sdk
 		const DWORD dwPartSize,							// part size (in MB)
 		const DWORD dwMaxThreads,						// maxiumum number of threads to spawn
 		bool bChecksum,									// if set, include content-MD5 header
-		const list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
+		const std::list<CECSConnection::HEADER_STRUCT>* pMDList,	// optional metadata to send to object
 		DWORD dwMaxQueueSize,								// how big the queue can grow that feeds the upload thread
 		DWORD dwMaxRetries,									// how many times to retry a part before giving up
 		CECSConnection::UPDATE_PROGRESS_CB UpdateProgressCB,	// optional progress callback

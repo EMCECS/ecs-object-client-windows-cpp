@@ -147,7 +147,7 @@ namespace ecs_sdk
 			ALG_HANDLE(BCRYPT_ALG_HANDLE hAlgParam = nullptr);
 			~ALG_HANDLE();
 		};
-		static map<CStringW, shared_ptr<ALG_HANDLE>> ProviderCache;
+		static std::map<CStringW, std::shared_ptr<ALG_HANDLE>> ProviderCache;
 		static CSimpleRWLock rwlProviderCache;									// lock used for provider cache
 	};
 

@@ -54,7 +54,7 @@ class ECSUTIL_EXT_CLASS CThreadPoolBase
 private:
 	static bool bPoolInitialized;				// no threads will process until set to true
 	static CCriticalSection *pcsGlobalCThreadPool;
-	static set<CThreadPoolBase *> *pGlobalCThreadPool;
+	static std::set<CThreadPoolBase *> *pGlobalCThreadPool;
 	virtual void GarbageCollect(void) = 0;
 	virtual CString FormatEntry(void) = 0;
 	virtual void Terminate(void) = 0;
@@ -90,7 +90,7 @@ private:
 	bool bInitialized;
 	bool bInUse;				// set if allocated to a socket
 	UINT uGrouping;				// from msg entry
-	shared_ptr<MsgT> Msg;		// message currently being worked on
+	std::shared_ptr<MsgT> Msg;		// message currently being worked on
 	FILETIME ftIdleTime;		// set with the current time when the thread is finished processing
 	CSharedQueueEvent MsgEvent;	// event that a new message arrived
 
@@ -175,7 +175,7 @@ protected:
 	struct CMsgEntry
 	{
 		CMsgEntryControl Control;	// control flags
-		shared_ptr<MsgT> Payload;
+		std::shared_ptr<MsgT> Payload;
 		CMsgEntry()
 		{}
 	};
@@ -207,7 +207,7 @@ private:
 	bool bDisable;					// disable is set when Terminate is called to prevent additional work items
 	CThreadPoolEvents Events;
 	CSharedQueue<CMsgEntry> MsgQueue;
-	list<CMsgEntry> FutureMsgQueue;				// use the lock in MsgQueue. both MsgQueue and FutureMsgQueue use the same lock
+	std::list<CMsgEntry> FutureMsgQueue;				// use the lock in MsgQueue. both MsgQueue and FutureMsgQueue use the same lock
 	CSharedQueue<CThreadWork<MsgT>> Pool;
 
 	DWORD StartNewThread(void);
@@ -248,7 +248,7 @@ public:
 	void DumpQueue(void *pContext) const;
 	virtual bool DumpEntry(bool bInProcess, const MsgT& Message, void *pContext) const;
 	DWORD GetMsgQueueCount() const;
-	void GetCurrentWorkItems(list<MsgT>& RetList) const;
+	void GetCurrentWorkItems(std::list<MsgT>& RetList) const;
 	void WaitForWorkFinished(THREADPOOL_ABORT_CB AbortProc, void *pContext, DWORD dwWaitMillisec = 500);
 	DWORD GetMaxConcurrentThreads(bool bReset = false);
 	void DiscardPool(void) throw();
@@ -673,7 +673,7 @@ DWORD CThreadPool<MsgT>::GetNumThreadsInternal(
 }
 
 template <class MsgT>
-void CThreadPool<MsgT>::GetCurrentWorkItems(list<MsgT>& RetList) const
+void CThreadPool<MsgT>::GetCurrentWorkItems(std::list<MsgT>& RetList) const
 {
 	CRWLockAcquire lock(&Pool.GetLock(), false);	// read lock
 	for (typename CSharedQueue<CThreadWork<MsgT>>::const_iterator itPool = Pool.begin(); itPool != Pool.end(); ++itPool)

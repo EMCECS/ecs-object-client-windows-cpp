@@ -15,7 +15,6 @@
 
 #include "stdafx.h"
 
-using namespace std;
 
 #include <atlbase.h>
 #include <atlstr.h>
@@ -46,27 +45,27 @@ namespace ecs_sdk
 #define ECS_CONN_WINHTTP_CALLBACK_FLAGS (WINHTTP_CALLBACK_FLAG_ALL_COMPLETIONS | WINHTTP_CALLBACK_FLAG_SECURE_FAILURE | WINHTTP_CALLBACK_FLAG_HANDLES)
 
 bool CECSConnection::bInitialized = false;						// starts out false. If false, timeouts are very short. must call SetInitialized to get regular timeouts
-map<CString, CECSConnection::THROTTLE_REC> CECSConnection::ThrottleMap;	// global map used by all CECSConnection objects
+std::map<CString, CECSConnection::THROTTLE_REC> CECSConnection::ThrottleMap;	// global map used by all CECSConnection objects
 CCriticalSection CECSConnection::csThrottleMap;				// critical section protecting ThrottleMap
-list<CECSConnection *> CECSConnection::ECSConnectionList;			// list of all CECSConnection objects (protected by csThrottleMap)
+std::list<CECSConnection *> CECSConnection::ECSConnectionList;			// list of all CECSConnection objects (protected by csThrottleMap)
 CECSConnection::CThrottleTimerThread CECSConnection::TimerThread;	// throttle timer thread
 DWORD CECSConnection::dwGlobalHttpsProtocol = 0;
 DWORD CECSConnection::dwS3BucketListingMax = 1000;					// maxiumum number of items to return on a bucket listing (S3). Default = 1000 (cannot be larger than 1000)
 
 CCriticalSection CECSConnection::csBadIPMap;
-map<CECSConnection::BAD_IP_KEY,CECSConnection::BAD_IP_ENTRY> CECSConnection::BadIPMap;		// protected by csBadIPMap
-map<CString,UINT> CECSConnection::LoadBalMap;										// protected by csBadIPMap
-list<CECSConnection::XML_DIR_LISTING_CONTEXT *> CECSConnection::DirListList;	// listing of current dir listing operations
+std::map<CECSConnection::BAD_IP_KEY,CECSConnection::BAD_IP_ENTRY> CECSConnection::BadIPMap;		// protected by csBadIPMap
+std::map<CString,UINT> CECSConnection::LoadBalMap;										// protected by csBadIPMap
+std::list<CECSConnection::XML_DIR_LISTING_CONTEXT *> CECSConnection::DirListList;	// listing of current dir listing operations
 CCriticalSection CECSConnection::csDirListList;				// critical section protecting DirListList
 CCriticalSection CECSConnection::csSessionMap;
-map<CECSConnection::SESSION_MAP_KEY, CECSConnection::SESSION_MAP_VALUE> CECSConnection::SessionMap;			// protected by rwlSessionMap
+std::map<CECSConnection::SESSION_MAP_KEY, CECSConnection::SESSION_MAP_VALUE> CECSConnection::SessionMap;			// protected by rwlSessionMap
 long CECSConnection::lSessionKeyValue;
 CString CECSConnection::sAmzMetaPrefix(TEXT("x-amz-meta-"));						// just a place to hold "x-amz-meta-"
-set<CString> CECSConnection::SystemMDSet;					// set of system metadata fields that can be indexed
+std::set<CString> CECSConnection::SystemMDSet;					// set of system metadata fields that can be indexed
 
 // global performance counters
 CSimpleRWLock CECSConnection::rwlGlobalPerf;
-list<CECSConnection::GLOBAL_PERF_POINTERS> CECSConnection::GlobalPerfList;
+std::list<CECSConnection::GLOBAL_PERF_POINTERS> CECSConnection::GlobalPerfList;
 
 DWORD CECSConnection::dwMaxRetryCount(MaxRetryCount);				// max retries for HTTP command
 DWORD CECSConnection::dwPauseBetweenRetries(500);					// pause between retries (millisec)
@@ -89,7 +88,7 @@ static LPCWSTR SystemMDInit[] =
 class CSignQuerySet
 {
 	static CSimpleRWLock lwrSignQuerySet;
-	static set<CString> SignQuerySet;
+	static std::set<CString> SignQuerySet;
 	static LPCTSTR InitArray[];
 
 public:
@@ -112,7 +111,7 @@ public:
 };
 
 CSimpleRWLock CSignQuerySet::lwrSignQuerySet;
-set<CString> CSignQuerySet::SignQuerySet;
+std::set<CString> CSignQuerySet::SignQuerySet;
 LPCTSTR CSignQuerySet::InitArray[] =
 {
 	_T("acl"),
@@ -181,7 +180,7 @@ struct HTTP_ERROR_ENTRY
 	{ HTTP_STATUS_VERSION_NOT_SUP, HTTP_E_STATUS_VERSION_NOT_SUP},
 };
 
-map<DWORD, HRESULT> HttpErrorMap;
+std::map<DWORD, HRESULT> HttpErrorMap;
 
 static bool IfServerReached(DWORD dwError)
 {
@@ -222,19 +221,19 @@ void CECSConnection::SetPerfStateSize(long lDiff)
 	}
 }
 
-shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf()
+std::shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf()
 {
 	DWORD dwThreadID = GetCurrentThreadId();
 
 	CSimpleRWLockAcquire lock(&StateList.rwlStateMap, false);			// read lock
 																		// this will either insert it or if it already exists, return the existing entry for this thread
-	map<DWORD, shared_ptr<CECSConnectionState>>::iterator itState = StateList.StateMap.find(dwThreadID);
+	std::map<DWORD, std::shared_ptr<CECSConnectionState>>::iterator itState = StateList.StateMap.find(dwThreadID);
 	if (itState == StateList.StateMap.end())
 	{
 		lock.Unlock();
 		lock.Lock(true);									// get write lock
 		size_t MapSize = StateList.StateMap.size();
-		pair<map<DWORD, shared_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(make_pair(dwThreadID, make_shared<CECSConnectionState>()));
+		std::pair<std::map<DWORD, std::shared_ptr<CECSConnectionState>>::iterator, bool> ret = StateList.StateMap.emplace(std::make_pair(dwThreadID, std::make_shared<CECSConnectionState>()));
 		if (ret.second)
 		{
 			ret.first->second->pECSConnection = this;
@@ -242,7 +241,7 @@ shared_ptr<CECSConnection::CECSConnectionState> CECSConnection::GetStateBuf()
 		}
 		InterlockedIncrement(&ret.first->second->ulReferenceCount);
 		ASSERT(ret.first->second->pECSConnection == this);
-		shared_ptr<CECSConnection::CECSConnectionState> StateRet = ret.first->second;
+		std::shared_ptr<CECSConnection::CECSConnectionState> StateRet = ret.first->second;
 		// if the map is getting large, don't wait for the periodic garbage collection. do it now
 		if (MapSize > 500)
 		{
@@ -326,7 +325,7 @@ bool CECSConnection::WaitComplete(DWORD dwCallbackExpected)
 			CSingleLock lock(&State.Ref->CallbackContext.csContext, true);
 			bool bGotIt = false;
 			// command finished!
-			for (list<CMD_RECEIVED>::const_iterator it = State.Ref->CallbackContext.CallbacksReceived.begin()
+			for (std::list<CMD_RECEIVED>::const_iterator it = State.Ref->CallbackContext.CallbacksReceived.begin()
 				; it != State.Ref->CallbackContext.CallbacksReceived.end(); ++it)
 			{
 				if (it->dwInternetStatus == dwCallbackExpected)
@@ -446,7 +445,7 @@ void CECSConnection::CThrottleTimerThread::DoWork()
 	else
 		LastTime.QuadPart = FTtoULarge(ftNow).QuadPart - FTtoULarge(ftLast).QuadPart;
 	ftLast = ftNow;
-	map<CString,CECSConnection::THROTTLE_REC>::iterator itMap;
+	std::map<CString,CECSConnection::THROTTLE_REC>::iterator itMap;
 	CSingleLock lock(&csThrottleMap, true);
 	for (itMap=CECSConnection::ThrottleMap.begin() ; itMap!=CECSConnection::ThrottleMap.end() ; ++itMap)
 	{
@@ -469,13 +468,13 @@ void CECSConnection::CThrottleTimerThread::DoWork()
 		else
 			itMap->second.Download.iBytesCurInterval = 0;
 		// now notify any current objects waiting for this moment
-		list<CECSConnection *>::iterator itList;
+		std::list<CECSConnection *>::iterator itList;
 		for (itList = CECSConnection::ECSConnectionList.begin() ; itList != CECSConnection::ECSConnectionList.end() ; ++itList)
 		{
 			if ((*itList)->sHost == itMap->first)
 			{
 				CSimpleRWLockAcquire lockStateMap(&(*itList)->StateList.rwlStateMap, false);
-				map<DWORD,shared_ptr<CECSConnectionState>>::iterator itStateMap;
+				std::map<DWORD,std::shared_ptr<CECSConnectionState>>::iterator itStateMap;
 				for (itStateMap = (*itList)->StateList.StateMap.begin(); itStateMap != (*itList)->StateList.StateMap.end(); ++itStateMap)
 					VERIFY(itStateMap->second->evThrottle.SetEvent());
 			}
@@ -501,7 +500,7 @@ void CECSConnection::Init()
 {
 	SignQuerySet.Init();
 	for (UINT i = 0; i < _countof(HttpErrorInitArray); i++)
-		(void)HttpErrorMap.insert(make_pair(HttpErrorInitArray[i].dwHTTPErrorCode, HttpErrorInitArray[i].dwErrorCode));
+		(void)HttpErrorMap.insert(std::make_pair(HttpErrorInitArray[i].dwHTTPErrorCode, HttpErrorInitArray[i].dwErrorCode));
 	for (UINT i = 0; i < _countof(SystemMDInit); ++i)
 		(void)SystemMDSet.insert(SystemMDInit[i]);
 
@@ -678,7 +677,7 @@ CString CECSConnection::FormatISO8601Date(const SYSTEMTIME& stDateUTC, bool bLoc
 		+ _T("Z");
 }
 
-void CECSConnection::SetGlobalPerformanceCounters(const list<GLOBAL_PERF_POINTERS>& PerfListParam)
+void CECSConnection::SetGlobalPerformanceCounters(const std::list<GLOBAL_PERF_POINTERS>& PerfListParam)
 {
 	CSimpleRWLockAcquire lock(&rwlGlobalPerf, true);		// write lock
 	GlobalPerfList = PerfListParam;
@@ -698,7 +697,7 @@ void CECSConnection::SetPerformanceCounters(ULONGLONG *pullPerfBytesSentParam, U
 	}
 }
 
-static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
+static void CheckQuery(const CString& sQuery, std::map<CString, CString>& QueryMap)
 {
 	int iEqual = sQuery.Find(_T('='));
 	CString sToken;
@@ -711,7 +710,7 @@ static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
 	sToken.TrimRight();
 	if (SignQuerySet.IfQuery(sToken))
 	{
-		(void)QueryMap.insert(make_pair(sToken, UriDecode(sQuery)));
+		(void)QueryMap.insert(std::make_pair(sToken, UriDecode(sQuery)));
 	}
 }
 
@@ -732,12 +731,12 @@ static void CheckQuery(const CString& sQuery, map<CString, CString>& QueryMap)
 //	<HTTP-Request-URI, from the protocol name up to the query string> +
 //	[ subresource, if present. For example "?acl", "?location", "?logging", or "?torrent"];
 //
-CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString& method, const CString& resource, const map<CString, HEADER_STRUCT>& headers, LPCTSTR pszExpires)
+CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString& method, const CString& resource, const std::map<CString, HEADER_STRUCT>& headers, LPCTSTR pszExpires)
 {
 	CString sAuthorization;
 	try
 	{
-		map<CString, HEADER_STRUCT>::const_iterator iter;
+		std::map<CString, HEADER_STRUCT>::const_iterator iter;
 		//		<HTTPMethod>\n
 		CString sCanonical(method);
 		sCanonical.MakeUpper();
@@ -784,7 +783,7 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 			(void)sResource.Delete(iQuestion, resource.GetLength() - iQuestion);
 			int pos = 0;
 			CString sQuery;
-			map<CString, CString> QueryMap;
+			std::map<CString, CString> QueryMap;
 			for (;;)
 			{
 				sQuery = sQueryString.Tokenize(_T("?&"), pos);
@@ -794,7 +793,7 @@ CString CECSConnection::signRequestS3v2(const CString& secretStr, const CString&
 			}
 			if (!QueryMap.empty())
 			{
-				for (map<CString, CString>::const_iterator itMap = QueryMap.begin(); itMap != QueryMap.end(); ++itMap)
+				for (std::map<CString, CString>::const_iterator itMap = QueryMap.begin(); itMap != QueryMap.end(); ++itMap)
 				{
 					if (itMap == QueryMap.begin())
 						sResource += _T("?");
@@ -909,7 +908,7 @@ CString CECSConnection::signRequestS3v4(
 	const CString& secretStr,
 	const CString& method,
 	const CString& resource,
-	const map<CString, HEADER_STRUCT>& headers,
+	const std::map<CString, HEADER_STRUCT>& headers,
 	const void *pData,
 	DWORD dwDataLen,
 	E_S3_V4_PAYLOAD PayloadType,
@@ -986,21 +985,21 @@ CString CECSConnection::signRequestS3v4(
 			// each query separated by '&'
 			// each query of form: var=value
 			int iPosQuery = 0;
-			map<CString, CString> QueryMap;
+			std::map<CString, CString> QueryMap;
 			for (;;)
 			{
 				sQuery = sFullQuery.Tokenize(_T("&"), iPosQuery);
 				if (sQuery.IsEmpty())
 					break;
 				int iEquals = sQuery.Find(_T('='));
-				pair<map<CString, CString>::iterator, bool> ret;
+				std::pair<std::map<CString, CString>::iterator, bool> ret;
 				if (iEquals >= 0)
-					ret = QueryMap.insert(make_pair(UriEncode(UriDecode(sQuery.Left(iEquals)), E_URI_ENCODE::V4AuthSlash), UriEncode(UriDecode(sQuery.Mid(iEquals + 1)), E_URI_ENCODE::V4AuthSlash)));
+					ret = QueryMap.insert(std::make_pair(UriEncode(UriDecode(sQuery.Left(iEquals)), E_URI_ENCODE::V4AuthSlash), UriEncode(UriDecode(sQuery.Mid(iEquals + 1)), E_URI_ENCODE::V4AuthSlash)));
 				else
-					ret = QueryMap.insert(make_pair(UriEncode(UriDecode(sQuery), E_URI_ENCODE::V4AuthSlash), _T("")));
+					ret = QueryMap.insert(std::make_pair(UriEncode(UriDecode(sQuery), E_URI_ENCODE::V4AuthSlash), _T("")));
 				ASSERT(ret.second);
 			}
-			for (map<CString, CString>::const_iterator itMap = QueryMap.begin(); itMap != QueryMap.end(); ++itMap)
+			for (std::map<CString, CString>::const_iterator itMap = QueryMap.begin(); itMap != QueryMap.end(); ++itMap)
 			{
 				if (itMap != QueryMap.begin())
 					sCanonical += _T("&");
@@ -1011,7 +1010,7 @@ CString CECSConnection::signRequestS3v4(
 		//		<CanonicalHeaders>\n
 		//		<SignedHeaders>\n
 		CString sSignedHeaders;
-		for (map<CString, HEADER_STRUCT>::const_iterator itMap = headers.begin(); itMap != headers.end(); ++itMap)
+		for (std::map<CString, HEADER_STRUCT>::const_iterator itMap = headers.begin(); itMap != headers.end(); ++itMap)
 		{
 			CString sLabel(itMap->first), sValue(itMap->second.sContents);
 			sLabel.Trim();
@@ -1336,7 +1335,7 @@ void CECSConnection::AddHeader(LPCTSTR pszHeaderLabel, LPCTSTR pszHeaderText, bo
 	HEADER_STRUCT Hdr;
 	Hdr.sHeader = sHeaderLabel;
 	Hdr.sContents = pszHeaderText;
-	pair<map<CString, HEADER_STRUCT>::iterator, bool> ret = State.Ref->Headers.insert(make_pair(sLabelLower, Hdr));
+	std::pair<std::map<CString, HEADER_STRUCT>::iterator, bool> ret = State.Ref->Headers.insert(std::make_pair(sLabelLower, Hdr));
 	if (!ret.second && bOverride)
 	{
 		ret.first->second.sHeader = sHeaderLabel;
@@ -1359,7 +1358,7 @@ LPCTSTR CECSConnection::GetCurrentServerIP(void)
 // GetNextECSIP
 // pick from one of the ip addrs going to this host
 // returns false if there are no available IPs for this host
-bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
+bool CECSConnection::GetNextECSIP(std::map<CString,BAD_IP_ENTRY>& IPUsed)
 {
 	CStateRef State(this);
 	if (dwBadIPAddrAge == 0)
@@ -1374,7 +1373,7 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 
 	FILETIME ftNow;
 	GetSystemTimeAsFileTime(&ftNow);
-	for (map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); )
+	for (std::map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); )
 	{
 		if (ftNow > (itMap->second.ftError + liBadIPAge))
 			itMap = BadIPMap.erase(itMap);
@@ -1383,7 +1382,7 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 	}
 
 	// insert new LoadBalMap record, or retrieve existing record
-	pair<map<CString, UINT>::iterator, bool> Ret = LoadBalMap.insert(make_pair(sHost, 0));
+	std::pair<std::map<CString, UINT>::iterator, bool> Ret = LoadBalMap.insert(std::make_pair(sHost, 0));
 	if (++Ret.first->second >= State.Ref->IPListLocal.size())
 		Ret.first->second = 0;
 	State.Ref->iIPList = Ret.first->second;
@@ -1416,7 +1415,7 @@ bool CECSConnection::GetNextECSIP(map<CString,BAD_IP_ENTRY>& IPUsed)
 void CECSConnection::TestAllIPBad()
 {
 	CStateRef State(this);
-	deque<CString> IPList = State.Ref->IPListLocal;
+	std::deque<CString> IPList = State.Ref->IPListLocal;
 	{
 		// we need to test and reset a rare possibilty that all of the IPs for this host have been marked bad
 		// normally that shouldn't happen because an IP is only marked bad if another IP was successful
@@ -1427,11 +1426,11 @@ void CECSConnection::TestAllIPBad()
 
 			// run through the map, for each entry for this host, delete any corresponding entry in IPList
 			// if, after going through the whole map, if IPList is empty that means that all of the IPs were marked bad
-			for (map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); ++itMap)
+			for (std::map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); ++itMap)
 			{
 				if (sHost == itMap->first.sHostName)
 				{
-					for (deque<CString>::iterator it = IPList.begin(); it != IPList.end(); )
+					for (std::deque<CString>::iterator it = IPList.begin(); it != IPList.end(); )
 					{
 						if (*it == itMap->first.sIP)
 							it = IPList.erase(it);
@@ -1443,7 +1442,7 @@ void CECSConnection::TestAllIPBad()
 			// if IPList is now empty, all entries were marked bad. unmark them
 			if (IPList.empty())
 			{
-				for (map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end();)
+				for (std::map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end();)
 				{
 					if (sHost == itMap->first.sHostName)
 						itMap = BadIPMap.erase(itMap);
@@ -1460,7 +1459,7 @@ void CECSConnection::TestAllIPBad()
 // this is only called if it eventually did connect via one of the addresses
 // if all of the addresses failed, it calls the 'disconnect' callback and will try again later
 // there is no point in blaming the problem on each individual address
-void CECSConnection::LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed)
+void CECSConnection::LogBadIPAddr(const std::map<CString,BAD_IP_ENTRY>& IPUsed)
 {
 	CSingleLock csBad(&csBadIPMap, true);
 	FILETIME ftNow;
@@ -1469,11 +1468,11 @@ void CECSConnection::LogBadIPAddr(const map<CString,BAD_IP_ENTRY>& IPUsed)
 		return;
 	BAD_IP_ENTRY Entry;
 	GetSystemTimeAsFileTime(&ftNow);
-	for (map<CString,BAD_IP_ENTRY>::const_iterator itUsed=IPUsed.begin() ; itUsed != IPUsed.end() ; ++itUsed)
+	for (std::map<CString,BAD_IP_ENTRY>::const_iterator itUsed=IPUsed.begin() ; itUsed != IPUsed.end() ; ++itUsed)
 	{
 		Entry.ftError = ftNow;
 		Entry.ErrorInfo = itUsed->second.ErrorInfo;
-		pair<map<BAD_IP_KEY,BAD_IP_ENTRY>::iterator,bool> Ret = BadIPMap.insert(make_pair(BAD_IP_KEY(sHost, itUsed->first), Entry));
+		std::pair<std::map<BAD_IP_KEY,BAD_IP_ENTRY>::iterator,bool> Ret = BadIPMap.insert(std::make_pair(BAD_IP_KEY(sHost, itUsed->first), Entry));
 		if (!Ret.second)				// already in the map
 			Ret.first->second = Entry;
 		else
@@ -1508,7 +1507,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 	const void *pData,
 	DWORD dwDataLen,
 	CBuffer& RetData,
-	list<HEADER_REQ> *pHeaderReq,
+	std::list<HEADER_REQ> *pHeaderReq,
 	DWORD dwReceivedDataHint,				// an approximate size of the received data to aid in allocation
 	DWORD dwBufOffset,						// reserve dwBufOffset bytes at the start of the buffer
 	STREAM_CONTEXT *pStreamSend,			// if supplied, don't use pData/dwDataLen. wait on this queue for data to send
@@ -1518,9 +1517,9 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 	CStateRef State(this);
 	bool bGotServerResponse = false;
 	S3_ERROR Error;
-	map<CString,BAD_IP_ENTRY> IPUsed;
+	std::map<CString,BAD_IP_ENTRY> IPUsed;
 	CString sResource(pszResource);
-	list<HEADER_REQ> SaveHeaderReq;
+	std::list<HEADER_REQ> SaveHeaderReq;
 	try
 	{
 		if (pHeaderReq != nullptr)
@@ -1586,7 +1585,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequest(
 			if (IfMarkIPBad(Error.dwError))
 			{
 				// save the error for the log message
-				pair<map<CString, BAD_IP_ENTRY>::iterator, bool> Ret = IPUsed.insert(make_pair(GetCurrentServerIP(), BAD_IP_ENTRY(Error)));
+				std::pair<std::map<CString, BAD_IP_ENTRY>::iterator, bool> Ret = IPUsed.insert(std::make_pair(GetCurrentServerIP(), BAD_IP_ENTRY(Error)));
 			}
 			// try another IP address in the list
 			if (!GetNextECSIP(IPUsed))
@@ -1645,7 +1644,7 @@ const WCHAR * const XML_ECS_ADMIN_ERROR_DESC = L"//error/description";
 const WCHAR * const XML_ECS_ADMIN_ERROR_DETAILS = L"//error/details";
 const WCHAR * const XML_ECS_ADMIN_ERROR_RETRYABLE = L"//error/retryable";
 
-HRESULT XmlECSAdminErrorCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlECSAdminErrorCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -1681,7 +1680,7 @@ const WCHAR * const XML_S3_ERROR_MESSAGE = L"//Error/Message";
 const WCHAR * const XML_S3_ERROR_RESOURCE = L"//Error/Resource";
 const WCHAR * const XML_S3_ERROR_REQUEST_ID = L"//Error/RequestId";
 
-HRESULT XmlS3ErrorCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3ErrorCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -1832,7 +1831,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 	const void *pData,
 	DWORD dwDataLen,
 	CBuffer& RetData,
-	list<HEADER_REQ> *pHeaderReq,
+	std::list<HEADER_REQ> *pHeaderReq,
 	DWORD dwReceivedDataHint,				// an approximate size of the received data to aid in allocation
 	DWORD dwBufOffset,						// reserve dwBufOffset bytes at the start of the buffer
 	bool *pbGotServerResponse,				// if this is set, that means it got to the server. don't retry it. Also, don't call the disconnected callback
@@ -1901,7 +1900,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 
 		// fixup the host header line (if it exists)
 		{
-			map<CString, HEADER_STRUCT>::iterator itHeader = State.Ref->Headers.find(_T("host"));
+			std::map<CString, HEADER_STRUCT>::iterator itHeader = State.Ref->Headers.find(_T("host"));
 			if (itHeader != State.Ref->Headers.end())
 				itHeader->second.sContents = sHostHeader;
 			// get date header if it exists
@@ -1988,7 +1987,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, GetLastError());
 		SetTimeouts(State.Ref->hRequest);
 		CString sHeaders;
-		map<CString,HEADER_STRUCT>::const_iterator iter;
+		std::map<CString,HEADER_STRUCT>::const_iterator iter;
 		for (iter=State.Ref->Headers.begin() ; iter != State.Ref->Headers.end() ; ++iter)
 		{
 			sHeaders += iter->second.sHeader + _T(":") + iter->second.sContents + _T("\r\n");
@@ -2066,7 +2065,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				{
 					{
 						CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
-						for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
+						for (std::list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
 						{
 							if (it->pullBytesSent != nullptr)
 								(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, (LONG64)sHeaders.GetLength() + dwDataPartLen);
@@ -2189,7 +2188,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 						{
 							{
 								CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
-								for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
+								for (std::list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
 								{
 									if (it->pullBytesSent != nullptr)
 										(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesSent, State.Ref->CallbackContext.dwBytesWritten);
@@ -2271,7 +2270,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					// see if we've used up all of our quota for this interval
 					if (bUploadThrottle)
 					{
-						map<CString, THROTTLE_REC>::iterator itThrottle;
+						std::map<CString, THROTTLE_REC>::iterator itThrottle;
 						{
 							CSingleLock lock(&csThrottleMap, true);
 							itThrottle = ThrottleMap.find(sHost);
@@ -2388,7 +2387,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 				}
 				else
 				{
-					list<CString> AllHeaders;
+					std::list<CString> AllHeaders;
 #ifdef _UNICODE
 					LoadNullTermStringArray((LPCWSTR)RetBuf.GetData(), AllHeaders);
 #else
@@ -2397,7 +2396,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 					LoadNullTermStringArray((LPCSTR)HeadersStr.GetData(), AllHeaders);
 #endif
 					CString sHeader, sContent;
-					for (list<CString>::const_iterator it = AllHeaders.begin(); it != AllHeaders.end(); ++it)
+					for (std::list<CString>::const_iterator it = AllHeaders.begin(); it != AllHeaders.end(); ++it)
 					{
 						int iSep = it->Find(_T(':'));
 						if (iSep >= 0)
@@ -2409,7 +2408,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 							sContent.TrimRight();
 							sContent.TrimLeft();
 							// see if we've already seen this label
-							list<HEADER_REQ>::iterator itReq;
+							std::list<HEADER_REQ>::iterator itReq;
 							for (itReq = pHeaderReq->begin(); itReq != pHeaderReq->end(); ++itReq)
 								if (itReq->sHeader.CompareNoCase(sHeader) == 0)
 									break;
@@ -2428,7 +2427,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			}
 			else
 			{
-				for (list<HEADER_REQ>::iterator itReq = pHeaderReq->begin(); itReq != pHeaderReq->end(); ++itReq)
+				for (std::list<HEADER_REQ>::iterator itReq = pHeaderReq->begin(); itReq != pHeaderReq->end(); ++itReq)
 				{
 					dwIndex = 0;
 					for (;;)
@@ -2514,7 +2513,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			{
 				{
 					CSimpleRWLockAcquire lock(&rwlGlobalPerf);				// read lock
-					for (list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
+					for (std::list<GLOBAL_PERF_POINTERS>::const_iterator it = GlobalPerfList.begin(); it != GlobalPerfList.end(); ++it)
 					{
 						if (it->pullBytesRcv != nullptr)
 							(void)InterlockedExchangeAdd64((LONG64 *)it->pullBytesRcv, dwDownloaded);
@@ -2548,7 +2547,7 @@ CECSConnection::S3_ERROR CECSConnection::SendRequestInternal(
 			// see if we've used up all of our quota for this interval
 			if (bDownloadThrottle)
 			{
-				map<CString,THROTTLE_REC>::iterator itThrottle;
+				std::map<CString,THROTTLE_REC>::iterator itThrottle;
 				{
 					CSingleLock lock(&csThrottleMap, true);
 					itThrottle = ThrottleMap.find(sHost);
@@ -2691,7 +2690,7 @@ void CECSConnection::SetHost(LPCTSTR pszHost)				// set Host
 	}
 }
 
-void CECSConnection::SetIPList(const deque<CString>& IPListParam)
+void CECSConnection::SetIPList(const std::deque<CString>& IPListParam)
 {
 	CStateRef State(this);
 	CSimpleRWLockAcquire lock(&rwlIPListHost, true);			// write lock because we might change it
@@ -2704,7 +2703,7 @@ void CECSConnection::SetIPList(const deque<CString>& IPListParam)
 	}
 }
 
-void CECSConnection::GetIPList(deque<CString>& IPListParam)
+void CECSConnection::GetIPList(std::deque<CString>& IPListParam)
 {
 	CSimpleRWLockAcquire lock(&rwlIPListHost, false);			// read lock
 	IPListParam = IPListHost;
@@ -2805,12 +2804,12 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 	LPCTSTR pszPath,
 	const void *pData,
 	DWORD dwLen,
-	const list<HEADER_STRUCT> *pMDList,
+	const std::list<HEADER_STRUCT> *pMDList,
 	const CBuffer *pChecksum,
 	STREAM_CONTEXT *pStreamSend,
 	ULONGLONG ullTotalLen,								// only used if stream send
 	LPCTSTR pIfNoneMatch,								// creates if-none-match header. use "*" to prevent an object from overwriting an existing object
-	list <HEADER_REQ> *pReq)							// if non-nullptr, return headers from result of PUT call
+	std::list<HEADER_REQ> *pReq)							// if non-nullptr, return headers from result of PUT call
 {
 	S3_ERROR Error;
 	CStateRef State(this);
@@ -2823,7 +2822,7 @@ CECSConnection::S3_ERROR CECSConnection::Create(
 			AddHeader(_T("Content-MD5"), pChecksum->EncodeBase64());
 		if (pMDList != nullptr)
 		{
-			for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
+			for (std::list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 			{
 				AddHeader(itList->sHeader, itList->sContents);
 			}
@@ -2846,8 +2845,8 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 	LPCTSTR pszNewPath,
 	LPCTSTR pszVersionId,		// nonNULL: version ID to copy
 	bool bCopy,
-	const list<CECSConnection::HEADER_STRUCT> *pMDList,
-	const list<CString> *pDeleteTagParam)
+	const std::list<CECSConnection::HEADER_STRUCT> *pMDList,
+	const std::list<CString> *pDeleteTagParam)
 {
 	CStateRef State(this);
 	CECSConnection::S3_ERROR Error;
@@ -2860,13 +2859,13 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 
 	if (sOldPathS3[sOldPathS3.GetLength() - 1] != _T('/'))
 	{
-		deque<ACL_ENTRY> Acls;
+		std::deque<ACL_ENTRY> Acls;
 		// first get the ACL of the "before" object
 		S3_ERROR AclAtError = ReadACL(sOldPathS3, Acls, pszVersionId);
 
 		// object - copy to new path and then delete the old object
 		InitHeader();
-		list<CECSConnection::HEADER_STRUCT> MDList;
+		std::list<CECSConnection::HEADER_STRUCT> MDList;
 		if (pMDList != nullptr)
 			MDList = *pMDList;
 		// we are ALWAYS going to read the current headers and never do a CopyMD
@@ -2877,14 +2876,14 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 		{
 			InitHeader();
 			// read all the headers of the source file
-			list<HEADER_REQ> Req;
+			std::list<HEADER_REQ> Req;
 			CString sHeadPath(UriEncode(sOldPathS3));
 			if (pszVersionId != nullptr)
 				sHeadPath += CString(_T("?versionId=")) + pszVersionId;
 			Error = SendRequest(_T("HEAD"), sHeadPath, nullptr, 0, RetData, &Req);
 			if (Error.IfError())
 				return Error;
-			for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
+			for (std::list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 			{
 				if (!it->ContentList.empty())
 				{
@@ -2893,7 +2892,7 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 						ullObjectSize = _tcstoui64(it->ContentList.front(), nullptr, 10);
 					}
 					bool bFound = false;
-					for (list<HEADER_STRUCT>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
+					for (std::list<HEADER_STRUCT>::const_iterator itMD = MDList.begin(); itMD != MDList.end(); ++itMD)
 					{
 						if (it->sHeader.CompareNoCase(itMD->sHeader) == 0)
 						{
@@ -2909,10 +2908,10 @@ CECSConnection::S3_ERROR CECSConnection::RenameS3(
 			}
 			if (!MDList.empty() && pDeleteTagParam != nullptr && !pDeleteTagParam->empty())
 			{
-				for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end(); )
+				for (std::list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end(); )
 				{
 					bool bDeleted = false;
-					for (list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
+					for (std::list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
 					{
 						if (*itDel == itList->sHeader)
 						{
@@ -2960,7 +2959,7 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVe
 		// if folder, do bulk delete
 		if (sPath[sPath.GetLength() - 1] == _T('/'))
 		{
-			list<CECSConnection::S3_DELETE_ENTRY> PathList;
+			std::list<CECSConnection::S3_DELETE_ENTRY> PathList;
 			PathList.push_back(CECSConnection::S3_DELETE_ENTRY(pszPath, pszVersionId));
 			return DeleteS3(PathList);
 		}
@@ -2977,7 +2976,7 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(LPCTSTR pszPath, LPCTSTR pszVe
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::DeleteS3(const list<CECSConnection::S3_DELETE_ENTRY>& PathList)
+CECSConnection::S3_ERROR CECSConnection::DeleteS3(const std::list<CECSConnection::S3_DELETE_ENTRY>& PathList)
 {
 	CStateRef State(this);
 	S3_ERROR Error;
@@ -2994,17 +2993,17 @@ CECSConnection::S3_ERROR CECSConnection::DeleteS3(const list<CECSConnection::S3_
 	return Error;
 }
 
-void CECSConnection::DeleteS3Internal(const list<CECSConnection::S3_DELETE_ENTRY>& PathList)
+void CECSConnection::DeleteS3Internal(const std::list<CECSConnection::S3_DELETE_ENTRY>& PathList)
 {
 	CStateRef State(this);
 	S3_ERROR Error;
 
-	list<CECSConnection::S3_DELETE_ENTRY>::const_iterator itPath;
+	std::list<CECSConnection::S3_DELETE_ENTRY>::const_iterator itPath;
 	for (itPath = PathList.begin(); itPath != PathList.end(); ++itPath)
 	{
 		if (itPath->sKey[itPath->sKey.GetLength() - 1] == _T('/'))
 		{
-			list<CECSConnection::S3_DELETE_ENTRY> PathListAdd;
+			std::list<CECSConnection::S3_DELETE_ENTRY> PathListAdd;
 			DirEntryList_t DirList;
 			Error = DirListing(itPath->sKey, DirList, false);
 			if (Error.IfError() && !Error.IfNotFound())
@@ -3057,11 +3056,11 @@ struct XML_DELETES3_ENTRY
 
 struct XML_DELETES3_CONTEXT
 {
-	list<XML_DELETES3_ENTRY> ErrorList;
+	std::list<XML_DELETES3_ENTRY> ErrorList;
 	XML_DELETES3_ENTRY Rec;
 };
 
-HRESULT XmlDeleteS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlDeleteS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -3145,7 +3144,7 @@ void CECSConnection::DeleteS3Send()
 	State.Ref->S3DeletePathList.sort();
 	State.Ref->S3DeletePathList.unique();
 	UINT iCount = 0;								// keep a count. don't let it go over MaxS3DeleteObjects
-	list<S3_DELETE_ENTRY>::iterator itPath;
+	std::list<S3_DELETE_ENTRY>::iterator itPath;
 	for (itPath = State.Ref->S3DeletePathList.end(); itPath != State.Ref->S3DeletePathList.begin();)
 	{
 		--itPath;															// run through the list from the end to the beginning
@@ -3220,7 +3219,7 @@ void CECSConnection::DeleteS3Send()
 		if (!Context.ErrorList.empty())
 		{
 			Error.sDetails.Empty();
-			for (list<XML_DELETES3_ENTRY>::const_iterator itList = Context.ErrorList.begin(); itList != Context.ErrorList.end(); ++itList)
+			for (std::list<XML_DELETES3_ENTRY>::const_iterator itList = Context.ErrorList.begin(); itList != Context.ErrorList.end(); ++itList)
 			{
 				Error.sDetails += itList->sCode + _T(":") + itList->sMessage + _T(": ") + itList->sKey + _T("\n");
 			}
@@ -3243,7 +3242,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 	CBuffer& RetData,
 	DWORD dwBufOffset,
 	STREAM_CONTEXT *pStreamReceive,
-	list<HEADER_REQ> *pRcvHeaders,
+	std::list<HEADER_REQ> *pRcvHeaders,
 	ULONGLONG *pullReturnedLength)
 {
 	const UINT READ_RETRY_MAX_TRIES = 5;
@@ -3251,7 +3250,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 	S3_ERROR Error;
 	try
 	{
-		list<HEADER_REQ> HeaderReq;
+		std::list<HEADER_REQ> HeaderReq;
 		InitHeader();
 		CString sRange;
 		for (UINT iRetry = 0; iRetry < READ_RETRY_MAX_TRIES; iRetry++)
@@ -3283,7 +3282,7 @@ CECSConnection::S3_ERROR CECSConnection::Read(
 				if (pullReturnedLength != nullptr)
 					*pullReturnedLength = ullTotalLength;
 				// make sure we have all the bytes we asked for
-				for (list<HEADER_REQ>::const_iterator it = HeaderReq.begin(); it != HeaderReq.end(); ++it)
+				for (std::list<HEADER_REQ>::const_iterator it = HeaderReq.begin(); it != HeaderReq.end(); ++it)
 				{
 					if (it->sHeader == _T("Content-Length"))
 					{
@@ -3386,7 +3385,7 @@ const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_CommonPrefixes_Prefix = L"//List
 const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_ELEMENT_CommonPrefixes = L"//ListVersionsResult/CommonPrefixes";
 const WCHAR * const XML_S3_DIR_LISTING_VERSIONS_ROOT_ELEMENT = L"//ListVersionsResult";
 
-HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlDirListingS3VersionsCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -3570,7 +3569,7 @@ const WCHAR * const XML_S3_DIR_LISTING_CommonPrefixes_Prefix = L"//ListBucketRes
 const WCHAR * const XML_S3_DIR_LISTING_ELEMENT_CommonPrefixes = L"//ListBucketResult/CommonPrefixes";
 const WCHAR * const XML_S3_DIR_LISTING_ROOT_ELEMENT = L"//ListBucketResult";
 
-HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlDirListingS3CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -3712,7 +3711,7 @@ CECSConnection::S3_ERROR CECSConnection::DirListingInternal(
 	CStateRef State(this);
 	S3_ERROR Error;
 	XML_DIR_LISTING_CONTEXT Context;
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	CString sS3NextMarker;				// next marker for next page
 	CString sS3NextKeyMarker;			// passed to key-marker in next request (version listing)
 	CString sS3NextVersionIdMarker;		// passed to version-id-marker in next request (version listing)
@@ -4029,7 +4028,7 @@ void CECSConnection::SetThrottle(
 		THROTTLE_REC Rec;
 		Rec.Upload.iBytesCurInterval = Rec.Upload.iBytesSec = iUploadThrottleRate;
 		Rec.Download.iBytesCurInterval = Rec.Download.iBytesSec = iDownloadThrottleRate;
-		pair<map<CString,THROTTLE_REC>::iterator, bool> ret = ThrottleMap.insert(make_pair(pszHost, Rec));
+		std::pair<std::map<CString,THROTTLE_REC>::iterator, bool> ret = ThrottleMap.insert(std::make_pair(pszHost, Rec));
 		if (!ret.second)
 		{
 			ret.first->second.Upload.iBytesCurInterval = ret.first->second.Upload.iBytesSec = iUploadThrottleRate;
@@ -4061,7 +4060,7 @@ void CECSConnection::IfThrottle(bool *pbDownloadThrottle, bool *pbUploadThrottle
 	bool bUploadThrottle = false;
 	bool bDownloadThrottle = false;
 	CSingleLock lock(&csThrottleMap, true);
-	map<CString, THROTTLE_REC>::iterator itMap;
+	std::map<CString, THROTTLE_REC>::iterator itMap;
 	itMap = ThrottleMap.find(sHost);
 	if (itMap != ThrottleMap.end())
 	{
@@ -4092,7 +4091,7 @@ const WCHAR * const XML_S3_SERVICE_BUCKET_NAME = L"//ListAllMyBucketsResult/Buck
 const WCHAR * const XML_S3_SERVICE_BUCKET_DATE = L"//ListAllMyBucketsResult/Buckets/Bucket/CreationDate";
 const WCHAR * const XML_S3_SERVICE_BUCKET_ELEMENT = L"//ListAllMyBucketsResult/Buckets/Bucket";
 
-HRESULT XmlS3ServiceInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3ServiceInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -4153,7 +4152,7 @@ HRESULT XmlS3ServiceInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader 
 CECSConnection::S3_ERROR CECSConnection::S3ServiceInformation(S3_SERVICE_INFO& ServiceInfo)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -4198,17 +4197,17 @@ CString CECSConnection::GetHost(void) const
 // it will encode it. if it is bigger than 7k, it is rejected
 // if not, it splits it into 1k segments. The first has the name specified (pszTag)
 // the overflow adds "_n", where n is 2 to 7
-void CECSConnection::WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data)
+void CECSConnection::WriteMetadataEntry(std::list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CBuffer& Data)
 {
 	// convert to ANSI string
 	WriteMetadataEntry(MDList, pszTag, Data.EncodeBase64());
 }
 
-void CECSConnection::WriteMetadataEntry(list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr)
+void CECSConnection::WriteMetadataEntry(std::list<HEADER_STRUCT>& MDList, LPCTSTR pszTag, const CString& sStr)
 {
 	// if the specified tag already exists, erase it
 	CString sTag(pszTag);
-	for (list<HEADER_STRUCT>::iterator itList = MDList.begin(); itList != MDList.end(); )
+	for (std::list<HEADER_STRUCT>::iterator itList = MDList.begin(); itList != MDList.end(); )
 	{
 		if (sTag.CompareNoCase(itList->sHeader) == 0)
 			itList = MDList.erase(itList);
@@ -4224,16 +4223,16 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 	LPCTSTR pszVersionId,		// nonNULL: version ID to copy
 	bool bCopyMD,				// true - copy metadata, false - replace
 	ULONGLONG ullObjSize,		// optional - if object size supplied it doesn't have to query it
-	const list<HEADER_STRUCT> *pMDList)	// list of metadata to apply to object
+	const std::list<HEADER_STRUCT> *pMDList)	// list of metadata to apply to object
 {
 	const ULONGLONG MULTIPART_SIZE = GIGABYTES(1ULL);		// each part will be 1GB
 
 	CStateRef State(this);
 	S3_ERROR Error;
 	CBuffer RetData;
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	bool bMultiPartInitiated = false;
-	list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>> PartList;
+	std::list<std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>> PartList;
 	S3_UPLOAD_PART_INFO MultiPartInfo;
 
 	try
@@ -4251,7 +4250,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 			if ((pMDList != nullptr) && !pMDList->empty())
 			{
 				// add in all metadata
-				for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
+				for (std::list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 				{
 					if (!itList->sContents.IsEmpty() && (itList->sHeader.Find(sAmzMetaPrefix) == 0))
 						AddHeader(itList->sHeader, itList->sContents);
@@ -4268,7 +4267,7 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 		ULONGLONG ullOffset = 0ULL;
 		for (UINT uPartNum = 1; ; ++uPartNum)
 		{
-			shared_ptr<S3_UPLOAD_PART_ENTRY> pPartEntry = make_shared<S3_UPLOAD_PART_ENTRY>();
+			std::shared_ptr<S3_UPLOAD_PART_ENTRY> pPartEntry = std::make_shared<S3_UPLOAD_PART_ENTRY>();
 			pPartEntry->uPartNum = uPartNum;
 			pPartEntry->ullBaseOffset = ullOffset;
 			pPartEntry->Checksum.Empty();
@@ -4300,26 +4299,26 @@ CECSConnection::S3_ERROR CECSConnection::CopyS3(
 	return Error;
 }
 
-CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const list<HEADER_STRUCT>& MDListParam, const list<CString> *pDeleteTagParam)
+CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const std::list<HEADER_STRUCT>& MDListParam, const std::list<CString> *pDeleteTagParam)
 {
 	CStateRef State(this);
 	S3_ERROR Error;
 	try
 	{
-		list<HEADER_STRUCT> MDList = MDListParam;
+		std::list<HEADER_STRUCT> MDList = MDListParam;
 		CBuffer RetData;
-		list<HEADER_REQ> Req;
+		std::list<HEADER_REQ> Req;
 		CString sPath(pszPath);
 		InitHeader();
 		Error = SendRequest(_T("HEAD"), UriEncode(sPath), nullptr, 0, RetData, &Req);
 		if (Error.IfError())
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, Error);
 
-		for (list<HEADER_REQ>::iterator it = Req.begin(); it != Req.end(); ++it)
+		for (std::list<HEADER_REQ>::iterator it = Req.begin(); it != Req.end(); ++it)
 		{
 			if (!it->ContentList.empty() && (it->sHeader.Find(sAmzMetaPrefix) == 0))
 			{
-				for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end();)
+				for (std::list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end();)
 				{
 					if ((itList->sHeader.CompareNoCase(it->sHeader) == 0) && !it->ContentList.empty())
 					{
@@ -4332,16 +4331,16 @@ CECSConnection::S3_ERROR CECSConnection::UpdateMetadata(LPCTSTR pszPath, const l
 			}
 		}
 		// now construct the new metadata list
-		for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
+		for (std::list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 			if (!it->ContentList.empty() && (it->sHeader.Find(sAmzMetaPrefix) == 0))
 				AddHeader(it->sHeader, it->ContentList.front());
 		// add in any new tags
-		for (list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end(); ++itList)
+		for (std::list<HEADER_STRUCT>::const_iterator itList = MDList.begin(); itList != MDList.end(); ++itList)
 			AddHeader(itList->sHeader, itList->sContents);
 		// delete tags
 		if (pDeleteTagParam != nullptr)
 		{
-			for (list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
+			for (std::list<CString>::const_iterator itDel = pDeleteTagParam->begin(); itDel != pDeleteTagParam->end(); ++itDel)
 			{
 				CString sTag(*itDel);
 				sTag.MakeLower();
@@ -4385,7 +4384,7 @@ CECSConnection::E_S3_ACL_VALUES TranslateACLText(LPCTSTR pszEntry)
 
 struct XML_S3_ACL_CONTEXT
 {
-	deque<CECSConnection::ACL_ENTRY> *pAcls;
+	std::deque<CECSConnection::ACL_ENTRY> *pAcls;
 	CECSConnection::ACL_ENTRY Rec;
 	CString sOwner;
 	CString sDisplayName;
@@ -4408,7 +4407,7 @@ const WCHAR * const XML_S3_ACL_OWNER_GRANT_PERMISSION =				L"//AccessControlPoli
 const WCHAR * const XML_S3_ACL_OWNER_GRANT_ELEMENT =				L"//AccessControlPolicy/AccessControlList/Grant";
 const WCHAR * const XML_S3_ACL_OWNER_GRANT_GRANTEE_ELEMENT =		L"//AccessControlPolicy/AccessControlList/Grant/Grantee";
 
-HRESULT XmlS3AclContext_CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3AclContext_CB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -4451,7 +4450,7 @@ HRESULT XmlS3AclContext_CB(const CStringW& sXmlPath, void *pContext, IXmlReader 
 
 			if (pAttrList != nullptr)
 			{
-				for (list<XML_LITE_ATTRIB>::const_iterator itList = pAttrList->begin(); itList != pAttrList->end(); ++itList)
+				for (std::list<XML_LITE_ATTRIB>::const_iterator itList = pAttrList->begin(); itList != pAttrList->end(); ++itList)
 				{
 					if (itList->sAttrName.Find(L"type") >= 0)
 					{
@@ -4476,7 +4475,7 @@ HRESULT XmlS3AclContext_CB(const CStringW& sXmlPath, void *pContext, IXmlReader 
 // it is returned in 2 lists: user acls and group acls
 CECSConnection::S3_ERROR CECSConnection::ReadACL(
 	LPCTSTR pszPath,
-	deque<CECSConnection::ACL_ENTRY>& Acls,
+	std::deque<CECSConnection::ACL_ENTRY>& Acls,
 	LPCTSTR pszVersion)
 {
 	CStateRef State(this);
@@ -4485,7 +4484,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadACL(
 	try
 	{
 		InitHeader();
-		list<HEADER_REQ> Req;
+		std::list<HEADER_REQ> Req;
 		CString sResource(UriEncode(pszPath) + L"?acl");
 		CString sVersion(pszVersion);
 		if (!sVersion.IsEmpty())
@@ -4515,7 +4514,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadACL(
 // replace the list of acl entries for the file/directory
 CECSConnection::S3_ERROR CECSConnection::WriteACL(
 	LPCTSTR pszPath,
-	const deque<CECSConnection::ACL_ENTRY>& UserAcls,
+	const std::deque<CECSConnection::ACL_ENTRY>& UserAcls,
 	LPCTSTR pszVersion)
 {
 	CStateRef State(this);
@@ -4562,7 +4561,7 @@ CECSConnection::S3_ERROR CECSConnection::WriteACL(
 		if (FAILED(pWriter->WriteStartElement(nullptr, L"AccessControlList", nullptr)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
-		for (deque<CECSConnection::ACL_ENTRY>::const_iterator it = UserAcls.begin(); it != UserAcls.end(); ++it)
+		for (std::deque<CECSConnection::ACL_ENTRY>::const_iterator it = UserAcls.begin(); it != UserAcls.end(); ++it)
 		{
 			if (FAILED(pWriter->WriteStartElement(nullptr, L"Grant", nullptr)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -4628,7 +4627,7 @@ bool CECSConnection::TestAbort(void)
 	if (!bCheckShutdown)
 		return false;
 	CRWLockAcquire lock(&State.Ref->rwlAbortList, false);			// read lock
-	for (list<ABORT_ENTRY>::const_iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); ++itList)
+	for (std::list<ABORT_ENTRY>::const_iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); ++itList)
 	{
 		if ((itList->ShutdownCB != nullptr) && (itList->ShutdownCB)(itList->pShutdownContext))
 			return true;
@@ -4664,7 +4663,7 @@ void CECSConnection::UnregisterShutdownCB(TEST_SHUTDOWN_CB ShutdownParamCB, void
 {
 	CStateRef State(this);
 	CRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
-	for (list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
+	for (std::list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
 	{
 		if ((itList->ShutdownCB == ShutdownParamCB) && (itList->pShutdownContext == pContext))
 			itList = State.Ref->AbortList.erase(itList);
@@ -4687,7 +4686,7 @@ void CECSConnection::UnregisterAbortPtr(const bool *pbAbort)
 {
 	CStateRef State(this);
 	CRWLockAcquire lock(&State.Ref->rwlAbortList, true);			// write lock
-	for (list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
+	for (std::list<ABORT_ENTRY>::iterator itList = State.Ref->AbortList.begin(); itList != State.Ref->AbortList.end(); )
 	{
 		if (itList->pbAbort == pbAbort)
 			itList = State.Ref->AbortList.erase(itList);
@@ -4730,7 +4729,7 @@ void CECSConnection::SetRetries(DWORD dwMaxRetryCountParam, DWORD dwPauseBetween
 void CECSConnection::SetMaxWriteRequest(DWORD dwMaxWriteRequestParam)
 {
 	CSingleLock lock(&csThrottleMap, true);
-	list<CECSConnection *>::iterator itList;
+	std::list<CECSConnection *>::iterator itList;
 	for (itList = ECSConnectionList.begin() ; itList != ECSConnectionList.end() ; ++itList)
 	{
 		if ((*itList)->sHost == sHost)
@@ -4743,7 +4742,7 @@ void CECSConnection::SetMaxWriteRequest(DWORD dwMaxWriteRequestParam)
 void CECSConnection::SetMaxWriteRequestAll(DWORD dwMaxWriteRequestParam)
 {
 	CSingleLock lock(&csThrottleMap, true);
-	list<CECSConnection *>::iterator itList;
+	std::list<CECSConnection *>::iterator itList;
 	for (itList = ECSConnectionList.begin() ; itList != ECSConnectionList.end() ; ++itList)
 	{
 		(*itList)->dwMaxWriteRequest = dwMaxWriteRequestParam;
@@ -4938,15 +4937,15 @@ CString CECSConnection::GenerateShareableURL(
 	return sURL;
 }
 
-void CECSConnection::RemoveACLDups(deque<CECSConnection::ACL_ENTRY>& AclList)
+void CECSConnection::RemoveACLDups(std::deque<CECSConnection::ACL_ENTRY>& AclList)
 {
 	bool bRetry;
 	do
 	{
 		bRetry = false;
-		for (deque<CECSConnection::ACL_ENTRY>::iterator itOuter=AclList.begin() ; !bRetry && (itOuter!=AclList.end()) ; ++itOuter)
+		for (std::deque<CECSConnection::ACL_ENTRY>::iterator itOuter=AclList.begin() ; !bRetry && (itOuter!=AclList.end()) ; ++itOuter)
 		{
-			for (deque<CECSConnection::ACL_ENTRY>::iterator itInner=itOuter + 1 ; itInner!=AclList.end() ; ++itInner)
+			for (std::deque<CECSConnection::ACL_ENTRY>::iterator itInner=itOuter + 1 ; itInner!=AclList.end() ; ++itInner)
 			{
 				if (itOuter->sID == itInner->sID)
 				{
@@ -5000,7 +4999,7 @@ void CECSConnection::CECSConnectionSession::AllocSession(LPCTSTR pszHost, LPCTST
 	Key.sHostEntry = pszHost;
 	Key.sIP = pszIP;
 	Key.lKey = 0;
-	map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
+	std::map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
 	for (itMap = SessionMap.lower_bound(Key)
 		; itMap != SessionMap.end()
 		; ++itMap)
@@ -5021,7 +5020,7 @@ void CECSConnection::CECSConnectionSession::AllocSession(LPCTSTR pszHost, LPCTST
 	Key.lKey = InterlockedIncrement(&lSessionKeyValue);
 	if (Key.lKey == 0)
 		Key.lKey = InterlockedIncrement(&lSessionKeyValue);
-	pair<map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator, bool> ret = SessionMap.insert(make_pair(Key, SESSION_MAP_VALUE()));
+	std::pair<std::map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator, bool> ret = SessionMap.insert(std::make_pair(Key, SESSION_MAP_VALUE()));
 	ASSERT(ret.second);
 	ret.first->second.bInUse = true;
 	Key = ret.first->first;					// save the key so we can release it
@@ -5039,7 +5038,7 @@ void CECSConnection::CECSConnectionSession::ReleaseSession(void) throw()
 	if (pValue != nullptr)
 	{
 		CSingleLock lock(&csSessionMap, true);
-		map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap = SessionMap.find(Key);
+		std::map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap = SessionMap.find(Key);
 		if (itMap != SessionMap.end())
 		{
 			if (!itMap->second.bInUse)
@@ -5068,7 +5067,7 @@ CString CECSConnection::CECSConnectionSession::Format(void) const
 void CECSConnection::KillHostSessions()
 {
 	CSingleLock lock(&csSessionMap, true);
-	map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
+	std::map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
 	for (itMap = SessionMap.begin()
 		; itMap != SessionMap.end()
 		;)
@@ -5093,7 +5092,7 @@ void CECSConnection::GarbageCollect()
 	{
 		FILETIME ftExpire = ftNow - FT_HOURS(1);
 		CSingleLock lock(&csSessionMap, true);
-		map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
+		std::map<SESSION_MAP_KEY, SESSION_MAP_VALUE>::iterator itMap;
 		for (itMap = SessionMap.begin()
 			; itMap != SessionMap.end()
 			;)
@@ -5107,10 +5106,10 @@ void CECSConnection::GarbageCollect()
 	{
 		FILETIME ftExpire = ftNow - FT_MINUTES(2);						// any entries not touched for a while are removed
 		CSingleLock lockThrottle(&csThrottleMap, true);
-		for (list<CECSConnection*>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
+		for (std::list<CECSConnection*>::const_iterator itConn = ECSConnectionList.begin(); itConn != ECSConnectionList.end(); ++itConn)
 		{
 			CSimpleRWLockAcquire lockState(&(*itConn)->StateList.rwlStateMap, true);			// write lock
-			for (map<DWORD, shared_ptr<CECSConnectionState>>::iterator itMap = (*itConn)->StateList.StateMap.begin(); itMap != (*itConn)->StateList.StateMap.end(); )
+			for (std::map<DWORD, std::shared_ptr<CECSConnectionState>>::iterator itMap = (*itConn)->StateList.StateMap.begin(); itMap != (*itConn)->StateList.StateMap.end(); )
 			{
 				if ((InterlockedAdd(&itMap->second->ulReferenceCount, 0) == 0) && !IfFTZero(itMap->second->ftLastUsed) && (itMap->second->ftLastUsed < ftExpire))
 					itMap = (*itConn)->StateList.StateMap.erase(itMap);
@@ -5172,7 +5171,7 @@ bool CECSConnection::ValidateS3BucketName(LPCTSTR pszBucketName)
 CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 	LPCTSTR pszBucketName,
 	const S3_BUCKET_OPTIONS *pOptions,
-	const list<CECSConnection::HEADER_STRUCT> *pMDList)
+	const std::list<CECSConnection::HEADER_STRUCT> *pMDList)
 {
 	CStateRef State(this);
 	CBuffer RetData;
@@ -5191,7 +5190,7 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 		Error = S3ServiceInformation(ServiceInfo);
 		if (Error.IfError())
 			return Error;
-		for (list<S3_BUCKET_INFO>::const_iterator itList = ServiceInfo.BucketList.begin(); itList != ServiceInfo.BucketList.end(); ++itList)
+		for (std::list<S3_BUCKET_INFO>::const_iterator itList = ServiceInfo.BucketList.begin(); itList != ServiceInfo.BucketList.end(); ++itList)
 		{
 			if (itList->sName == pszBucketName)
 			{
@@ -5209,7 +5208,7 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 			AddHeader(_T("x-emc-file-system-access-enabled"), pOptions->bEnableFS ? _T("true") : _T("false"));
 			AddHeader(_T("x-emc-is-stale-allowed"), pOptions->bTempSiteOutage ? _T("true") : _T("false"));
 			CString sIndexFields;
-			for (list<CECSConnection::S3_BUCKET_INDEX_ENTRY>::const_iterator it = pOptions->IndexFieldList.begin();
+			for (std::list<CECSConnection::S3_BUCKET_INDEX_ENTRY>::const_iterator it = pOptions->IndexFieldList.begin();
 				it != pOptions->IndexFieldList.end(); ++it)
 			{
 				if (SystemMDSet.find(it->sFieldName) != SystemMDSet.end())
@@ -5283,7 +5282,7 @@ CECSConnection::S3_ERROR CECSConnection::CreateS3Bucket(
 		}
 		if (pMDList != nullptr)
 		{
-			for (list<CECSConnection::HEADER_STRUCT>::const_iterator itMD = pMDList->begin(); itMD != pMDList->end(); ++itMD)
+			for (std::list<CECSConnection::HEADER_STRUCT>::const_iterator itMD = pMDList->begin(); itMD != pMDList->end(); ++itMD)
 				AddHeader(itMD->sHeader, itMD->sContents);
 		}
 		Error = SendRequest(_T("PUT"), CString(_T("/")) + pszBucketName + _T("/"), XmlUTF8.GetData(), XmlUTF8.GetBufSize(), RetData);
@@ -5333,7 +5332,7 @@ struct XML_MULTI_PART_CONTEXT
 	CECSConnection::S3_UPLOAD_PART_INFO *pMultiPartInfo;
 };
 
-HRESULT XmlMultiPartCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlMultiPartCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5365,7 +5364,7 @@ HRESULT XmlMultiPartCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pRe
 }
 
 // S3 multipart upload support
-CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const list<HEADER_STRUCT> *pMDList)
+CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3_UPLOAD_PART_INFO& MultiPartInfo, const std::list<HEADER_STRUCT> *pMDList)
 {
 	CStateRef State(this);
 	CECSConnection::S3_ERROR Error;
@@ -5377,7 +5376,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartInitiate(LPCTSTR pszPath, S3
 	// add in all metadata
 	if (pMDList != nullptr)
 	{
-		for (list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
+		for (std::list<HEADER_STRUCT>::const_iterator itList = pMDList->begin(); itList != pMDList->end(); ++itList)
 		{
 			AddHeader(itList->sHeader, itList->sContents);
 		}
@@ -5409,7 +5408,7 @@ const WCHAR * const XML_MPU_COMPLETE_BUCKET = L"//CompleteMultipartUploadResult/
 const WCHAR * const XML_MPU_COMPLETE_KEY = L"//CompleteMultipartUploadResult/Key";
 const WCHAR * const XML_MPU_COMPLETE_ETAG = L"//CompleteMultipartUploadResult/ETag";
 
-HRESULT XmlMPUCompleteCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlMPUCompleteCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5438,7 +5437,7 @@ HRESULT XmlMPUCompleteCB(const CStringW& sXmlPath, void *pContext, IXmlReader *p
 
 CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 	const S3_UPLOAD_PART_INFO& MultiPartInfo,
-	const list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>& PartList,
+	const std::list<std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>& PartList,
 	S3_MPU_COMPLETE_INFO& MPUCompleteInfo)
 {
 	CStateRef State(this);
@@ -5467,7 +5466,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartComplete(
 		if (FAILED(pWriter->WriteStartElement(nullptr, L"CompleteMultipartUpload", nullptr)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
-		for (list<shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::const_iterator itList = PartList.begin(); itList != PartList.end(); ++itList)
+		for (std::list<std::shared_ptr<CECSConnection::S3_UPLOAD_PART_ENTRY>>::const_iterator itList = PartList.begin(); itList != PartList.end(); ++itList)
 		{
 			if (FAILED(pWriter->WriteStartElement(nullptr, L"Part", nullptr)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -5571,7 +5570,7 @@ struct S3_MULTIPART_LIST_CONTEXT
 	{}
 };
 
-HRESULT XmlS3MultiPartListCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3MultiPartListCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5669,7 +5668,7 @@ struct XML_MULTIPART_COPY_CONTEXT
 
 const WCHAR * const XML_MULTIPART_COPY_ETAG = L"//CopyPartResult/ETag";
 
-HRESULT XmlMultipartCopyCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlMultipartCopyCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5704,7 +5703,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 	CStateRef State(this);
 	PartEntry.sETag.Empty();
 	CECSConnection::S3_ERROR Error;
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	CBuffer RetData;
 	InitHeader();
 	Req.emplace_back(_T("ETag"));
@@ -5742,7 +5741,7 @@ CECSConnection::S3_ERROR CECSConnection::S3MultiPartUpload(
 		Error = SendRequest(_T("PUT"), sResource, nullptr, 0, RetData, &Req, 0, 0, pStreamSend, nullptr, ullTotalLen);
 		if (!Error.IfError())
 		{
-			for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
+			for (std::list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 			{
 				if (it->sHeader.CompareNoCase(_T("ETag")) == 0)
 				{
@@ -5769,7 +5768,7 @@ struct XML_S3_VERSIONING_CONTEXT
 
 const WCHAR * const XML_S3_VERSIONING_STATUS = L"//VersioningConfiguration/Status";
 
-HRESULT XmlS3VersioningCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3VersioningCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -5802,7 +5801,7 @@ HRESULT XmlS3VersioningCB(const CStringW& sXmlPath, void *pContext, IXmlReader *
 CECSConnection::S3_ERROR CECSConnection::S3GetBucketVersioning(LPCTSTR pszBucket, E_S3_VERSIONING& Versioning)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -5836,7 +5835,7 @@ CECSConnection::S3_ERROR CECSConnection::S3GetBucketVersioning(LPCTSTR pszBucket
 CECSConnection::S3_ERROR CECSConnection::S3PutBucketVersioning(LPCTSTR pszBucket, CECSConnection::E_S3_VERSIONING Versioning)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -5919,7 +5918,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogin(LPCTSTR pszUser, LPCTSTR 
 	State.Ref->sHTTPUser = pszUser;
 	State.Ref->sHTTPPassword = pszPassword;
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Ref->Headers.clear();
@@ -5930,7 +5929,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogin(LPCTSTR pszUser, LPCTSTR 
 	Error = SendRequest(_T("GET"), _T("/login"), nullptr, 0, RetData, &Req);
 	if (!Error.IfError())
 	{
-		for (list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
+		for (std::list<HEADER_REQ>::const_iterator it = Req.begin(); it != Req.end(); ++it)
 		{
 			if ((it->sHeader.CompareNoCase(_T("X-SDS-AUTH-TOKEN")) == 0) && (it->ContentList.size() == 1))
 				State.Ref->sX_SDS_AUTH_TOKEN = it->ContentList.front();
@@ -5948,7 +5947,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogout()
 	SetPort(4443);
 	CStateRef State(this);
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Ref->Headers.clear();
@@ -5967,7 +5966,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminLogout()
 struct XML_ECS_GET_USERS_CONTEXT
 {
 	CECSConnection::S3_ADMIN_USER_INFO User;
-	list<CECSConnection::S3_ADMIN_USER_INFO> *pUserList;
+	std::list<CECSConnection::S3_ADMIN_USER_INFO> *pUserList;
 	XML_ECS_GET_USERS_CONTEXT()
 		: pUserList(nullptr)
 	{}
@@ -5977,7 +5976,7 @@ const WCHAR * const XML_ECS_GET_USERS_USERID = L"//users/blobuser/userid";
 const WCHAR * const XML_ECS_GET_USERS_NAMESPACE = L"//users/blobuser/namespace";
 const WCHAR * const XML_ECS_GET_USERS_ELEMENT = L"//users/blobuser";
 
-HRESULT XmlECSGetUsersCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlECSGetUsersCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -6011,14 +6010,14 @@ HRESULT XmlECSGetUsersCB(const CStringW& sXmlPath, void *pContext, IXmlReader *p
 	return 0;
 }
 
-CECSConnection::S3_ERROR CECSConnection::ECSAdminGetUserList(list<S3_ADMIN_USER_INFO>& UserList)
+CECSConnection::S3_ERROR CECSConnection::ECSAdminGetUserList(std::list<S3_ADMIN_USER_INFO>& UserList)
 {
 	UserList.clear();
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
 	CStateRef State(this);
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Ref->Headers.clear();
@@ -6051,7 +6050,7 @@ const WCHAR * const XML_ECS_CREATE_USER_KEY_TS = L"//user_secret_key/key_timesta
 const WCHAR * const XML_ECS_CREATE_USER_KEY_EXPIRY_TS = L"//user_secret_key/key_expiry_timestamp";
 const WCHAR * const XML_ECS_CREATE_USER_LINK = L"//user_secret_key/link";
 
-HRESULT XmlECSCreateUserCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlECSCreateUserCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -6091,7 +6090,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateUser(S3_ADMIN_USER_INFO& 
 	SetPort(4443);
 	CStateRef State(this);
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Ref->Headers.clear();
@@ -6185,7 +6184,7 @@ const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_TS2 = L"//user_secret_key/key_time
 const WCHAR * const XML_ECS_GET_KEYS_FOR_USER_EXPIRY_TS2 = L"//user_secret_key/key_expiry_timestamp_2";
 const WCHAR * const XML_ECS_GET_KEYS_FOR_USER = L"//user_secret_key/link";
 
-HRESULT XmlECSGetKeysForUserCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlECSGetKeysForUserCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -6237,7 +6236,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminGetKeysForUser(LPCTSTR pszUser,
 	SetPort(4443);
 	CStateRef State(this);
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Ref->Headers.clear();
@@ -6280,7 +6279,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminCreateKeyForUser(S3_ADMIN_USER_
 	SetPort(4443);
 	CStateRef State(this);
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Ref->Headers.clear();
@@ -6389,7 +6388,7 @@ constexpr WCHAR XML_ECS_BILLING_BUCKET_total_size_unit[] = L"//bucket_billing_in
 constexpr WCHAR XML_ECS_BILLING_BUCKET_vpool_id[] = L"//bucket_billing_info/vpool_id";
 constexpr WCHAR XML_ECS_BILLING_BUCKET_bucket_billing_info[] = L"//bucket_billing_info";
 
-HRESULT XmlECSBillingBucketCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
+HRESULT XmlECSBillingBucketCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -6508,7 +6507,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminBillingBucket(
 	SetPort(4443);
 	CStateRef State(this);
 	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	State.Ref->Headers.clear();
@@ -6583,7 +6582,7 @@ const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY = L"//MetadataSe
 const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY_NAME = L"//MetadataSearchList/IndexableKeys/Key/Name";
 const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_INDEXABLE_KEY_DATATYPE = L"//MetadataSearchList/IndexableKeys/Key/Datatype";
 
-HRESULT XmlS3GetMDSearchFieldsCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3GetMDSearchFieldsCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -6693,7 +6692,7 @@ const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY = L"/
 const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_NAME = L"//MetadataSearchList/IndexableKeys/Key/Name";
 const WCHAR * const XML_S3_METADATA_SEARCH_FIELDS_BUCKET_INDEXABLEKEYS_KEY_DATATYPE = L"//MetadataSearchList/IndexableKeys/Key/Datatype";
 
-HRESULT XmlS3GetMDSearchFieldsBucketCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3GetMDSearchFieldsBucketCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -6809,7 +6808,7 @@ const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP = L"//BucketQueryResu
 const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP_KEY = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry/key";
 const WCHAR * const XML_S3_SEARCH_MD_OBJECT_QUERYMDS_MDMAP_VALUE = L"//BucketQueryResult/ObjectMatches/object/queryMds/mdMap/entry/value";
 
-HRESULT XmlS3SearchMDCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3SearchMDCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -7015,7 +7014,7 @@ const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_SIZE = L"//Summary/Versi
 const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_PCT = L"//Summary/Version_0/shipped_data_percentage";
 const WCHAR * const XML_DT_QUERY_VERSION_0_SHIPPED_DATA_RANGE = L"//Summary/Version_0/Data_Range_Shipping_Details/Range";
 
-HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlDTQueryCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -7061,7 +7060,7 @@ CECSConnection::S3_ERROR CECSConnection::ECSDTQuery(LPCTSTR pszNamespace, LPCTST
 {
 	CStateRef State(this);
 	INTERNET_PORT wSavePort = Port;
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	CBuffer RetData;
 	CString sResource;
 	sResource.Format(_T("/diagnostic/object/checkRepoReplicationStatus?poolname=%s.%s&objectname=%s"), pszNamespace, pszBucket, pszObject);
@@ -7107,7 +7106,7 @@ struct XML_S3_ENDPOINT_INFO_CONTEXT
 const WCHAR * const XML_S3_ENDPOINT_INFO_DATA_NODE = L"//ListDataNode/DataNodes";
 const WCHAR * const XML_S3_ENDPOINT_INFO_VERSION = L"//ListDataNode/VersionInfo";
 
-HRESULT XmlS3EndpointInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3EndpointInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -7151,7 +7150,7 @@ HRESULT XmlS3EndpointInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader
 CECSConnection::S3_ERROR CECSConnection::DataNodeEndpointS3(S3_ENDPOINT_INFO& Endpoint)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -7184,7 +7183,7 @@ const WCHAR* const XML_S3_OBJ_LOCK_CONFIG_DAYS = L"//ObjectLockConfiguration/Rul
 const WCHAR* const XML_S3_OBJ_LOCK_CONFIG_MODE = L"//ObjectLockConfiguration/Rule/DefaultRetention/Mode";
 const WCHAR* const XML_S3_OBJ_LOCK_CONFIG_YEARS = L"//ObjectLockConfiguration/Rule/DefaultRetention/Years";
 
-HRESULT XmlS3ObjLockConfigCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
+HRESULT XmlS3ObjLockConfigCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -7232,7 +7231,7 @@ HRESULT XmlS3ObjLockConfigCB(const CStringW& sXmlPath, void* pContext, IXmlReade
 CECSConnection::S3_ERROR CECSConnection::GetObjectLockConfiguration(LPCTSTR pszBucket, S3_OBJ_LOCK_CONFIG& LockInfo)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -7281,7 +7280,7 @@ const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ABORTUPLOAD = L"//LifecycleConfig
 const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_ABORTUPLOAD_DAYS = L"//LifecycleConfiguration/Rule/AbortIncompleteMultipartUpload/DaysAfterInitiation";
 const WCHAR * const XML_S3_LIFECYCLE_INFO_RULE_EXPIRATION_EXPIRE_DELETE_MARKER = L"//LifecycleConfiguration/Rule/Expiration/ExpiredObjectDeleteMarker";
 
-HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -7354,7 +7353,7 @@ HRESULT XmlS3LifecycleInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReade
 CECSConnection::S3_ERROR CECSConnection::S3GetLifecycle(LPCTSTR pszBucket, S3_LIFECYCLE_INFO & Lifecycle)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -7386,7 +7385,7 @@ CECSConnection::S3_ERROR CECSConnection::S3GetLifecycle(LPCTSTR pszBucket, S3_LI
 
 CECSConnection::S3_ERROR CECSConnection::S3DeleteLifecycle(LPCTSTR pszBucket)
 {
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -7398,7 +7397,7 @@ CECSConnection::S3_ERROR CECSConnection::S3DeleteLifecycle(LPCTSTR pszBucket)
 CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const S3_LIFECYCLE_INFO & Lifecycle)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();
@@ -7418,7 +7417,7 @@ CECSConnection::S3_ERROR CECSConnection::S3PutLifecycle(LPCTSTR pszBucket, const
 		if (FAILED(pWriter->WriteStartElement(nullptr, L"LifecycleConfiguration", nullptr)))
 			throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
 
-		for (list<S3_LIFECYCLE_RULE>::const_iterator it = Lifecycle.LifecycleRules.begin(); it != Lifecycle.LifecycleRules.end(); ++it)
+		for (std::list<S3_LIFECYCLE_RULE>::const_iterator it = Lifecycle.LifecycleRules.begin(); it != Lifecycle.LifecycleRules.end(); ++it)
 		{
 			if (FAILED(pWriter->WriteStartElement(nullptr, L"Rule", nullptr)))
 				throw CS3ErrorInfo(_T(__FILE__), __LINE__, ERROR_XML_PARSE_ERROR);
@@ -7600,11 +7599,11 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 	LPCTSTR pszPath,						// (in) S3 path to object
 	S3_SYSTEM_METADATA& Properties,			// (out) object properties
 	LPCTSTR pszVersionId,					// (in, optional) version ID
-	list<HEADER_STRUCT> *pMDList,		// (out, optional) metadata list
-	list<HEADER_REQ> *pReq)					// (out, optional) full header list
+	std::list<HEADER_STRUCT> *pMDList,		// (out, optional) metadata list
+	std::list<HEADER_REQ> *pReq)					// (out, optional) full header list
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	try
 	{
@@ -7622,7 +7621,7 @@ CECSConnection::S3_ERROR CECSConnection::ReadProperties(
 			return Error;
 		Properties.Empty();
 		FILETIME ftEMCMtime = { 0, 0 };
-		for (list<HEADER_REQ>::const_iterator it = pReq->begin(); it != pReq->end(); ++it)
+		for (std::list<HEADER_REQ>::const_iterator it = pReq->begin(); it != pReq->end(); ++it)
 		{
 			if ((it->sHeader.CompareNoCase(_T("Last-Modified")) == 0) && !it->ContentList.empty())
 			{
@@ -7680,7 +7679,7 @@ void CECSConnection::S3_ERROR::SetError(void)
 {
 	if ((dwError != ERROR_SUCCESS) || !IfError())
 		return;
-	map<DWORD, HRESULT>::const_iterator it = HttpErrorMap.find(dwHttpError);
+	std::map<DWORD, HRESULT>::const_iterator it = HttpErrorMap.find(dwHttpError);
 	if (it == HttpErrorMap.end())
 		dwError = (DWORD)HTTP_E_STATUS_UNEXPECTED;
 	else
@@ -7791,7 +7790,7 @@ CString CECSConnection::DumpBadIPMap(void)
 	CSingleLock csBad(&csBadIPMap, true);
 	CString sEntry, sMsg;
 
-	for (map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); ++itMap)
+	for (std::map<BAD_IP_KEY, BAD_IP_ENTRY>::iterator itMap = BadIPMap.begin(); itMap != BadIPMap.end(); ++itMap)
 	{
 		sEntry = _T("Host: ") + itMap->first.sHostName;
 		sEntry.Format(_T("Host: %s\r\nIP: %s\r\nTime: %s\r\nError: %s\r\n\r\n"),
@@ -7812,7 +7811,7 @@ struct XML_S3_REPLICATION_INFO_CONTEXT
 const WCHAR * const XML_S3_REPLICATION_INFO_INDEX_REPLICATED = L"//ObjectReplicationInfo/IndexReplicated";
 const WCHAR * const XML_S3_REPLICATION_INFO_REPLICATED_DATA_PERCENTAGE = L"//ObjectReplicationInfo/ReplicatedDataPercentage";
 
-HRESULT XmlS3ReplicationInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
+HRESULT XmlS3ReplicationInfoCB(const CStringW& sXmlPath, void *pContext, IXmlReader *pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB> *pAttrList, const CStringW *psValue)
 {
 	(void)pReader;
 	(void)pAttrList;
@@ -7847,7 +7846,7 @@ HRESULT XmlS3ReplicationInfoCB(const CStringW& sXmlPath, void *pContext, IXmlRea
 CECSConnection::S3_ERROR CECSConnection::S3GetReplicationInfo(LPCTSTR pszPath, S3_REPLICATION_INFO& RepInfo)
 {
 	CStateRef State(this);
-	list<HEADER_REQ> Req;
+	std::list<HEADER_REQ> Req;
 	S3_ERROR Error;
 	CBuffer RetData;
 	InitHeader();

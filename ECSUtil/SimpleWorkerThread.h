@@ -19,7 +19,6 @@
 #include <afxmt.h>
 #include "CRWLock.h"
 
-using namespace std;
 
 namespace ecs_sdk
 {
@@ -177,15 +176,15 @@ namespace ecs_sdk
 		bool bTerminate;
 		bool bAlertable;
 		bool bThreadInitialized;
-		list<CEvent*> TermEventList;	// events to signal during process termination
+		std::list<CEvent*> TermEventList;	// events to signal during process termination
 		static UINT ThreadProc(LPVOID pParam);
 
 		static CCriticalSection* pcsGlobalThreadSet;
-		static set<CSimpleWorkerThread*>* pGlobalThreadSetActive;
-		static set<CSimpleWorkerThread*>* pGlobalThreadSet;
+		static std::set<CSimpleWorkerThread*>* pGlobalThreadSetActive;
+		static std::set<CSimpleWorkerThread*>* pGlobalThreadSet;
 
 	protected:
-		deque<CSyncObject*> EventList;
+		std::deque<CSyncObject*> EventList;
 		DWORD dwEventRet;					// wait on event return
 		void SignalTermination(void);
 
@@ -223,7 +222,7 @@ namespace ecs_sdk
 		static CCriticalSection* GetGlobalListCriticalSection(void);
 	};
 
-	template<class T> inline void KillThreadQueueSRW(list<T>& ThreadList, CRWLock& rwlThreadList, bool bDontKillThis = false)
+	template<class T> inline void KillThreadQueueSRW(std::list<T>& ThreadList, CRWLock& rwlThreadList, bool bDontKillThis = false)
 	{
 		struct THREAD_EVENT
 		{
@@ -244,7 +243,7 @@ namespace ecs_sdk
 			{
 				CRWLockAcquire lock(&rwlThreadList, true);
 
-				for (typename list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
+				for (typename std::list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
 					if (!bDontKillThis || (dwThisThreadID != it->GetCurrentThreadID()))
 						it->KillThread();
 			}
@@ -255,7 +254,7 @@ namespace ecs_sdk
 				// set up event list to wait on
 				HANDLE Events[60];								// wait on at most the first 60 entries in the list
 				DWORD dwEvents = 0;
-				list<THREAD_EVENT> InitEventList;					// initialized event list
+				std::list<THREAD_EVENT> InitEventList;					// initialized event list
 				bAllStopped = false;
 				iWaitLoop++;
 				if (iWaitLoop > WaitLoopMax)
@@ -264,7 +263,7 @@ namespace ecs_sdk
 				{
 					CRWLockAcquire lock(&rwlThreadList, true);
 
-					for (typename list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
+					for (typename std::list<T>::iterator it = ThreadList.begin(); it != ThreadList.end(); ++it)
 					{
 						if (!bDontKillThis || (dwThisThreadID != it->GetCurrentThreadID()))
 						{
@@ -287,7 +286,7 @@ namespace ecs_sdk
 				if (bAllStopped)
 				{
 					// remove the events from the thread objects
-					for (typename list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
+					for (typename std::list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
 						it->pThread->RemoveAllTermEvent();
 					break;
 				}
@@ -297,7 +296,7 @@ namespace ecs_sdk
 					// since this is testing at most 60 there is a chance that even if all threads die, there may be additional ones
 					DWORD dwResult = ::WaitForMultipleObjects(dwEvents, Events, TRUE, SECONDS(1));
 					// now remove the events
-					for (typename list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
+					for (typename std::list<THREAD_EVENT>::iterator it = InitEventList.begin(); it != InitEventList.end(); ++it)
 						it->pThread->RemoveAllTermEvent();
 					if (dwResult == WAIT_FAILED)
 						break;									// something is seriously wrong

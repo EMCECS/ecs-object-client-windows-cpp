@@ -15,14 +15,13 @@
 
 #include "stdafx.h"
 
-using namespace std;
 
 #include "GetAllThreads.h"
 
 namespace ecs_sdk
 {
 
-DWORD GetAllThreadsForProcess(DWORD dwPID, map<DWORD, THREADENTRY32>& ThreadMap)
+DWORD GetAllThreadsForProcess(DWORD dwPID, std::map<DWORD, THREADENTRY32>& ThreadMap)
 {
     THREADENTRY32 te32;
 
@@ -44,7 +43,7 @@ DWORD GetAllThreadsForProcess(DWORD dwPID, map<DWORD, THREADENTRY32>& ThreadMap)
     // associated with the specified process
     do {
         if (te32.th32OwnerProcessID == dwPID)
-            ThreadMap.emplace(make_pair(te32.th32ThreadID, te32));
+            ThreadMap.emplace(std::make_pair(te32.th32ThreadID, te32));
     } while (Thread32Next(hThreadSnap, &te32));
     return ERROR_SUCCESS;
 }

@@ -21,7 +21,7 @@
 namespace ecs_sdk
 {
 
-	map<CStringW, shared_ptr<CCngAES_GCM::ALG_HANDLE>> CCngAES_GCM::ProviderCache;
+	std::map<CStringW, std::shared_ptr<CCngAES_GCM::ALG_HANDLE>> CCngAES_GCM::ProviderCache;
 	CSimpleRWLock CCngAES_GCM::rwlProviderCache;									// lock used for provider cache
 
 	CCngAES_GCM::CCngAES_GCM()
@@ -516,7 +516,7 @@ namespace ecs_sdk
 
 		{
 			CSimpleRWLockAcquire lock(&rwlProviderCache);			// read lock
-			map<CStringW, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
+			std::map<CStringW, std::shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
 			if (itMap != ProviderCache.end())
 			{
 				*phAlg = itMap->second->hAlg;
@@ -526,7 +526,7 @@ namespace ecs_sdk
 		{
 			CSimpleRWLockAcquire lock(&rwlProviderCache, true);			// write lock
 			// gotta try the search again because we dropped the lock for an instant and another thread may have created one
-			map<CStringW, shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
+			std::map<CStringW, std::shared_ptr<ALG_HANDLE>>::const_iterator itMap = ProviderCache.find(sAlgName);
 			if (itMap != ProviderCache.end())
 			{
 				*phAlg = itMap->second->hAlg;
@@ -536,8 +536,8 @@ namespace ecs_sdk
 			if (!NT_SUCCESS(Status))
 				return Status;
 			// now cache this result
-			shared_ptr<ALG_HANDLE> Alg = make_shared<ALG_HANDLE>(*phAlg);
-			pair<map<CStringW, shared_ptr<ALG_HANDLE>>::iterator, bool> Ret = ProviderCache.insert(make_pair(sAlgName, Alg));
+			std::shared_ptr<ALG_HANDLE> Alg = std::make_shared<ALG_HANDLE>(*phAlg);
+			std::pair<std::map<CStringW, std::shared_ptr<ALG_HANDLE>>::iterator, bool> Ret = ProviderCache.insert(std::make_pair(sAlgName, Alg));
 			ASSERT(Ret.second);				// Ret.second == true means the insertion was made. there was no conflict
 		}
 		return STATUS_SUCCESS;
@@ -546,7 +546,7 @@ namespace ecs_sdk
 	void CCngAES_GCM::CloseCachedAlgorithmProvider(BCRYPT_ALG_HANDLE hAlg)
 	{
 		CSimpleRWLockAcquire lock(&rwlProviderCache, true);			// write lock
-		for (map<CStringW, shared_ptr<ALG_HANDLE>>::iterator itMap = ProviderCache.begin(); itMap != ProviderCache.end(); )
+		for (std::map<CStringW, std::shared_ptr<ALG_HANDLE>>::iterator itMap = ProviderCache.begin(); itMap != ProviderCache.end(); )
 		{
 			if (itMap->second->hAlg == hAlg)
 				itMap = ProviderCache.erase(itMap);

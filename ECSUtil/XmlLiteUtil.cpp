@@ -43,16 +43,16 @@ struct XML_REC
 // if it matches, call the callback
 // format of path: //<elem1>/<elem2>/<elem3>...
 static HRESULT CheckIfInterested(
-	const deque<XML_REC>& XmlStack,
+	const std::deque<XML_REC>& XmlStack,
 	XMLLITE_READER_CB ReaderCB,
 	void *pContext,
 	IXmlReader *pReader,
 	XmlNodeType NodeType,
-	const list<XML_LITE_ATTRIB> *pAttrList,
+	const std::list<XML_LITE_ATTRIB> *pAttrList,
 	const CStringW *psValue)
 {
 	CStringW sPath(L"/");
-	for (deque<XML_REC>::const_iterator itStack = XmlStack.begin(); itStack != XmlStack.end(); ++itStack)
+	for (std::deque<XML_REC>::const_iterator itStack = XmlStack.begin(); itStack != XmlStack.end(); ++itStack)
 		sPath += L"/" + itStack->sName;
 	return ReaderCB(sPath, pContext, pReader, NodeType, pAttrList, psValue);
 }
@@ -83,7 +83,7 @@ HRESULT ScanXmlStream(
 	const WCHAR* pwszLocalName;
 	const WCHAR* pwszValue;
 	UINT cwchPrefix;
-	deque<XML_REC> XmlStack;
+	std::deque<XML_REC> XmlStack;
 
 	if (FAILED(hr = CreateXmlReader(__uuidof(IXmlReader), (void**) &pReader, nullptr)))
 		return hr;
@@ -124,7 +124,7 @@ HRESULT ScanXmlStream(
 				}
 				#endif
 				// collect all of the attributes for this element
-				list<XML_LITE_ATTRIB> AttrList;
+				std::list<XML_LITE_ATTRIB> AttrList;
 				XML_LITE_ATTRIB AttrRec;
 				hr = pReader->MoveToFirstAttribute();
 				if (FAILED(hr))

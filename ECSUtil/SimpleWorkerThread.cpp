@@ -15,7 +15,6 @@
 
 #include "stdafx.h"
 
-using namespace std;
 
 #include "generic_defs.h"
 #include "ProcessEvent.h"
@@ -30,14 +29,14 @@ namespace ecs_sdk
 {
 
 CCriticalSection *CSimpleWorkerThread::pcsGlobalThreadSet;
-set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSetActive;
-set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSet;
+std::set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSetActive;
+std::set<CSimpleWorkerThread *> *CSimpleWorkerThread::pGlobalThreadSet;
 static CThreadDescription ThreadDescription;
 
 void CSimpleWorkerThread::SignalTermination(void)
 {
 	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
-	for (list<CEvent *>::const_iterator itTerm = TermEventList.begin(); itTerm != TermEventList.end(); ++itTerm)
+	for (std::list<CEvent *>::const_iterator itTerm = TermEventList.begin(); itTerm != TermEventList.end(); ++itTerm)
 	{
 		(void)(*itTerm)->SetEvent();
 	}
@@ -68,9 +67,9 @@ CSimpleWorkerThread::CSimpleWorkerThread()
 		ASSERT(pcsGlobalThreadSet != nullptr);
 		CSingleLock lockGlobalList(pcsGlobalThreadSet, true);
 		if (pGlobalThreadSet == nullptr)
-			pGlobalThreadSet = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
+			pGlobalThreadSet = new std::set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
 		if (pGlobalThreadSetActive == nullptr)
-			pGlobalThreadSetActive = new set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
+			pGlobalThreadSetActive = new std::set<CSimpleWorkerThread *>;			//lint !e1732 !e1733	// (Info -- new in constructor for class 'CAtmosFSApi' which has no assignment operator) not needed since this is assigning to a static
 		(void)pGlobalThreadSet->insert(this);
 	}
 }
@@ -163,7 +162,7 @@ UINT CSimpleWorkerThread::ThreadProc(LPVOID pParam)
 	// keep a list of all current threads
 	{
 		CSingleLock csGlobalList(pcsGlobalThreadSet, true);
-		pair<set<CSimpleWorkerThread *>::iterator,bool> ret = pGlobalThreadSetActive->insert(pSimpleThread);
+		std::pair<std::set<CSimpleWorkerThread *>::iterator,bool> ret = pGlobalThreadSetActive->insert(pSimpleThread);
 		ASSERT(ret.second);
 	}
 	if (!pSimpleThread->InitInstance())
@@ -351,7 +350,7 @@ void CSimpleWorkerThread::DumpHandles(CString& sHandleMsg)
 	CSingleLock lockGlobalList(pcsGlobalThreadSet, true);
 	if (pGlobalThreadSet)
 	{
-		for (set<CSimpleWorkerThread *>::iterator itSet=pGlobalThreadSet->begin() ; itSet != pGlobalThreadSet->end() ; ++itSet)
+		for (std::set<CSimpleWorkerThread *>::iterator itSet=pGlobalThreadSet->begin() ; itSet != pGlobalThreadSet->end() ; ++itSet)
 		{
 			sHandleMsg += (*itSet)->Format();
 		}
@@ -359,7 +358,7 @@ void CSimpleWorkerThread::DumpHandles(CString& sHandleMsg)
 	sHandleMsg += _T("\r\nActive:\r\n");
 	if (pGlobalThreadSetActive)
 	{
-		for (set<CSimpleWorkerThread *>::iterator itSet=pGlobalThreadSetActive->begin() ; itSet != pGlobalThreadSetActive->end() ; ++itSet)
+		for (std::set<CSimpleWorkerThread *>::iterator itSet=pGlobalThreadSetActive->begin() ; itSet != pGlobalThreadSetActive->end() ; ++itSet)
 		{
 			sHandleMsg += (*itSet)->Format();
 		}
@@ -389,7 +388,7 @@ bool CSimpleWorkerThread::AddTermEvent(CEvent * pEvent)
 void CSimpleWorkerThread::RemoveTermEvent(CEvent * pEvent)
 {
 	CSingleLock lock(const_cast<CCriticalSection *> (&Events.csWorkEvent), true);
-	for (list<CEvent *>::const_iterator itTerm = TermEventList.begin(); itTerm != TermEventList.end(); )
+	for (std::list<CEvent *>::const_iterator itTerm = TermEventList.begin(); itTerm != TermEventList.end(); )
 	{
 		if (*itTerm == pEvent)
 			itTerm = TermEventList.erase(itTerm);
@@ -410,7 +409,7 @@ CSimpleWorkerThread *CSimpleWorkerThread::CurrentThread(void)
 	CSimpleWorkerThread *pCurThread;
 	ASSERT(pcsGlobalThreadSet != nullptr);
 	CSingleLock lockGlobalList(pcsGlobalThreadSet, true);
-	set<CSimpleWorkerThread *>::iterator itSet;
+	std::set<CSimpleWorkerThread *>::iterator itSet;
 	for (itSet = pGlobalThreadSetActive->begin(); itSet != pGlobalThreadSetActive->end(); ++itSet)
 	{
 		pCurThread = *itSet;
@@ -432,7 +431,7 @@ void CSimpleWorkerThread::AllTerminate()
 	{
 		{
 			CSingleLock lock(CSimpleWorkerThread::pcsGlobalThreadSet, true);
-			for (set<CSimpleWorkerThread *>::const_iterator it = CSimpleWorkerThread::pGlobalThreadSet->begin();
+			for (std::set<CSimpleWorkerThread *>::const_iterator it = CSimpleWorkerThread::pGlobalThreadSet->begin();
 				it != CSimpleWorkerThread::pGlobalThreadSet->end(); ++it)
 			{
 				if ((*it)->IfActive())
@@ -443,7 +442,7 @@ void CSimpleWorkerThread::AllTerminate()
 		{
 			CSingleLock lock(CSimpleWorkerThread::pcsGlobalThreadSet, true);
 			bool bActive = false;
-			for (set<CSimpleWorkerThread *>::const_iterator it = CSimpleWorkerThread::pGlobalThreadSet->begin();
+			for (std::set<CSimpleWorkerThread *>::const_iterator it = CSimpleWorkerThread::pGlobalThreadSet->begin();
 				it != CSimpleWorkerThread::pGlobalThreadSet->end(); ++it)
 			{
 				if ((*it)->IfActive())

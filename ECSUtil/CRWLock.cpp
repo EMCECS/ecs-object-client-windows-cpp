@@ -37,7 +37,7 @@ namespace ecs_sdk
 		{
 			// there are outstanding locks!
 			ASSERT(false);
-			for (vector<CRWLockAcquire*>::const_iterator it = Instances.begin(); it != Instances.end(); ++it)
+			for (std::vector<CRWLockAcquire*>::const_iterator it = Instances.begin(); it != Instances.end(); ++it)
 			{
 				(*it)->bLocked = false;
 				(*it)->pLock = nullptr;
@@ -68,7 +68,7 @@ namespace ecs_sdk
 		CSimpleRWLockAcquire lockList(&rwlListLock, false);
 		if (!Instances.empty())
 		{
-			for (vector<CRWLockAcquire*>::const_iterator it = Instances.begin(); it != Instances.end(); ++it)
+			for (std::vector<CRWLockAcquire*>::const_iterator it = Instances.begin(); it != Instances.end(); ++it)
 			{
 				if ((*it)->bWrite)
 					bWriteLocked = true;
@@ -105,7 +105,7 @@ namespace ecs_sdk
 		{
 			// hook this instance into the vector for this lock
 			CSimpleRWLockAcquire lockList(&pLock->rwlListLock, true);
-			vector<CRWLockAcquire*>::const_iterator it;
+			std::vector<CRWLockAcquire*>::const_iterator it;
 #ifdef DEBUG
 			bool bErased = false;
 #endif
@@ -135,7 +135,7 @@ namespace ecs_sdk
 			long iNumLocks = 0;
 			{
 				CSimpleRWLockAcquire lockList(&pLock->rwlListLock);			// only need read lock
-				for (vector<CRWLockAcquire*>::const_iterator it = pLock->Instances.begin(); it != pLock->Instances.end(); ++it)
+				for (std::vector<CRWLockAcquire*>::const_iterator it = pLock->Instances.begin(); it != pLock->Instances.end(); ++it)
 					if ((*it != this) && ((*it)->dwThreadId == dwThreadId) && (*it)->bLocked)
 						iNumLocks++;
 			}
@@ -166,7 +166,7 @@ namespace ecs_sdk
 		bool bThreadLocked = false;
 		{
 			CSimpleRWLockAcquire lockList(&pLock->rwlListLock);			// read lock
-			for (vector<CRWLockAcquire*>::const_iterator it = pLock->Instances.begin(); it != pLock->Instances.end(); ++it)
+			for (std::vector<CRWLockAcquire*>::const_iterator it = pLock->Instances.begin(); it != pLock->Instances.end(); ++it)
 			{
 				if ((*it != this) && ((*it)->dwThreadId == dwThreadId) && (*it)->bLocked)
 				{
