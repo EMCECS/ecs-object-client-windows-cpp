@@ -20,6 +20,7 @@
 #include <atlstr.h>
 #include <xmllite.h>
 #include "generic_defs.h"
+#include "ECSConnection.h"
 
 #include "XmlLiteUtil.h"
 
@@ -209,6 +210,90 @@ HRESULT ScanXmlStream(
 		}
 	}
 	return 0;
+}
+
+HRESULT ProcessXmlTextField(
+	const std::map<CString, XML_FIELD_ENTRY>& FieldMap,
+	const CStringW& sPathRoot,							// the XML path without the last field name, such as //bucket_info/
+	const CStringW& sXmlPath,
+	void* pContext,
+	const CStringW* psValue)
+{
+	if (sPathRoot != sXmlPath.Left(sPathRoot.GetLength()))
+		return ERROR_INVALID_DATA;				// wrong path
+
+	CStringW sField(sXmlPath.Mid(sPathRoot.GetLength()));
+	if (!sField.IsEmpty() && (sField[0] == L'/'))
+		sField.Delete(0, 1);
+	std::map<CString, XML_FIELD_ENTRY>::const_iterator it = FieldMap.find((LPCTSTR)sField);
+	if (it == FieldMap.end())
+		return ERROR_SUCCESS;
+
+	switch (it->second.Type)
+	{
+	case E_XML_FIELD_TYPE::Bool:
+		{
+			bool* pBool = (bool*)((char*)pContext + it->second.uOffset);
+			if (psValue->CompareNoCase(L"false") == 0)
+				*pBool = false;
+			else if (psValue->CompareNoCase(L"true") == 0)
+				*pBool = true;
+			else
+				return ERROR_XML_PARSE_ERROR;
+		}
+		break;
+	case E_XML_FIELD_TYPE::String:
+		{
+			CString* pStr = (CString*)((char*)pContext + it->second.uOffset);
+			*pStr = *psValue;
+		}
+		break;
+	case E_XML_FIELD_TYPE::Time:
+		{
+			FILETIME* pFileTime = (FILETIME*)((char*)pContext + it->second.uOffset);
+			DWORD dwError = CECSConnection::ParseISO8601Date(FROM_UNICODE(*psValue), *pFileTime);
+			if (dwError != ERROR_SUCCESS)
+				return dwError;
+		}
+		break;
+	case E_XML_FIELD_TYPE::U32:
+		{
+			wchar_t* pEnd = nullptr;
+			UINT* pUint = (UINT*)((char*)pContext + it->second.uOffset);
+			*pUint = wcstoul(FROM_UNICODE(*psValue), &pEnd, 0);
+			if (*pEnd != L'\0')
+				return ERROR_XML_PARSE_ERROR;
+		}
+		break;
+	case E_XML_FIELD_TYPE::U64:
+		{
+			wchar_t* pEnd = nullptr;
+			ULONGLONG* pLongLong = (ULONGLONG*)((char*)pContext + it->second.uOffset);
+			*pLongLong = _wcstoui64(FROM_UNICODE(*psValue), &pEnd, 0);
+			if (*pEnd != L'\0')
+				return ERROR_XML_PARSE_ERROR;
+		}
+		break;
+	case E_XML_FIELD_TYPE::S32:
+		{
+			wchar_t* pEnd = nullptr;
+			INT* pInt = (INT*)((char*)pContext + it->second.uOffset);
+			*pInt = wcstol(FROM_UNICODE(*psValue), &pEnd, 0);
+			if (*pEnd != L'\0')
+				return ERROR_XML_PARSE_ERROR;
+		}
+		break;
+	case E_XML_FIELD_TYPE::S64:
+		{
+			wchar_t* pEnd = nullptr;
+			ULONGLONG* pLongLong = (ULONGLONG*)((char*)pContext + it->second.uOffset);
+			*pLongLong = _wcstoi64(FROM_UNICODE(*psValue), &pEnd, 0);
+			if (*pEnd != L'\0')
+				return ERROR_XML_PARSE_ERROR;
+		}
+		break;
+	}
+	return ERROR_SUCCESS;
 }
 
 } // end namespace ecs_sdk

@@ -6495,14 +6495,14 @@ HRESULT XmlECSBillingBucketCB(const CStringW& sXmlPath, void* pContext, IXmlRead
 	return 0;
 }
 
-// ECSAdminCreateKeyForUser
-// given the user, create a secret key
-// User.sUser and sNamespace must be filled in
+// ECSAdminBillingBucket
+// given the namespace/bucket, return all info on the bucket
 CECSConnection::S3_ERROR CECSConnection::ECSAdminBillingBucket(
-	const CString& sNamespace,
-	const CString& sBucket,
-	ECS_BILLING_BUCKET& BucketInfo)
+	_In_ const CString& sNamespace,
+	_In_ const CString& sBucket,
+	_Out_ ECS_BILLING_BUCKET& BucketInfo)
 {
+	BucketInfo = ECS_BILLING_BUCKET();			// set to default values
 	INTERNET_PORT wSavePort = Port;
 	SetPort(4443);
 	CStateRef State(this);
@@ -6530,6 +6530,172 @@ CECSConnection::S3_ERROR CECSConnection::ECSAdminBillingBucket(
 			if (hr != ERROR_SUCCESS)
 				return hr;
 			BucketInfo = Context.Info;
+		}
+	}
+	catch (const CS3ErrorInfo& E)
+	{
+		Error = E.Error;
+	}
+	return Error;
+}
+
+constexpr WCHAR XML_ECS_CAPACITY_totalFree_gb[] = L"//cluster_capacity/totalFree_gb";
+constexpr WCHAR XML_ECS_CAPACITY_totalProvisioned_gb[] = L"//cluster_capacity/totalProvisioned_gb";
+
+HRESULT XmlECSCapacityCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
+{
+	(void)pReader;
+	(void)pAttrList;
+	CECSConnection::ECS_CAPACITY *pInfo = (CECSConnection::ECS_CAPACITY *)pContext;
+	switch (NodeType)
+	{
+	case XmlNodeType_Text:
+		if (sXmlPath.CompareNoCase(XML_ECS_CAPACITY_totalFree_gb) == 0)
+		{
+			pInfo->ullTotalFree_GB = _wtoi64(FROM_UNICODE(*psValue));
+		}
+		else if (sXmlPath.CompareNoCase(XML_ECS_CAPACITY_totalProvisioned_gb) == 0)
+		{
+			pInfo->ullTotalProvisioned_GB = _wtoi64(FROM_UNICODE(*psValue));
+		}
+		break;
+
+	default:
+		break;
+	}
+	return 0;
+}
+
+CECSConnection::S3_ERROR CECSConnection::ECSAdminCapacity(
+	_Out_ CECSConnection::ECS_CAPACITY& CapacityInfo)
+{
+	CapacityInfo = ECS_CAPACITY();			// set to default values
+	INTERNET_PORT wSavePort = Port;
+	SetPort(4443);
+	CStateRef State(this);
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
+	std::list<HEADER_REQ> Req;
+	S3_ERROR Error;
+	CBuffer RetData;
+	State.Ref->Headers.clear();
+	AddHeader(_T("accept"), _T("*/*"));
+	CString sDate(GetCanonicalTime());
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("Content-Type"), _T("application/xml"));
+	try
+	{
+		CString sResource(L"/object/capacity");
+		Error = SendRequest(_T("GET"), UriEncode(sResource, E_URI_ENCODE::AllSAFE), nullptr, 0, RetData, &Req);
+		SetPort(wSavePort);
+		if (!Error.IfError())
+		{
+			XML_ECS_BILLING_BUCKET_CONTEXT Context;
+			HRESULT hr = ScanXml(&RetData, &CapacityInfo, XmlECSCapacityCB);
+			if (hr != ERROR_SUCCESS)
+				return hr;
+		}
+	}
+	catch (const CS3ErrorInfo& E)
+	{
+		Error = E.Error;
+	}
+	return Error;
+}
+
+std::map<CString, XML_FIELD_ENTRY> BucketInfoMap = {
+	FIELD_ENTRY_INIT(String, name),
+	FIELD_ENTRY_INIT(String, id),
+	FIELD_ENTRY_INIT(String, link),
+	FIELD_ENTRY_INIT(Time, created),
+	FIELD_ENTRY_INIT(S32, softquota),
+	FIELD_ENTRY_INIT(Bool, fs_access_enabled),
+	FIELD_ENTRY_INIT(Bool, locked),
+	FIELD_ENTRY_INIT(String,vpool),
+	FIELD_ENTRY_INIT_XML(String,name_space, namespace),
+	FIELD_ENTRY_INIT(String, owner),
+	FIELD_ENTRY_INIT(Bool,is_stale_allowed),
+	FIELD_ENTRY_INIT(Bool,is_tso_read_only),
+	FIELD_ENTRY_INIT(Bool,is_object_lock_enabled),
+	FIELD_ENTRY_INIT(Bool, default_object_lock_retention_mode),
+	FIELD_ENTRY_INIT(U32,default_object_lock_retention_years),
+	FIELD_ENTRY_INIT(U32,default_object_lock_retention_days),
+	FIELD_ENTRY_INIT(Bool,is_encryption_enabled),
+	FIELD_ENTRY_INIT(U32,default_retention),
+	FIELD_ENTRY_INIT(S32,block_size),
+	FIELD_ENTRY_INIT(U32,auto_commit_period),
+	FIELD_ENTRY_INIT(S32,notification_size),
+	FIELD_ENTRY_INIT(String, api_type),
+	FIELD_ENTRY_INIT(U32, retention),
+	FIELD_ENTRY_INIT(Bool,default_group_file_read_permission),
+	FIELD_ENTRY_INIT(Bool,default_group_file_write_permission),
+	FIELD_ENTRY_INIT(Bool,default_group_file_execute_permission),
+	FIELD_ENTRY_INIT(Bool,default_group_dir_read_permission),
+	FIELD_ENTRY_INIT(Bool,default_group_dir_write_permission),
+	FIELD_ENTRY_INIT(Bool,default_group_dir_execute_permission),
+	FIELD_ENTRY_INIT(String,default_group),
+	FIELD_ENTRY_INIT(String,datatype),
+	FIELD_ENTRY_INIT(Bool,isEnabled),
+	FIELD_ENTRY_INIT(Bool,mdTokens),
+	FIELD_ENTRY_INIT(U32,maxKeys),
+	FIELD_ENTRY_INIT(S32,blockSizeInCount),
+	FIELD_ENTRY_INIT(S32,notificationSizeInCount),
+	FIELD_ENTRY_INIT(S32,audit_delete_expiration),
+};
+
+HRESULT XmlECSBucketInfoCB(const CStringW& sXmlPath, void* pContext, IXmlReader* pReader, XmlNodeType NodeType, const std::list<XML_LITE_ATTRIB>* pAttrList, const CStringW* psValue)
+{
+	(void)pReader;
+	(void)pAttrList;
+	(void)pContext;
+	switch (NodeType)
+	{
+	case XmlNodeType_Text:
+		{
+			HRESULT hr = ProcessXmlTextField(BucketInfoMap, L"//bucket_info/", sXmlPath, pContext, psValue);
+			if (hr != ERROR_SUCCESS)
+				return hr;
+		}
+		break;
+
+	default:
+		break;
+	}
+	return 0;
+}
+
+CECSConnection::S3_ERROR CECSConnection::ECSAdminBucketInfo(
+	_In_ const CString& sNamespace,
+	_In_ const CString& sBucket,
+	_Out_ CECSConnection::ECS_BUCKET_INFO& BucketInfo)
+{
+	BucketInfo = ECS_BUCKET_INFO();			// set to default values
+	INTERNET_PORT wSavePort = Port;
+	SetPort(4443);
+	CStateRef State(this);
+	CBoolSet TurnOffSignature(&State.Ref->bS3Admin);				// set this flag, and reset it on exit
+	std::list<HEADER_REQ> Req;
+	S3_ERROR Error;
+	CBuffer RetData;
+	State.Ref->Headers.clear();
+	AddHeader(_T("accept"), _T("*/*"));
+	CString sDate(GetCanonicalTime());
+	AddHeader(_T("Date"), sDate);
+	AddHeader(_T("host"), GetCurrentServerIP());
+	AddHeader(_T("X-SDS-AUTH-TOKEN"), State.Ref->sX_SDS_AUTH_TOKEN);
+	AddHeader(_T("Content-Type"), _T("application/xml"));
+	try
+	{
+		CString sResource;
+		sResource.Format(L"/object/bucket/%s/info", (LPCTSTR)sBucket);
+		Error = SendRequest(_T("GET"), UriEncode(sResource, E_URI_ENCODE::AllSAFE) + L"?namespace=" + sNamespace, nullptr, 0, RetData, &Req);
+		SetPort(wSavePort);
+		if (!Error.IfError())
+		{
+			HRESULT hr = ScanXml(&RetData, &BucketInfo, XmlECSBucketInfoCB);
+			if (hr != ERROR_SUCCESS)
+				return hr;
 		}
 	}
 	catch (const CS3ErrorInfo& E)

@@ -25,6 +25,29 @@
 
 namespace ecs_sdk
 {
+	// defines for Process
+	enum class E_XML_FIELD_TYPE
+	{
+		Invalid,
+		String,
+		Time,
+		U32,
+		U64,
+		S32,
+		S64,
+		Bool,
+	};
+
+	struct XML_FIELD_ENTRY
+	{
+		E_XML_FIELD_TYPE Type = E_XML_FIELD_TYPE::Invalid;
+		UINT uOffset = 0;
+	};
+
+	// use FIELD_ENTRY_INIT if C++ struct field name is the same as the XML field name
+#define FIELD_ENTRY_INIT(field_type, field_name) {L#field_name, {E_XML_FIELD_TYPE::field_type, UFIELD_OFFSET(CECSConnection::ECS_BUCKET_INFO, field_name)}}
+	// use FIELD_ENTRY_INIT_XML if C++ struct field name is NOT the same as the XML field name
+#define FIELD_ENTRY_INIT_XML(field_type, field_name, xml_name) {L#xml_name, {E_XML_FIELD_TYPE::field_type, UFIELD_OFFSET(CECSConnection::ECS_BUCKET_INFO, field_name)}}
 
 
 	struct XML_LITE_ATTRIB
@@ -441,5 +464,12 @@ namespace ecs_sdk
 		IStream* pStream,
 		void* pContext,
 		XMLLITE_READER_CB ReaderCB);
+
+	HRESULT ProcessXmlTextField(
+		const std::map<CString, XML_FIELD_ENTRY>& FieldMap,
+		const CStringW& sPathRoot,							// the XML path without the last field name, such as //bucket_info/
+		const CStringW& sXmlPath,
+		void* pContext,
+		const CStringW* psValue);
 
 } // end namespace ecs_sdk
