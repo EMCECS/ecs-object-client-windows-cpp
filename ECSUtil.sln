@@ -10,11 +10,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "S3Test", "S3Test\S3Test.vcx
 		{09799C91-2FFC-4D10-90D9-20D275484986} = {09799C91-2FFC-4D10-90D9-20D275484986}
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution items", "Solution items", "{D39AD95C-C4F0-46B8-A4B2-DD6C5AA340BF}"
-	ProjectSection(SolutionItems) = preProject
-		Visualizer\ECSUtil.natvis = Visualizer\ECSUtil.natvis
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug Lib Static|x64 = Debug Lib Static|x64
